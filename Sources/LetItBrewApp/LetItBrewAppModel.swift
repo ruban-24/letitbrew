@@ -719,7 +719,10 @@ final class LetItBrewAppModel: ObservableObject {
 
     func applicationDidBecomeActive() {
         refreshCodexTrustIfNeeded()
-        guard case .approvalRequired = daemonRecoveryState else { return }
+        guard !uninstallInProgress,
+              !updateBlocksOtherActions,
+              case .approvalRequired = daemonRecoveryState
+        else { return }
         runDaemonRecovery(trigger: .userRequestedRetry)
     }
 
