@@ -45,7 +45,8 @@ Nothing to remember to switch off.
 | **Best for** | Claude Code and Codex work that should keep your Mac awake automatically | A simple manual keep-awake switch | Timers, schedules, and triggers |
 | **Understands active agent work** | ✅ Yes — Claude Code and Codex | ❌ No | ❌ No |
 | **Releases when agent work stops** | ✅ Yes — automatically | ❌ No — manual switch or timer | ❌ No — ends with its session or trigger |
-| **Closed-lid support** | ✅ Yes | ❌ No | ✅ Yes |
+| **Closed lid — with charger** | ✅ Yes | ❌ No | ✅ Yes |
+| **Closed lid — without charger** | ✅ Yes | ❌ No | ❌ No |
 | **Agent-specific integration** | ✅ Claude Code and Codex | ❌ None | ❌ None |
 
 Full breakdown at
