@@ -849,7 +849,7 @@ func blockedReconciliationNeverStopsTheDaemon(
         (
             .approvalRequired(message: "Approval needed."),
             "Closed-lid support needs approval",
-            [.retry, .openBackgroundItems],
+            [.openBackgroundItems],
             false,
             true
         ),
