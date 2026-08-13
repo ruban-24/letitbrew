@@ -132,9 +132,10 @@ requires separate authorization.
 ## GitHub Releases handoff
 
 The build and notarization scripts deliberately stop before publication. After
-all FUNC, SAFE, and DIST gates pass, publish only the final stapled
-`LetItBrew-<version>.dmg` and its final `LetItBrew-<version>-SHA256SUMS` from the
-release workspace. The stable GitHub Release must identify the same version/build
+all FUNC, SAFE, and DIST gates pass, publish the final stapled
+`LetItBrew-<version>.dmg`, its final `LetItBrew-<version>-SHA256SUMS`, and the
+byte-identical `LetItBrew.dmg` website alias from the release workspace. The
+stable GitHub Release must identify the same version/build
 and link the source commit, MIT License, release notes, SHA-256, and
 [GitHub Issues](https://github.com/ruban-24/letitbrew/issues).
 

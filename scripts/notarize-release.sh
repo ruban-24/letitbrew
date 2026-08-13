@@ -244,6 +244,8 @@ release_notary_write_latest_alias() {
     if [ -e "$alias" ] || [ -L "$alias" ]; then
         [ -f "$alias" ] && [ ! -L "$alias" ] || return 1
         [ "$(release_sha256 "$alias")" = "$dmg_sha" ] || return 1
+        /bin/chmod 0600 "$alias" || return 1
+        [ "$(/usr/bin/stat -f '%Lp' "$alias")" = 600 ] || return 1
         return 0
     fi
     [ ! -e "$temp" ] && [ ! -L "$temp" ] || return 1
@@ -255,7 +257,9 @@ release_notary_write_latest_alias() {
     [ "$(release_sha256 "$temp")" = "$dmg_sha" ] || { /bin/rm -f "$temp"; return 1; }
     /bin/ln "$temp" "$alias" || { /bin/rm -f "$temp"; return 1; }
     /bin/rm "$temp" || return 1
-    [ -f "$alias" ] && [ ! -L "$alias" ] && [ "$(release_sha256 "$alias")" = "$dmg_sha" ]
+    [ -f "$alias" ] && [ ! -L "$alias" ] && \
+        [ "$(/usr/bin/stat -f '%Lp' "$alias")" = 600 ] && \
+        [ "$(release_sha256 "$alias")" = "$dmg_sha" ]
 }
 
 release_notary_usage() {

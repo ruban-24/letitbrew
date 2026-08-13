@@ -26,10 +26,11 @@ published release is equal to or older than the installed app. It must report
 **Let It Brew is up to date.** without downloading or quitting.
 
 An available-update check requires a strictly newer published GitHub release with
-exactly these two assets:
+exactly these two versioned updater assets, plus the byte-identical website alias:
 
 - `LetItBrew-<version>.dmg`
 - `LetItBrew-<version>-SHA256SUMS`
+- `LetItBrew.dmg` (direct website download; ignored by updater asset selection)
 
 Publishing, uploading, tagging, or promoting a release always needs separate
 authorization. Until an authorized higher release exists, the production

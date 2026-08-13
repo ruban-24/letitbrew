@@ -446,6 +446,11 @@ expect_true "notarization creates the permanent website DMG alias" \
 expect_equal "$(release_sha256 "$build_root/LetItBrew.dmg")" \
     "$(release_sha256 "$build_root/LetItBrew-${TEST_VERSION}.dmg")" \
     "permanent website alias is byte-identical to the versioned DMG"
+/bin/chmod 0644 "$build_root/LetItBrew.dmg"
+expect_true "completed notarization revalidates the existing website alias" \
+    release_notary_main "$build_root" --keychain-profile letitbrew-release --timeout 30m
+expect_equal "$(/usr/bin/stat -f '%Lp' "$build_root/LetItBrew.dmg")" 600 \
+    "completed notarization restores the existing website alias to mode 0600"
 expect_true "final checksum file exists" test -f "$build_root/LetItBrew-${TEST_VERSION}-SHA256SUMS"
 checksum_file="$build_root/LetItBrew-${TEST_VERSION}-SHA256SUMS"
 expect_equal "$(/usr/bin/sed -n '1p' "$checksum_file")" \
