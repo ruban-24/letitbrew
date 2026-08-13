@@ -123,7 +123,10 @@ issues. A timed-out invocation resumes its saved UUID on rerun; it never blindly
 resubmits. The final manifest distinguishes submitted hashes from post-staple
 hashes and `LetItBrew-<version>-SHA256SUMS` contains exactly the final DMG and
 manifest, one per line as `64 lowercase hex`, two spaces, and the basename. The
-in-app updater parses that exact DMG entry.
+in-app updater parses that exact DMG entry. Successful notarization also creates
+`LetItBrew.dmg` as a byte-identical, mode-0600 alias for the website's permanent
+`/releases/latest/download/LetItBrew.dmg` URL. The alias is not added to the
+checksum file and does not change the updater's versioned asset contract.
 DMG and notarization transactions use an atomic per-release-root directory lock;
 concurrent use refuses, and cleanup removes only its matching owner token.
 
@@ -143,6 +146,12 @@ scripts/create-release-dmg.sh "$letitbrew_release_root"
 scripts/notarize-release.sh "$letitbrew_release_root" \
   --keychain-profile letitbrew-release --timeout 30m
 ```
+
+When publishing the GitHub release, upload all three public assets from that
+workspace: `LetItBrew-<version>.dmg`,
+`LetItBrew-<version>-SHA256SUMS`, and `LetItBrew.dmg`. GitHub's latest-release
+redirect then gives the website a permanent direct download while the in-app
+updater continues to select and verify the two versioned assets.
 
 ## In-app updater transaction
 

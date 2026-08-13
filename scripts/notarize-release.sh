@@ -234,6 +234,30 @@ release_notary_write_sums() {
     /bin/mv -f "$temp" "$sums"
 }
 
+release_notary_write_latest_alias() {
+    local root="$1" dmg="$2" alias temp dmg_sha
+    alias="$root/LetItBrew.dmg"
+    temp="${alias}.new.$$"
+    [ -f "$dmg" ] && [ ! -L "$dmg" ] || return 1
+    [ "$(cd "$root" && /bin/pwd -P)" = "$(cd "$(dirname "$dmg")" && /bin/pwd -P)" ] || return 1
+    dmg_sha="$(release_sha256 "$dmg")" || return 1
+    if [ -e "$alias" ] || [ -L "$alias" ]; then
+        [ -f "$alias" ] && [ ! -L "$alias" ] || return 1
+        [ "$(release_sha256 "$alias")" = "$dmg_sha" ] || return 1
+        return 0
+    fi
+    [ ! -e "$temp" ] && [ ! -L "$temp" ] || return 1
+    if ! release_notary_ditto "$dmg" "$temp"; then
+        /bin/rm -f "$temp"
+        return 1
+    fi
+    /bin/chmod 0600 "$temp" || { /bin/rm -f "$temp"; return 1; }
+    [ "$(release_sha256 "$temp")" = "$dmg_sha" ] || { /bin/rm -f "$temp"; return 1; }
+    /bin/ln "$temp" "$alias" || { /bin/rm -f "$temp"; return 1; }
+    /bin/rm "$temp" || return 1
+    [ -f "$alias" ] && [ ! -L "$alias" ] && [ "$(release_sha256 "$alias")" = "$dmg_sha" ]
+}
+
 release_notary_usage() {
     echo "usage: scripts/notarize-release.sh <release-root> --keychain-profile <profile> [--timeout 30m]" >&2
 }
@@ -299,6 +323,7 @@ release_notary_main() {
         already_complete=1
     fi
     if [ "$already_complete" -eq 1 ]; then
+        release_notary_write_latest_alias "$root" "$dmg" || return 1
         echo "PASS: notarization was already complete and final evidence still verifies"
         release_notary_cleanup || return 1
         return 0
@@ -341,12 +366,14 @@ release_notary_main() {
     release_manifest_set "$manifest" NOTARIZATION_COMPLETE 1 || return 1
     sums="$root/LetItBrew-${version}-SHA256SUMS"
     release_notary_write_sums "$root" "$dmg" "$manifest" "$sums" || return 1
+    release_notary_write_latest_alias "$root" "$dmg" || return 1
 
     release_notary_cleanup || return 1
     RELEASE_NOTARY_MOUNT=""
 
     echo "PASS: app and DMG notarization, stapling, and validation complete"
     release_note "final DMG: $dmg"
+    release_note "website alias: $root/LetItBrew.dmg"
     release_note "checksums: $sums"
     release_note "nothing was uploaded to a publication channel"
 }

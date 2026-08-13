@@ -441,6 +441,11 @@ expect_true "two-submission notarization transaction succeeds" release_notary_ma
 notary_events="$(/usr/bin/tr '\n' ',' <"$TEST_LEDGER")"
 expect_contains <(printf '%s\n' "$notary_events") "submit:LetItBrew-${TEST_VERSION}-${TEST_BUILD}\\.app-notary\\.zip:.*--keychain-profile letitbrew-release --no-wait --output-format json,wait:11111111-1111-1111-1111-111111111111:.*--keychain-profile letitbrew-release --timeout 30m --output-format json,log:.*11111111-1111-1111-1111-111111111111.*app-notary-log\\.json\\.new\\.[0-9]+,stapler:staple:Let It Brew\\.app,stapler:validate:Let It Brew\\.app,notary-verify-app,notary-copy:LetItBrew-${TEST_VERSION}-${TEST_BUILD}\\.stapled-app\\.zip,create-final-dmg,notary-copy:LetItBrew-${TEST_VERSION}\\.notary-submission\\.dmg,submit:LetItBrew-${TEST_VERSION}\\.notary-submission\\.dmg:.*--keychain-profile letitbrew-release --no-wait --output-format json,wait:22222222-2222-2222-2222-222222222222:.*--keychain-profile letitbrew-release --timeout 30m --output-format json,log:.*22222222-2222-2222-2222-222222222222.*dmg-notary-log\\.json\\.new\\.[0-9]+,stapler:validate:LetItBrew-${TEST_VERSION}\\.dmg,stapler:staple:LetItBrew-${TEST_VERSION}\\.dmg,final-dmg-verify," "order is app submit/wait/log/staple, final DMG build, DMG submit/wait/log/staple"
 expect_equal "$(release_manifest_get "$build_manifest" NOTARIZATION_COMPLETE)" 1 "completion is journaled only after final verification"
+expect_true "notarization creates the permanent website DMG alias" \
+    test -f "$build_root/LetItBrew.dmg"
+expect_equal "$(release_sha256 "$build_root/LetItBrew.dmg")" \
+    "$(release_sha256 "$build_root/LetItBrew-${TEST_VERSION}.dmg")" \
+    "permanent website alias is byte-identical to the versioned DMG"
 expect_true "final checksum file exists" test -f "$build_root/LetItBrew-${TEST_VERSION}-SHA256SUMS"
 checksum_file="$build_root/LetItBrew-${TEST_VERSION}-SHA256SUMS"
 expect_equal "$(/usr/bin/sed -n '1p' "$checksum_file")" \
