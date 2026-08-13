@@ -717,6 +717,12 @@ final class LetItBrewAppModel: ObservableObject {
         refreshAgentHooks(agentIDs: ["codex"])
     }
 
+    func applicationDidBecomeActive() {
+        refreshCodexTrustIfNeeded()
+        guard case .approvalRequired = daemonRecoveryState else { return }
+        runDaemonRecovery(trigger: .userRequestedRetry)
+    }
+
     private func refreshAgentHooks(
         agentIDs: Set<String>,
         messageAfterRefresh: String? = nil

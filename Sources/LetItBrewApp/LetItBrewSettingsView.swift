@@ -156,6 +156,7 @@ struct LetItBrewSettingsView: View {
                             Button("Open Background Items…") {
                                 model.openLoginItemSettings()
                             }
+                            .buttonStyle(.borderedProminent)
                         }
                     }
                 }

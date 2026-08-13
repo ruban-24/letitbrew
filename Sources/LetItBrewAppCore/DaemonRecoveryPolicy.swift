@@ -197,7 +197,7 @@ public struct DaemonRecoveryPresentation: Equatable, Sendable {
         case .approvalRequired(let message):
             headline = "Closed-lid support needs approval"
             detail = message
-            actions = [.retry, .openBackgroundItems]
+            actions = [.openBackgroundItems]
             showsProgress = false
             requiresAttention = true
         case .retryableFailure(let failure):

@@ -216,6 +216,12 @@ final class LiveDaemonHandshakeChecker: DaemonHandshakeChecking, @unchecked Send
 }
 
 struct LiveDaemonServiceController: DaemonServiceControlling {
+    private static let approvalInstructions =
+        "Open System Settings → General → Login Items & Extensions. "
+        + "Under App Background Activity, turn on Let It Brew. "
+        + "macOS may ask for an administrator password or Touch ID. "
+        + "Return to Let It Brew when you’re done; it will check automatically."
+
     func stopServiceForRefresh() async -> DaemonServiceOperationResult {
         do {
             try await DaemonRegistration.unregisterAndWait()
@@ -225,9 +231,7 @@ struct LiveDaemonServiceController: DaemonServiceControlling {
             case .alreadyUnregistered:
                 return .succeeded
             case .approvalRequired:
-                return .approvalRequired(message:
-                    "Allow Let It Brew in System Settings → General → Login Items & Extensions → App Background Activity, then choose Retry."
-                )
+                return .approvalRequired(message: Self.approvalInstructions)
             case .alreadyRegistered, .other:
                 return Self.failure(error)
             }
@@ -246,9 +250,7 @@ struct LiveDaemonServiceController: DaemonServiceControlling {
                 // as already satisfied.
                 return .succeeded
             case .approvalRequired:
-                return .approvalRequired(message:
-                    "Allow Let It Brew in System Settings → General → Login Items & Extensions → App Background Activity, then choose Retry."
-                )
+                return .approvalRequired(message: Self.approvalInstructions)
             case .alreadyUnregistered, .other:
                 return Self.failure(error)
             }

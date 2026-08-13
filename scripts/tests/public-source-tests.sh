@@ -41,16 +41,16 @@ for image_target in $image_targets; do
     fi
 done
 
-if ! grep -qE '^[[:space:]]+MARKETING_VERSION: 0\.5\.0$' project.yml; then
-    fail "project.yml MARKETING_VERSION is not 0.5.0"
+if ! grep -qE '^[[:space:]]+MARKETING_VERSION: 0\.5\.1$' project.yml; then
+    fail "project.yml MARKETING_VERSION is not 0.5.1"
 fi
 
-if ! grep -qE '^[[:space:]]+CURRENT_PROJECT_VERSION: 19$' project.yml; then
-    fail "project.yml CURRENT_PROJECT_VERSION is not 19"
+if ! grep -qE '^[[:space:]]+CURRENT_PROJECT_VERSION: 20$' project.yml; then
+    fail "project.yml CURRENT_PROJECT_VERSION is not 20"
 fi
 
-if ! grep -Fq 'print("letitbrew 0.5.0")' Sources/letitbrew/main.swift; then
-    fail "letitbrew --version source is not 0.5.0"
+if ! grep -Fq 'print("letitbrew 0.5.1")' Sources/letitbrew/main.swift; then
+    fail "letitbrew --version source is not 0.5.1"
 fi
 
 if grep -qi 'GitHub pre-release' SIGNING.md; then

@@ -1,5 +1,6 @@
 import Foundation
 import ServiceManagement
+import LetItBrewAppCore
 import LetItBrewDaemonCore
 
 enum DaemonRegistrationFailure: LocalizedError {
@@ -17,13 +18,6 @@ enum DaemonRegistrationFailure: LocalizedError {
             "Let It Brew's signing identity could not be verified: \(message)"
         }
     }
-}
-
-enum DaemonRegistrationErrorDisposition: Equatable {
-    case approvalRequired
-    case alreadyRegistered
-    case alreadyUnregistered
-    case other
 }
 
 /// The only place in the codebase allowed to construct an `SMAppService`.
@@ -96,24 +90,13 @@ enum DaemonRegistration {
 
     static func disposition(of error: Error) -> DaemonRegistrationErrorDisposition {
         let error = error as NSError
-        let serviceDomains = [
-            "SMAppServiceErrorDomain",
-            "kSMErrorDomainFramework",
-            "kSMErrorDomainLaunchd",
-        ]
-        if serviceDomains.contains(error.domain)
-            && error.code == Int(kSMErrorLaunchDeniedByUser) {
-            return .approvalRequired
-        }
-        if serviceDomains.contains(error.domain)
-            && error.code == Int(kSMErrorJobNotFound) {
-            return .alreadyUnregistered
-        }
-        if serviceDomains.contains(error.domain)
-            && error.code == Int(kSMErrorAlreadyRegistered) {
-            return .alreadyRegistered
-        }
-        return .other
+        return DaemonRegistrationErrorClassifier.disposition(
+            domain: error.domain,
+            code: error.code,
+            launchDeniedByUserCode: Int(kSMErrorLaunchDeniedByUser),
+            jobNotFoundCode: Int(kSMErrorJobNotFound),
+            alreadyRegisteredCode: Int(kSMErrorAlreadyRegistered)
+        )
     }
 
     private static func eligibleService(

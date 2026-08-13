@@ -809,9 +809,8 @@ func blockedReconciliationNeverStopsTheDaemon(
     #expect(approval == .approvalRequired(
         message: "Enable Let It Brew in Background Items."
     ))
-    #expect(DaemonRecoveryPresentation(state: approval).actions == [
-        .retry, .openBackgroundItems,
-    ])
+    let presentation = DaemonRecoveryPresentation(state: approval)
+    #expect(presentation.actions == [.openBackgroundItems])
     #expect(approvalEvents.events == [
         "state:checking", "handshake", "state:approval",
     ])

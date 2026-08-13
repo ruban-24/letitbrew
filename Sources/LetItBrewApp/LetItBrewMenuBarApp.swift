@@ -52,7 +52,7 @@ private struct LetItBrewMenuBarApp: App {
                 .onReceive(NotificationCenter.default.publisher(
                     for: NSApplication.didBecomeActiveNotification
                 )) { _ in
-                    model.refreshCodexTrustIfNeeded()
+                    model.applicationDidBecomeActive()
                 }
         }
         .menuBarExtraStyle(.window)

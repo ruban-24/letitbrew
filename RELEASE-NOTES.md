@@ -11,6 +11,21 @@ against the SHA-256 published with the release.
 
 ---
 
+## 0.5.1
+
+Fixed:
+
+- Closed-lid setup now recognizes macOS’s current Background Activity approval
+  response instead of showing a generic “Operation not permitted” error.
+- When approval is needed, Let It Brew opens the correct System Settings pane,
+  shows the exact steps (including the possible administrator password or Touch
+  ID prompt), and checks again automatically when you return to the app.
+
+Tested:
+
+- Regression coverage includes the current `SMAppServiceErrorDomain` approval
+  response and the existing legacy Service Management error mappings.
+
 ## 0.5.0
 
 Stable release.
