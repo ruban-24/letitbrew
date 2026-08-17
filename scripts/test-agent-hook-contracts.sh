@@ -18,6 +18,18 @@ for agent in claude codex cursor opencode copilot; do "$CLI" install "$agent" >/
 REGISTRY="$TEST_HOME/Library/Application Support/LetItBrew/agent-hook-targets.json"
 test "$(stat -f '%Lp' "$REGISTRY")" = "600"
 "$CLI" doctor >/dev/null
+# `prepare-exact` accepts only the exact agent/snapshot inspection.  A
+# healthy target updates its registry evidence without rewriting vendor bytes
+# (including inode and nanosecond mtime).
+PREP_TARGET="$TEST_HOME/.cursor/hooks.json"
+PREP_INPUT="$TEST_HOME/prepare-cursor.json"
+python3 -c 'import hashlib,json,os,sys; p=sys.argv[1]; a=sys.argv[2]; s=os.stat(p); print(json.dumps({"version":1,"agent":a,"snapshot":{"path":p,"exists":True,"deviceID":s.st_dev,"inode":s.st_ino,"byteCount":s.st_size,"modificationSeconds":s.st_mtime_ns//1_000_000_000,"modificationNanoseconds":s.st_mtime_ns%1_000_000_000,"sha256":hashlib.sha256(open(p,"rb").read()).hexdigest()},"expectedState":"healthyOwned"}))' "$PREP_TARGET" cursor > "$PREP_INPUT"
+cp "$PREP_TARGET" "$TEST_HOME/prepare-cursor-before.json"
+PREP_STAT_BEFORE="$(python3 -c 'import os,sys; s=os.stat(sys.argv[1]); print(f"{s.st_dev}:{s.st_ino}:{s.st_size}:{s.st_mtime_ns}")' "$PREP_TARGET")"
+"$CLI" prepare-exact cursor < "$PREP_INPUT" >/dev/null
+cmp -s "$TEST_HOME/prepare-cursor-before.json" "$PREP_TARGET"
+test "$PREP_STAT_BEFORE" = "$(python3 -c 'import os,sys; s=os.stat(sys.argv[1]); print(f"{s.st_dev}:{s.st_ino}:{s.st_size}:{s.st_mtime_ns}")' "$PREP_TARGET")"
+! "$CLI" prepare-exact claude < "$PREP_INPUT" >/dev/null 2>&1
 grep -q '__letitbrew_hook' "$TEST_HOME/.claude/settings.json"
 grep -q '__letitbrew_codex_hook' "$TEST_HOME/.codex/hooks.json"
 grep -q '__letitbrew_cursor_hook' "$TEST_HOME/.cursor/hooks.json"
