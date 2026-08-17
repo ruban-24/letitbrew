@@ -11,6 +11,33 @@ import Testing
     #expect(throws: Error.self) { _ = try JSONDecoder().decode(AgentInstallRegistry.self, from: Data("{\"version\":1,\"targets\":{\"unknown\":\"/tmp/x\"}}".utf8)) }
 }
 
+@Test func registryRejectsAnyTopLevelSchemaDeviationBeforeTypedDecode() {
+    let invalidDocuments = [
+        "{\"version\":1,\"targets\":{},\"extra\":true}",
+        "{\"version\":1}",
+        "{\"targets\":{}}",
+        "{\"version\":\"1\",\"targets\":{}}",
+        "{\"version\":1,\"targets\":[]}",
+    ]
+    for document in invalidDocuments {
+        #expect(throws: Error.self) {
+            _ = try JSONDecoder().decode(AgentInstallRegistry.self, from: Data(document.utf8))
+        }
+    }
+}
+
+@Test func registryRejectsUnsupportedVersionUnknownAgentAndInvalidTargetPath() {
+    #expect(throws: AgentInstallRegistryError.unsupportedVersion) {
+        _ = try JSONDecoder().decode(AgentInstallRegistry.self, from: Data("{\"version\":2,\"targets\":{}}".utf8))
+    }
+    #expect(throws: AgentInstallRegistryError.invalidAgent("unknown")) {
+        _ = try JSONDecoder().decode(AgentInstallRegistry.self, from: Data("{\"version\":1,\"targets\":{\"unknown\":\"/tmp/x\"}}".utf8))
+    }
+    #expect(throws: AgentInstallRegistryError.invalidPath("relative.json")) {
+        _ = try JSONDecoder().decode(AgentInstallRegistry.self, from: Data("{\"version\":1,\"targets\":{\"claude\":\"relative.json\"}}".utf8))
+    }
+}
+
 private func registryFile() throws -> URL {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent("registry-exact-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

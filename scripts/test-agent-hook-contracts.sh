@@ -185,6 +185,17 @@ grep -q '^Cursor: needs repair$' <<< "$DOCTOR_OUTPUT"
 grep -q '^OpenCode: not installed$' <<< "$DOCTOR_OUTPUT"
 grep -q '^GitHub Copilot CLI: not installed$' <<< "$DOCTOR_OUTPUT"
 grep -q '^Lid-closed watchdog:' <<< "$DOCTOR_OUTPUT"
+# Registry decoding is strict at the top level. An unknown member means every
+# requested agent is configuration-invalid, but doctor still runs its wholly
+# independent watchdog check.
+python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d["extra"]=1; json.dump(d,open(p,"w"))' "$DOCTOR_HOME/Library/Application Support/LetItBrew/agent-hook-targets.json"
+STRICT_REGISTRY_OUTPUT="$(env LETITBREW_TEST_HOME="$DOCTOR_HOME" "$CLI" doctor || true)"
+grep -q '^Claude Code: configuration invalid$' <<< "$STRICT_REGISTRY_OUTPUT"
+grep -q '^Codex: configuration invalid$' <<< "$STRICT_REGISTRY_OUTPUT"
+grep -q '^Cursor: configuration invalid$' <<< "$STRICT_REGISTRY_OUTPUT"
+grep -q '^OpenCode: configuration invalid$' <<< "$STRICT_REGISTRY_OUTPUT"
+grep -q '^GitHub Copilot CLI: configuration invalid$' <<< "$STRICT_REGISTRY_OUTPUT"
+grep -q '^Lid-closed watchdog:' <<< "$STRICT_REGISTRY_OUTPUT"
 # Registry parent symlinks are unsafe even with a non-symlink final name: a
 # test-home operation must fail before either vendor config or registry bytes
 # can escape through the parent.

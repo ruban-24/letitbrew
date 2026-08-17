@@ -24,8 +24,14 @@ public struct AgentInstallRegistry: Codable, Equatable, Sendable {
         }
     }
     public init(from decoder: Decoder) throws {
+        // A typed CodingKeys container cannot represent unknown members in
+        // `allKeys`, so validate the wire object's complete dynamic key set
+        // first. The subsequent typed decode keeps type diagnostics precise.
+        let raw = try decoder.container(keyedBy: TargetKey.self)
+        guard Set(raw.allKeys.map(\.stringValue)) == Set([CodingKeys.version.rawValue, CodingKeys.targets.rawValue]) else {
+            throw AgentInstallRegistryError.invalidSchema
+        }
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        guard Set(c.allKeys) == Set([.version, .targets]) else { throw AgentInstallRegistryError.invalidSchema }
         let t = try c.nestedContainer(keyedBy: TargetKey.self, forKey: .targets)
         var values: [AgentID: String] = [:]
         for key in t.allKeys {
