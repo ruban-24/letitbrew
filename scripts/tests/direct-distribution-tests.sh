@@ -13,6 +13,8 @@ source "$SCRIPT_DIR/create-release-dmg.sh"
 source "$SCRIPT_DIR/notarize-release.sh"
 # shellcheck source=../lib-power-baseline.sh
 source "$SCRIPT_DIR/lib-power-baseline.sh"
+# shellcheck source=fixtures/v0.5.1-update-support-contract.sh
+source "$SCRIPT_DIR/tests/fixtures/v0.5.1-update-support-contract.sh"
 
 TEST_VERSION="$(release_project_value "$SCRIPT_DIR/../project.yml" MARKETING_VERSION)"
 TEST_BUILD="$(release_project_value "$SCRIPT_DIR/../project.yml" CURRENT_PROJECT_VERSION)"
@@ -116,16 +118,11 @@ make_four_file_update_support() {
 }
 
 frozen_v051_inventory_accepts_current_layout() {
-    local app="$1" transcript="$TEST_ROOT/v051-four-file-transcript"
-    "$TEST_ROOT/v051-verify-artifact.sh" "$app" --release >"$transcript" 2>&1 || true
-    /usr/bin/grep -Fq 'ok: exactly four update support entries' "$transcript" &&
-        ! /usr/bin/grep -Fq 'FAIL: exactly four update support entries' "$transcript"
+    v051_update_support_contract_accepts "$1"
 }
 
 frozen_v051_inventory_rejects_fifth_entry() {
-    local app="$1" transcript="$TEST_ROOT/v051-five-file-transcript"
-    "$TEST_ROOT/v051-verify-artifact.sh" "$app" --release >"$transcript" 2>&1 || true
-    /usr/bin/grep -Fq 'FAIL: exactly four update support entries' "$transcript"
+    ! v051_update_support_contract_accepts "$1"
 }
 
 normal_verifier_runs_legal_then_full_gates() {
@@ -136,8 +133,18 @@ normal_verifier_runs_legal_then_full_gates() {
         /usr/bin/grep -Fq -- '-- strict signatures and live-image identity --' "$transcript"
 }
 
-git show v0.5.1:scripts/verify-artifact.sh >"$TEST_ROOT/v051-verify-artifact.sh"
-/bin/chmod 755 "$TEST_ROOT/v051-verify-artifact.sh"
+direct_distribution_suite_runs_without_git_or_cwd() {
+    local no_git="$TEST_ROOT/no-git-bin" transcript="$TEST_ROOT/no-git-transcript"
+    /bin/mkdir -p "$no_git"
+    printf '#!/bin/bash\nexit 127\n' >"$no_git/git"
+    /bin/chmod 755 "$no_git/git"
+    (
+        cd /private/tmp || exit 1
+        PATH="$no_git:$PATH" LETITBREW_DIRECT_DISTRIBUTION_HERMETIC_CHILD=1 \
+            /bin/bash "$SCRIPT_DIR/tests/direct-distribution-tests.sh"
+    ) >"$transcript" 2>&1 &&
+        /usr/bin/grep -Fq 'PASS: 105 isolated direct-distribution assertions' "$transcript"
+}
 
 echo "-- shared path and manifest contracts --"
 new_path="$TEST_ROOT/new-release"
@@ -206,7 +213,7 @@ echo "-- frozen v0.5.1 update support compatibility --"
 v051_four_file_app="$TEST_ROOT/v051-four-file/Let It Brew.app"
 make_fake_app "$v051_four_file_app"
 make_four_file_update_support "$v051_four_file_app"
-expect_true "frozen v0.5.1 verifier accepts the exact current four-file inventory despite unsigned fixture failures" \
+expect_true "frozen v0.5.1 exact-four predicate accepts the current inventory" \
     frozen_v051_inventory_accepts_current_layout "$v051_four_file_app"
 
 v051_five_file_app="$TEST_ROOT/v051-five-file/Let It Brew.app"
@@ -214,8 +221,13 @@ make_fake_app "$v051_five_file_app"
 make_four_file_update_support "$v051_five_file_app"
 printf '#!/bin/bash\n' >"$v051_five_file_app/Contents/Resources/UpdateSupport/verify-legal-resources.sh"
 /bin/chmod 755 "$v051_five_file_app/Contents/Resources/UpdateSupport/verify-legal-resources.sh"
-expect_true "frozen v0.5.1 verifier rejects a fifth update support entry separately from unsigned fixture failures" \
+expect_true "frozen v0.5.1 exact-four predicate rejects a fifth update support entry" \
     frozen_v051_inventory_rejects_fifth_entry "$v051_five_file_app"
+
+if [ "${LETITBREW_DIRECT_DISTRIBUTION_HERMETIC_CHILD:-}" != 1 ]; then
+    expect_true "direct-distribution suite is independent of git tags and caller cwd" \
+        direct_distribution_suite_runs_without_git_or_cwd
+fi
 
 echo
 echo "-- Developer ID identity refusal and selection --"
