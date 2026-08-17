@@ -60,12 +60,28 @@ for agent in claude codex cursor opencode copilot; do "$CLI" uninstall "$agent" 
 "$CLI" uninstall >/dev/null
 ! "$CLI" >/dev/null 2>&1
 for command in "install claude extra" "uninstall nope" "uninstall claude extra" "install nope" "prepare-exact"; do ! "$CLI" $command >/dev/null 2>&1; done
+# In a fresh home, an absent exact preparation creates only the requested
+# owned target.  A stale owned target is then repaired using a new exact
+# capture; neither case relies on an ambient vendor-home variable.
+PREP_HOME="$(mktemp -d /tmp/letitbrew-prepare.XXXXXX)"
+mkdir -p "$PREP_HOME/.claude"
+PREP_CLAUDE="$PREP_HOME/.claude/settings.json"
+PREP_ABSENT="$PREP_HOME/prepare-absent.json"
+python3 -c 'import json,sys; print(json.dumps({"version":1,"agent":"claude","snapshot":{"path":sys.argv[1],"exists":False},"expectedState":"absent"}))' "$PREP_CLAUDE" > "$PREP_ABSENT"
+env LETITBREW_TEST_HOME="$PREP_HOME" "$CLI" prepare-exact claude < "$PREP_ABSENT" >/dev/null
+grep -q '__letitbrew_hook' "$PREP_CLAUDE"
+python3 -c 'import json,sys; p,old=sys.argv[1:]; d=json.load(open(p)); walk=lambda x: {k:walk(v) for k,v in x.items()} if isinstance(x,dict) else [walk(v) for v in x] if isinstance(x,list) else x.replace(old,"/private/tmp/letitbrew-stale") if isinstance(x,str) else x; json.dump(walk(d),open(p,"w"))' "$PREP_CLAUDE" "$CLI"
+PREP_REPAIR="$PREP_HOME/prepare-repair.json"
+python3 -c 'import hashlib,json,os,sys; p=sys.argv[1]; s=os.stat(p); print(json.dumps({"version":1,"agent":"claude","snapshot":{"path":p,"exists":True,"deviceID":s.st_dev,"inode":s.st_ino,"byteCount":s.st_size,"modificationSeconds":s.st_mtime_ns//1_000_000_000,"modificationNanoseconds":s.st_mtime_ns%1_000_000_000,"sha256":hashlib.sha256(open(p,"rb").read()).hexdigest()},"expectedState":"repairableOwned"}))' "$PREP_CLAUDE" > "$PREP_REPAIR"
+env LETITBREW_TEST_HOME="$PREP_HOME" "$CLI" prepare-exact claude < "$PREP_REPAIR" >/dev/null
+grep -q '__letitbrew_hook' "$PREP_CLAUDE"
+! grep -qF '/private/tmp/letitbrew-stale' "$PREP_CLAUDE"
 # Registry parent symlinks are unsafe even with a non-symlink final name: a
 # test-home operation must fail before either vendor config or registry bytes
 # can escape through the parent.
 SYMLINK_HOME="$(mktemp -d /tmp/letitbrew-registry-link.XXXXXX)"
 OUTSIDE_HOME="$(mktemp -d /tmp/letitbrew-registry-outside.XXXXXX)"
-trap 'rm -rf "$TEST_HOME" "$SYMLINK_HOME" "$OUTSIDE_HOME"' EXIT
+trap 'rm -rf "$TEST_HOME" "$SYMLINK_HOME" "$OUTSIDE_HOME" "$PREP_HOME"' EXIT
 mkdir -p "$SYMLINK_HOME/Library/Application Support"
 ln -s "$OUTSIDE_HOME" "$SYMLINK_HOME/Library/Application Support/LetItBrew"
 ! env LETITBREW_TEST_HOME="$SYMLINK_HOME" "$CLI" install claude >/dev/null 2>&1
