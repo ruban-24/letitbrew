@@ -128,15 +128,40 @@ check "Let It Brew's Cursor entries are gone" bash -c '! grep -q __letitbrew_cur
 check "Let It Brew's OpenCode plugin is gone" test ! -e "$TEST_HOME/.config/opencode/plugins/letitbrew.js"
 check "Let It Brew's Copilot entries are gone" bash -c '! grep -q __letitbrew_copilot_hook "$0/.copilot/hooks/letitbrew.json"' "$TEST_HOME"
 
-# A malformed file must be refused, never rewritten.
-printf '{ this is not json' > "$TEST_HOME/.codex/hooks.json"
-cp "$TEST_HOME/.codex/hooks.json" "$TEST_HOME/codex-malformed-before.json"
-uninstall_codex_status=0
-"$CLI" uninstall codex >/dev/null 2>&1 || uninstall_codex_status=$?
-check "uninstall codex refuses malformed input with the defined status 1" \
-    [ "$uninstall_codex_status" -eq 1 ]
-check "a malformed Codex file was left byte-identical" \
-    cmp -s "$TEST_HOME/codex-malformed-before.json" "$TEST_HOME/.codex/hooks.json"
+# Every mergeable JSON target must refuse malformed bytes without a rewrite.
+# These are the post-uninstall configured paths, so there is no registry
+# record silently redirecting the test to a different target.
+for malformed in \
+    "claude:$TEST_HOME/.claude/settings.json" \
+    "codex:$TEST_HOME/.codex/hooks.json" \
+    "cursor:$TEST_HOME/.cursor/hooks.json" \
+    "copilot:$TEST_HOME/.copilot/hooks/letitbrew.json"; do
+    agent="${malformed%%:*}"
+    target="${malformed#*:}"
+    before="$TEST_HOME/${agent}-malformed-before.json"
+    printf '{ this is not json' > "$target"
+    cp "$target" "$before"
+    uninstall_status=0
+    "$CLI" uninstall "$agent" >/dev/null 2>&1 || uninstall_status=$?
+    check "uninstall $agent refuses malformed input with the defined status 1" [ "$uninstall_status" -eq 1 ]
+    check "a malformed $agent file was left byte-identical" cmp -s "$before" "$target"
+done
+
+# OpenCode owns a whole file and must refuse both an unowned same-name file
+# and a later final-component symlink, preserving the destination bytes.
+OPENCODE_PLUGIN="$TEST_HOME/.config/opencode/plugins/letitbrew.js"
+printf '// user plugin\n' > "$OPENCODE_PLUGIN"
+cp "$OPENCODE_PLUGIN" "$TEST_HOME/opencode-foreign-before.js"
+uninstall_status=0
+"$CLI" uninstall opencode >/dev/null 2>&1 || uninstall_status=$?
+check "uninstall opencode refuses an unowned file" [ "$uninstall_status" -eq 1 ]
+check "an unowned OpenCode file was left byte-identical" cmp -s "$TEST_HOME/opencode-foreign-before.js" "$OPENCODE_PLUGIN"
+mv "$OPENCODE_PLUGIN" "$TEST_HOME/opencode-symlink-destination.js"
+ln -s "$TEST_HOME/opencode-symlink-destination.js" "$OPENCODE_PLUGIN"
+uninstall_status=0
+"$CLI" uninstall opencode >/dev/null 2>&1 || uninstall_status=$?
+check "uninstall opencode refuses a final symlink" [ "$uninstall_status" -eq 1 ]
+check "an OpenCode symlink destination was left byte-identical" cmp -s "$TEST_HOME/opencode-foreign-before.js" "$TEST_HOME/opencode-symlink-destination.js"
 
 exit_baseline="$(baseline_read_sleepdisabled)" || {
     echo "FAIL: could not read an exact SleepDisabled baseline on exit." >&2
