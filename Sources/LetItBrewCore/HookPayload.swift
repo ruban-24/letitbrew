@@ -17,7 +17,6 @@ public struct HookPayload: Decodable, Equatable, Sendable {
     public var hookEventName: String?
     public var toolName: String?
     public var notificationType: String?
-    public var transcriptPath: String?
 
     private enum CodingKeys: String, CodingKey {
         case sessionID = "session_id"
@@ -33,7 +32,6 @@ public struct HookPayload: Decodable, Equatable, Sendable {
         case hookEventName = "hook_event_name"
         case toolName = "tool_name"
         case notificationType = "notification_type"
-        case transcriptPath = "transcript_path"
     }
 
     public init(
@@ -46,8 +44,7 @@ public struct HookPayload: Decodable, Equatable, Sendable {
         hasBackgroundTasks: Bool = false,
         hookEventName: String? = nil,
         toolName: String? = nil,
-        notificationType: String? = nil,
-        transcriptPath: String? = nil
+        notificationType: String? = nil
     ) {
         self.sessionId = sessionId
         self.parentConversationId = parentConversationId
@@ -59,7 +56,6 @@ public struct HookPayload: Decodable, Equatable, Sendable {
         self.hookEventName = hookEventName
         self.toolName = toolName
         self.notificationType = notificationType
-        self.transcriptPath = transcriptPath
     }
 
     public init(from decoder: Decoder) throws {
@@ -82,7 +78,6 @@ public struct HookPayload: Decodable, Equatable, Sendable {
         hookEventName = try values.decodeIfPresent(String.self, forKey: .hookEventName)
         toolName = try values.decodeIfPresent(String.self, forKey: .toolName)
         notificationType = try values.decodeIfPresent(String.self, forKey: .notificationType)
-        transcriptPath = try values.decodeIfPresent(String.self, forKey: .transcriptPath)
     }
 
     public func recordID(agent: AgentID, event: String) -> String? {

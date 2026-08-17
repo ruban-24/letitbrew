@@ -52,10 +52,6 @@ public enum HookSessionUpdater {
                     ),
                     stateChangedAt: transition.changedAt,
                     stateTransitionID: transition.id,
-                    transcriptPath: SessionTimeline.transcriptPath(
-                        previous: previous,
-                        supplied: payload.transcriptPath
-                    ),
                     eventObservedAt: observedAt.timeIntervalSince1970
                 ))
             }

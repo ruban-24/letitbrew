@@ -78,7 +78,6 @@ private func tempDirectory() -> URL {
         cwd: "/Users/me/code/letitbrew", pid: 4821, updatedAt: Date(timeIntervalSince1970: 1_000_000),
         startedAt: Date(timeIntervalSince1970: 998_000),
         stateChangedAt: Date(timeIntervalSince1970: 999_000), stateTransitionID: "edge-1",
-        transcriptPath: "/Users/me/.codex/sessions/rollout-abc-123.jsonl",
         eventObservedAt: 1_000_000.625
     )
     try storage.write(record)
@@ -88,21 +87,15 @@ private func tempDirectory() -> URL {
     #expect(loaded.first == record)
 }
 
-@Test func transcriptPathUsesAUsableNewValueAndOtherwisePreservesTheOldOne() {
-    let previous = SessionRecord(
-        id: "session", tool: "codex", state: .working, detail: nil,
-        cwd: "/tmp", pid: 1, updatedAt: Date(timeIntervalSince1970: 1_000),
-        transcriptPath: "/old/rollout.jsonl"
-    )
+@Test func oldRecordWithTranscriptPathStillDecodesAsACompatibilityFixture() throws {
+    let json = #"{"id":"legacy","tool":"codex","state":"working","cwd":"/tmp","updated_at":"1970-01-01T00:16:40Z","transcript_path":"/Users/me/.codex/sessions/legacy.jsonl"}"#
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .iso8601
 
-    #expect(SessionTimeline.transcriptPath(
-        previous: previous,
-        supplied: "/new/rollout.jsonl"
-    ) == "/new/rollout.jsonl")
-    #expect(SessionTimeline.transcriptPath(previous: previous, supplied: nil)
-            == "/old/rollout.jsonl")
-    #expect(SessionTimeline.transcriptPath(previous: previous, supplied: "")
-            == "/old/rollout.jsonl")
+    let record = try decoder.decode(SessionRecord.self, from: Data(json.utf8))
+
+    #expect(record.id == "legacy")
+    #expect(record.tool == "codex")
 }
 
 @Test func oldRecordWithoutStartedAtDecodesAndUsesItsEarliestKnownTimestamp() throws {
@@ -342,7 +335,6 @@ private func tempDirectory() -> URL {
     #expect(json?["started_at"] == nil)
     #expect(json?["state_changed_at"] == nil)
     #expect(json?["state_transition_id"] == nil)
-    #expect(json?["transcript_path"] == nil)
     #expect(json?["event_observed_at"] == nil)
 }
 

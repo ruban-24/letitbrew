@@ -27,12 +27,6 @@ jobs:
           SWIFTPM_MODULECACHE_OVERRIDE: /private/tmp/LetItBrewCI-SwiftPMCache
         run: swift test --no-parallel
 
-      - name: Run optimized Codex rollout tests
-        env:
-          CLANG_MODULE_CACHE_PATH: /private/tmp/LetItBrewCI-ReleaseClangCache
-          SWIFTPM_MODULECACHE_OVERRIDE: /private/tmp/LetItBrewCI-ReleaseSwiftPMCache
-        run: swift test -c release --filter CodexActiveSessionObserverTests
-
       - name: Test installed-app release scripts with isolated fixtures
         run: scripts/tests/upgrade-transaction-tests.sh
 

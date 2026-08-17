@@ -18,24 +18,23 @@ public struct KillZeroLiveness: ProcessLiveness {
 }
 
 public enum SessionStore {
-    /// Filters raw records down to sessions that still exist.
+    /// Filters raw storage records to current, hook-written sessions.
     ///
-    /// Liveness is the primary test because freshness cannot work here: a
-    /// session running a long build is legitimately silent for many minutes,
-    /// so any TTL short enough to catch a killed agent also evicts real work.
-    /// The TTL survives only as a backstop against pid reuse, where holding
-    /// awake slightly too long is the safe failure.
-    public static func live(
+    /// Agent process liveness cannot establish a trustworthy activity edge:
+    /// only a current lifecycle hook record is eligible, and its freshness is
+    /// the full activity boundary. The liveness primitives above remain for
+    /// validating the app-owned closed-lid watchdog lease.
+    public static func recent(
         records: [SessionRecord],
         now: Date,
-        ttl: TimeInterval,
-        liveness: ProcessLiveness
+        ttl: TimeInterval
     ) -> [SessionRecord] {
         records
             .filter { record in
-                guard now.timeIntervalSince(record.updatedAt) < ttl else { return false }
-                guard let pid = record.pid else { return true }
-                return liveness.isAlive(pid: pid)
+                guard let parsed = HookRecordID(encoded: record.id),
+                      parsed.agent.rawValue == record.tool
+                else { return false }
+                return now.timeIntervalSince(record.updatedAt) < ttl
             }
             .sorted { $0.updatedAt > $1.updatedAt }
     }

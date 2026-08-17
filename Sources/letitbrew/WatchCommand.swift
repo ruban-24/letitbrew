@@ -2,10 +2,9 @@ import Darwin
 import Foundation
 import LetItBrewCore
 
-private func liveSessions(storage: SessionStorage, settings: Settings,
-                          now: Date) -> [SessionRecord] {
-    SessionStore.live(records: storage.loadAll(), now: now,
-                      ttl: settings.staleTTL, liveness: KillZeroLiveness())
+private func recentSessions(storage: SessionStorage, settings: Settings,
+                            now: Date) -> [SessionRecord] {
+    SessionStore.recent(records: storage.loadAll(), now: now, ttl: settings.staleTTL)
 }
 
 private func compactDuration(_ seconds: Int) -> String {
@@ -18,7 +17,7 @@ private func compactDuration(_ seconds: Int) -> String {
 func runStatus(json: Bool) -> Int32 {
     let settings = Settings()
     let now = Date()
-    let sessions = liveSessions(storage: SessionStorage(), settings: settings, now: now)
+    let sessions = recentSessions(storage: SessionStorage(), settings: settings, now: now)
     let decision = decide(sessions: sessions, now: now, settings: settings,
                           power: IOKitPowerSource().current())
 
@@ -147,7 +146,7 @@ func runWatch(lidClosed: Bool) -> Int32 {
 
     while true {
         let now = Date()
-        let sessions = liveSessions(storage: storage, settings: settings, now: now)
+        let sessions = recentSessions(storage: storage, settings: settings, now: now)
         let decision = decide(sessions: sessions, now: now, settings: settings,
                               power: powerSource.current())
 

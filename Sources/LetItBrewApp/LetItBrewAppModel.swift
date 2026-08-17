@@ -227,8 +227,6 @@ final class LetItBrewAppModel: ObservableObject {
     private let clamshellMonitor: any ClamshellMonitoring
     private let activeDisplayMonitor: any ActiveDisplayMonitoring
     private let displaySleepExecutor: LidCloseDisplaySleepExecutor
-    private let codexTerminalSessionObserver: CodexTerminalSessionObserver
-    private let codexActiveSessionObserver: CodexActiveSessionObserver
     private let readsLiveState: Bool
     private let updateEnvironment: any OneClickUpdateEnvironment
     private let installedUpdateVersion: StableUpdateVersion?
@@ -278,12 +276,6 @@ final class LetItBrewAppModel: ObservableObject {
         self.installedUpdateVersion = installedUpdateVersion ?? Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
         ).flatMap { StableUpdateVersion($0 as? String ?? "") }
-        codexTerminalSessionObserver = CodexTerminalSessionObserver(
-            homeDirectory: FileManager.default.homeDirectoryForCurrentUser
-        )
-        codexActiveSessionObserver = CodexActiveSessionObserver(
-            homeDirectory: FileManager.default.homeDirectoryForCurrentUser
-        )
         sessionTrackingSuppressions = Self.loadSessionTrackingSuppressions(
             from: defaults
         )
@@ -1341,14 +1333,12 @@ final class LetItBrewAppModel: ObservableObject {
         let storage = storage
         let clamshellMonitor = clamshellMonitor
         let activeDisplayMonitor = activeDisplayMonitor
-        let rawSnapshot = await Task.detached(priority: .utility) {
-            let loadedRecords = storage.loadAll()
+        let snapshot = await Task.detached(priority: .utility) {
             let now = Date()
-            let records = SessionStore.live(
-                records: loadedRecords,
+            let records = SessionStore.recent(
+                records: storage.loadAll(),
                 now: now,
-                ttl: 12 * 3_600,
-                liveness: KillZeroLiveness()
+                ttl: 12 * 3_600
             )
             return LetItBrewSnapshot(
                 sessions: records,
@@ -1358,19 +1348,6 @@ final class LetItBrewAppModel: ObservableObject {
                 now: now
             )
         }.value
-        let activeSessions = await codexActiveSessionObserver.applyingFallback(
-            to: rawSnapshot.sessions
-        )
-        let sessions = await codexTerminalSessionObserver.applyingFallback(
-            to: activeSessions
-        )
-        let snapshot = LetItBrewSnapshot(
-            sessions: sessions,
-            power: rawSnapshot.power,
-            clamshell: rawSnapshot.clamshell,
-            displays: rawSnapshot.displays,
-            now: rawSnapshot.now
-        )
         guard MenuSnapshotOrderPolicy.shouldApply(
             candidateObservedAt: snapshot.now,
             latestAppliedAt: latestAppliedSnapshotAt

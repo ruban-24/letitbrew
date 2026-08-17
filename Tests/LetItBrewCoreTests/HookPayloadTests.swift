@@ -7,8 +7,7 @@ import Foundation
     {"session_id":"abc","cwd":"/tmp/repo","hook_event_name":"Stop","tool_name":"Bash",
      "notification_type":"idle_prompt",
      "message":"private notification prose",
-     "last_assistant_message":"private assistant prose",
-     "transcript_path":"/Users/me/.codex/sessions/rollout-abc.jsonl"}
+     "last_assistant_message":"private assistant prose"}
     """.utf8)
     let payload = try JSONDecoder().decode(HookPayload.self, from: json)
     #expect(payload.sessionId == "abc")
@@ -16,7 +15,6 @@ import Foundation
     #expect(payload.hookEventName == "Stop")
     #expect(payload.toolName == "Bash")
     #expect(payload.notificationType == "idle_prompt")
-    #expect(payload.transcriptPath == "/Users/me/.codex/sessions/rollout-abc.jsonl")
 }
 
 @Test func ignoresUnknownFieldsAndMissingFields() throws {
