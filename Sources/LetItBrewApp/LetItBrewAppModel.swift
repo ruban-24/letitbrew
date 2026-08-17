@@ -198,13 +198,14 @@ final class LetItBrewAppModel: ObservableObject {
     @Published private(set) var daemonRecoveryState: DaemonRecoveryState = .checking
     @Published private(set) var ownsHold = false
     @Published private(set) var isPaused: Bool
-    @Published private(set) var agentHooks = [
-        AgentHookHealth(id: "claude", name: "Claude Code", state: .connecting, details: []),
-        AgentHookHealth(id: "codex", name: "Codex", state: .connecting, details: []),
-        AgentHookHealth(id: "cursor", name: "Cursor", state: .connecting, details: []),
-        AgentHookHealth(id: "opencode", name: "OpenCode", state: .connecting, details: []),
-        AgentHookHealth(id: "copilot", name: "GitHub Copilot CLI", state: .connecting, details: [])
-    ]
+    @Published private(set) var agentHooks = AgentID.allCases.map {
+        AgentHookHealth(
+            id: $0.rawValue,
+            name: $0.displayName,
+            state: .connecting,
+            details: []
+        )
+    }
     @Published private(set) var hookActionInProgress = false
     @Published private(set) var hookMessage: String?
     @Published private(set) var launchAtLogin = false
@@ -237,6 +238,7 @@ final class LetItBrewAppModel: ObservableObject {
         static let launchAtLogin = "launchAtLogin"
         static let launchAtLoginOnboardingDismissed = "launchAtLoginOnboardingDismissed"
         static let disconnectedAgents = "disconnectedAgents"
+        static let connectedAgentIDsV2 = "connectedAgentIDsV2"
         static let sessionTrackingSuppressions = "sessionTrackingSuppressionsV1"
     }
 
@@ -272,6 +274,11 @@ final class LetItBrewAppModel: ObservableObject {
     private var nextDaemonHealthCheck = Date.distantPast
     private var sessionTrackingSuppressions: [SessionTrackingSuppression]
     private var wasPausedBeforeUninstall: Bool?
+    /// Positive intent is the only authority used for session visibility and
+    /// mutations.  The legacy negative key is consulted only by the one-time
+    /// migration below, then removed after this key has been persisted.
+    private var connectedAgentIDs: Set<String> = []
+    private var launchPreparations: [AgentLaunchPreparation] = []
 
     init(
         defaults: UserDefaults = .standard,
@@ -325,12 +332,21 @@ final class LetItBrewAppModel: ObservableObject {
         launchAtLogin = defaults.bool(forKey: Keys.launchAtLogin)
         showLaunchAtLoginOnboarding = !launchAtLoginChoiceWasSaved
             && !defaults.bool(forKey: Keys.launchAtLoginOnboardingDismissed)
+        let launchDecision = Self.initialLaunchDecision(
+            defaults: defaults,
+            helperPath: Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/letitbrew").path,
+            home: FileManager.default.homeDirectoryForCurrentUser,
+            environment: ProcessInfo.processInfo.environment
+        )
+        connectedAgentIDs = launchDecision.selectedAgentIDs
+        launchPreparations = launchDecision.preparations
 
         if startsPolling {
             startPolling()
             startPendingUpdateResultPolling()
             runDaemonRecovery(trigger: .automaticLaunch)
-            refreshAgentHooks()
+            runLaunchPreparations()
+            refreshAgentHooks(agentIDs: connectedAgentIDs)
         }
     }
 
@@ -718,14 +734,15 @@ final class LetItBrewAppModel: ObservableObject {
     }
 
     func refreshAgentHooks() {
-        refreshAgentHooks(agentIDs: Set(AgentID.allCases.map(\.rawValue)))
+        refreshAgentHooks(agentIDs: connectedAgentIDs)
     }
 
     func refreshCodexTrustIfNeeded() {
         guard let codex = agentHooks.first(where: { $0.id == "codex" }),
               CodexTrustAutoRefreshPolicy.shouldRefresh(
                   state: codex.state,
-                  disposition: codex.disposition
+                  disposition: codex.disposition,
+                  isCodexSelected: connectedAgentIDs.contains(AgentID.codex.rawValue)
               )
         else { return }
         refreshAgentHooks(agentIDs: ["codex"])
@@ -747,7 +764,9 @@ final class LetItBrewAppModel: ObservableObject {
         // Must not start once uninstall has: uninstall removes these same
         // hook entries, and a repair here would re-install them mid-teardown.
         guard !hookActionInProgress, !uninstallInProgress, !updateBlocksOtherActions else { return }
-        let requested = agentIDs.intersection(Set(AgentID.allCases.map(\.rawValue)))
+        let requested = agentIDs
+            .intersection(Set(AgentID.allCases.map(\.rawValue)))
+            .intersection(connectedAgentIDs)
         guard !requested.isEmpty else { return }
         let helperPath = helperURL.path
         let home = FileManager.default.homeDirectoryForCurrentUser
@@ -756,7 +775,7 @@ final class LetItBrewAppModel: ObservableObject {
         let appVersion = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
         ) as? String ?? "development"
-        let disconnected = disconnectedAgentIDs
+        let disconnected = Set(AgentID.allCases.map(\.rawValue)).subtracting(connectedAgentIDs)
         let mutationDecision = AutomaticHookMutationPolicy.evaluate(
             appBundleURL: Bundle.main.bundleURL
         )
@@ -764,13 +783,7 @@ final class LetItBrewAppModel: ObservableObject {
         hookMessage = nil
         agentHooks = agentHooks.map { health in
             guard requested.contains(health.id) else { return health }
-            return disconnected.contains(health.id)
-                ? AgentHookHealth(
-                    id: health.id, name: health.name, state: .actionNeeded,
-                    details: ["Disconnected. Choose Connect to use this agent with Let It Brew."],
-                    disposition: .intentionallyDisconnected
-                )
-                : AgentHookHealth(id: health.id, name: health.name, state: .connecting, details: [])
+            return AgentHookHealth(id: health.id, name: health.name, state: .connecting, details: [])
         }
         Task { [weak self] in
             let refresh = await Task.detached(priority: .utility) {
@@ -808,24 +821,37 @@ final class LetItBrewAppModel: ObservableObject {
     /// Explicit API for the Agents overflow menu. Automatic setup respects
     /// this durable choice until `connectAgent` is called.
     func disconnectAgent(_ id: String) {
-        guard AgentID(rawValue: id) != nil else { return }
-        disconnectAgents([id])
+        AgentConnectionActionCoordinator.perform(
+            .disconnect,
+            id: id,
+            selected: connectedAgentIDs,
+            persist: { next in persistConnectedAgentIDs(next) },
+            refreshVisibility: { next in
+                reapplyLatestSnapshot(connectedAgentIDs: next)
+            },
+            launchHelper: { _, id in disconnectAgents([id]) }
+        )
     }
 
     func connectAgent(_ id: String) {
-        guard AgentID(rawValue: id) != nil else { return }
-        saveDisconnectedAgentIDs(AgentDisconnectPersistence.clearingIntent(
-            for: id,
-            from: disconnectedAgentIDs
-        ))
-        reapplyLatestSnapshot()
-        refreshAgentHooks(agentIDs: [id])
+        AgentConnectionActionCoordinator.perform(
+            .connect,
+            id: id,
+            selected: connectedAgentIDs,
+            persist: { next in persistConnectedAgentIDs(next) },
+            refreshVisibility: { next in
+                reapplyLatestSnapshot(connectedAgentIDs: next)
+            },
+            launchHelper: { _, id in
+                refreshAgentHooks(agentIDs: [id])
+            }
+        )
     }
 
     /// Explicit per-agent model API for a UI "Check Again" action. This does
     /// not silently reverse a user's durable Disconnect choice.
     func retryAgentConnection(_ id: String) {
-        guard AgentID(rawValue: id) != nil else { return }
+        guard AgentID(rawValue: id) != nil, connectedAgentIDs.contains(id) else { return }
         refreshAgentHooks(agentIDs: [id])
     }
 
@@ -876,12 +902,11 @@ final class LetItBrewAppModel: ObservableObject {
         Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/letitbrew")
     }
 
-    private var disconnectedAgentIDs: Set<String> {
-        Set(defaults.stringArray(forKey: Keys.disconnectedAgents) ?? [])
-    }
-
-    private func saveDisconnectedAgentIDs(_ ids: Set<String>) {
-        defaults.set(ids.sorted(), forKey: Keys.disconnectedAgents)
+    private func persistConnectedAgentIDs(_ ids: Set<String>) {
+        let supported = Set(AgentID.allCases.map(\.rawValue))
+        let next = ids.intersection(supported)
+        connectedAgentIDs = next
+        defaults.set(next.sorted(), forKey: Keys.connectedAgentIDsV2)
     }
 
     private func disconnectAgents(_ ids: Set<String>) {
@@ -890,12 +915,6 @@ final class LetItBrewAppModel: ObservableObject {
         guard !hookActionInProgress, !uninstallInProgress, !updateBlocksOtherActions else { return }
         let requested = ids.intersection(Set(AgentID.allCases.map(\.rawValue)))
         guard !requested.isEmpty else { return }
-        let recordedIntent = AgentDisconnectPersistence.recordingIntent(
-            for: requested,
-            into: disconnectedAgentIDs
-        )
-        saveDisconnectedAgentIDs(recordedIntent)
-        reapplyLatestSnapshot()
         let mutationDecision = AutomaticHookMutationPolicy.evaluate(
             appBundleURL: Bundle.main.bundleURL
         )
@@ -906,9 +925,7 @@ final class LetItBrewAppModel: ObservableObject {
                     id: health.id,
                     name: health.name,
                     state: .actionNeeded,
-                    details: details + [
-                        "Let It Brew will not repair or reinstall this connection unless you choose Connect."
-                    ],
+                        details: details,
                     disposition: .disconnectFailed
                 )
             }
@@ -956,7 +973,7 @@ final class LetItBrewAppModel: ObservableObject {
                         state: .couldNotConnect,
                         details: [
                             Self.disconnectFailureMessage([result]),
-                            "Let It Brew will not repair or reinstall this connection unless you choose Connect.",
+                            "The connection remains selected; choose Disconnect again to retry.",
                         ],
                         disposition: .disconnectFailed
                     )
@@ -1002,6 +1019,105 @@ final class LetItBrewAppModel: ObservableObject {
             status: result.status,
             output: output,
             timedOut: result.timedOut
+        )
+    }
+
+    /// The one launch-time migration reads each catalog target exactly once,
+    /// before positive intent is persisted.  It never infers consent from an
+    /// absent file: pre-v2 migration is restricted by the policy to legacy
+    /// owned Claude/Codex records.
+    private nonisolated static func initialLaunchDecision(
+        defaults: UserDefaults,
+        helperPath: String,
+        home: URL,
+        environment: [String: String]
+    ) -> AgentLaunchConnectionDecision {
+        let persisted = defaults.object(forKey: Keys.connectedAgentIDsV2) == nil
+            ? nil : defaults.stringArray(forKey: Keys.connectedAgentIDsV2)
+        let registryURL = home.appendingPathComponent("Library/Application Support/LetItBrew/agent-hook-targets.json")
+        let registry: AgentDiskRegistry
+        do {
+            registry = FileManager.default.fileExists(atPath: registryURL.path)
+                ? .valid(try JSONDecoder().decode(AgentInstallRegistry.self, from: Data(contentsOf: registryURL)))
+                : .valid(nil)
+        } catch {
+            registry = .invalid("the target registry is not valid JSON")
+        }
+        let inspections = AgentID.allCases.map { agent -> AgentConnectionInspection in
+            let inspected = AgentDiskInspection.inspect(
+                agent: agent,
+                registry: registry,
+                defaultTarget: configuredTarget(agent: agent, home: home, environment: environment),
+                helperPath: helperPath,
+                readExactTarget: { requested in
+                    let target = agent == .opencode
+                        ? requested
+                        : requested.resolvingSymlinksInPath().standardizedFileURL
+                    do {
+                        let capture = try ExactFileCapture.capture(at: target)
+                        if let data = capture.data {
+                            return .regular(capture.snapshot, data)
+                        }
+                        return .absent(capture.snapshot)
+                    } catch {
+                        return .invalid(resolvedURL: target, reason: "Let It Brew could not safely read this target.")
+                    }
+                }
+            )
+            return AgentConnectionInspection(
+                agentID: agent.rawValue,
+                state: inspected.state,
+                hasRecordedTarget: inspected.usedRecordedTarget,
+                exactTargetSnapshot: inspected.snapshot
+            )
+        }
+        let decision = AgentLaunchConnectionPolicy.decision(
+            persistedSelection: persisted,
+            legacyDisconnected: Set(defaults.stringArray(forKey: Keys.disconnectedAgents) ?? []),
+            inspections: inspections,
+            legacyMigratableAgentIDs: [AgentID.claude.rawValue, AgentID.codex.rawValue]
+        )
+        defaults.set(decision.selectedAgentIDs.sorted(), forKey: Keys.connectedAgentIDsV2)
+        if persisted == nil {
+            defaults.removeObject(forKey: Keys.disconnectedAgents)
+        }
+        return decision
+    }
+
+    private nonisolated static func configuredTarget(
+        agent: AgentID,
+        home: URL,
+        environment: [String: String]
+    ) -> URL {
+        switch agent {
+        case .claude: ClaudeHooks.settingsURL(home: home)
+        case .codex: CodexHooks.hooksURL(home: home, environment: environment)
+        case .cursor: CursorHooks.settingsURL(home: home)
+        case .opencode: OpenCodePlugin.pluginURL(home: home, environment: environment)
+        case .copilot: CopilotHooks.hooksURL(home: home, environment: environment)
+        }
+    }
+
+    /// Preserve the exact launch decision until its helper call is made.  The
+    /// runner cannot re-resolve an environment target; exact preparations are
+    /// encoded unchanged for the internal command.
+    private func runLaunchPreparations() {
+        let preparations = launchPreparations
+        launchPreparations = []
+        let executable = helperURL.path
+        AgentLaunchPreparationRunner.run(
+            preparations,
+            runRecorded: { agentID in
+                _ = Self.runHelper(at: executable, arguments: ["install", agentID])
+            },
+            runExact: { preparation in
+                let input = try? JSONEncoder().encode(preparation)
+                _ = Self.runHelper(
+                    at: executable,
+                    arguments: ["prepare-exact", preparation.agent.rawValue],
+                    input: input
+                )
+            }
         )
     }
 
@@ -1186,9 +1302,7 @@ final class LetItBrewAppModel: ObservableObject {
             mutationGuidance = details
         }
 
-        if agentIDs.contains("claude"), !AgentAutomaticConnectionPolicy.mayMutate(
-            agentID: "claude", recordedDisconnectIntents: disconnected
-        ) {
+        if agentIDs.contains("claude"), disconnected.contains("claude") {
             health.append(disconnectedHealth(
                 id: "claude",
                 name: "Claude Code",
@@ -1252,9 +1366,7 @@ final class LetItBrewAppModel: ObservableObject {
             }
         }
 
-        if agentIDs.contains("codex"), !AgentAutomaticConnectionPolicy.mayMutate(
-            agentID: "codex", recordedDisconnectIntents: disconnected
-        ) {
+        if agentIDs.contains("codex"), disconnected.contains("codex") {
             health.append(disconnectedHealth(
                 id: "codex",
                 name: "Codex",
@@ -1365,7 +1477,7 @@ final class LetItBrewAppModel: ObservableObject {
         // deliberately do not probe whether a vendor executable is installed:
         // hook configuration is local and independent of that discovery.
         for agent in [AgentID.cursor, .opencode, .copilot] where agentIDs.contains(agent.rawValue) {
-            if !AgentAutomaticConnectionPolicy.mayMutate(agentID: agent.rawValue, recordedDisconnectIntents: disconnected) {
+            if disconnected.contains(agent.rawValue) {
                 health.append(AgentHookHealth(id: agent.rawValue, name: agent.displayName, state: .actionNeeded, details: ["Disconnected. Choose Connect to use this agent with Let It Brew."], disposition: .intentionallyDisconnected))
                 continue
             }
@@ -1556,7 +1668,7 @@ final class LetItBrewAppModel: ObservableObject {
         latestSnapshot = snapshot
         let connectedSessions = AgentSessionVisibilityPolicy.visibleSessions(
             from: snapshot.sessions,
-            disconnectedAgentIDs: disconnectedAgentIDs
+            connectedAgentIDs: connectedAgentIDs
         )
         let tracking = SessionTrackingPolicy.applying(
             sessionTrackingSuppressions,
@@ -1576,12 +1688,26 @@ final class LetItBrewAppModel: ObservableObject {
         hasLoadedSessionSnapshot = true
     }
 
-    private func reapplyLatestSnapshot() {
+    private func reapplyLatestSnapshot(connectedAgentIDs: Set<String>) {
         guard let latestSnapshot else {
             refreshNow()
             return
         }
-        apply(latestSnapshot)
+        let visible = AgentSessionVisibilityPolicy.visibleSessions(
+            from: latestSnapshot.sessions,
+            connectedAgentIDs: connectedAgentIDs
+        )
+        applyVisibleSnapshot(LetItBrewSnapshot(
+            sessions: visible,
+            power: latestSnapshot.power,
+            clamshell: latestSnapshot.clamshell,
+            displays: latestSnapshot.displays,
+            now: latestSnapshot.now
+        ))
+    }
+
+    private func reapplyLatestSnapshot() {
+        reapplyLatestSnapshot(connectedAgentIDs: connectedAgentIDs)
     }
 
     private func applyVisibleSnapshot(_ snapshot: LetItBrewSnapshot) {

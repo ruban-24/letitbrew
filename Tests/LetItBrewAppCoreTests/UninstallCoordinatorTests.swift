@@ -39,6 +39,9 @@ final class RecordingUninstallEnvironment: UninstallEnvironment, @unchecked Send
     func unregisterDaemon() async -> Result<Void, UninstallFailure> { await perform(.unregisterDaemon) }
     func removeClaudeHooks() async -> Result<Void, UninstallFailure> { await perform(.removeClaudeHooks) }
     func removeCodexHooks() async -> Result<Void, UninstallFailure> { await perform(.removeCodexHooks) }
+    func removeCursorHooks() async -> Result<Void, UninstallFailure> { await perform(.removeCursorHooks) }
+    func removeOpenCodeHooks() async -> Result<Void, UninstallFailure> { await perform(.removeOpenCodeHooks) }
+    func removeCopilotHooks() async -> Result<Void, UninstallFailure> { await perform(.removeCopilotHooks) }
     func disableLaunchAtLogin() async -> Result<Void, UninstallFailure> { await perform(.disableLaunchAtLogin) }
     func deleteUserData() async -> Result<Void, UninstallFailure> { await perform(.deleteUserData) }
     func clearPreferences() async -> Result<Void, UninstallFailure> { await perform(.clearPreferences) }
@@ -87,7 +90,8 @@ func makeFailure(_ step: UninstallStep) -> UninstallFailure {
 
     #expect(coordinator.state == .blocked(makeFailure(.reconcileDaemon), offersDiagnostic: false))
     let removalSteps: Set<UninstallStep> = [
-        .unregisterDaemon, .removeClaudeHooks, .removeCodexHooks,
+        .unregisterDaemon, .removeClaudeHooks, .removeCodexHooks, .removeCursorHooks,
+        .removeOpenCodeHooks, .removeCopilotHooks,
         .disableLaunchAtLogin, .deleteUserData, .clearPreferences, .trashBundle,
     ]
     #expect(environment.calls.allSatisfy { !removalSteps.contains($0) })
@@ -132,6 +136,9 @@ func makeFailure(_ step: UninstallStep) -> UninstallFailure {
         .unregisterDaemon,
         .removeClaudeHooks,
         .removeCodexHooks,
+        .removeCursorHooks,
+        .removeOpenCodeHooks,
+        .removeCopilotHooks,
         .disableLaunchAtLogin,
         .deleteUserData,
         .clearPreferences,
@@ -154,6 +161,9 @@ func makeFailure(_ step: UninstallStep) -> UninstallFailure {
         .reconcileDaemon,
         .removeClaudeHooks,
         .removeCodexHooks,
+        .removeCursorHooks,
+        .removeOpenCodeHooks,
+        .removeCopilotHooks,
         .disableLaunchAtLogin,
         .deleteUserData,
         .clearPreferences,
@@ -227,6 +237,9 @@ func makeFailure(_ step: UninstallStep) -> UninstallFailure {
         .unregisterDaemon,
         .removeClaudeHooks,
         .removeCodexHooks,
+        .removeCursorHooks,
+        .removeOpenCodeHooks,
+        .removeCopilotHooks,
         .disableLaunchAtLogin,
         .deleteUserData,
         .clearPreferences,

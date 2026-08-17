@@ -1,9 +1,10 @@
 public enum CodexTrustAutoRefreshPolicy {
     public static func shouldRefresh(
         state: AgentConnectionState,
-        disposition: AgentConnectionDisposition
+        disposition: AgentConnectionDisposition,
+        isCodexSelected: Bool
     ) -> Bool {
-        guard disposition == .managed else { return false }
+        guard isCodexSelected, disposition == .managed else { return false }
         return state == .actionNeeded || state == .couldNotConnect
     }
 }

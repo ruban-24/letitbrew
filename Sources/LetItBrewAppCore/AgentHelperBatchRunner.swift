@@ -44,11 +44,6 @@ public enum AgentHelperBatchRunner {
     }
 }
 
-/// Temporary Task 9 compatibility shims for the unmigrated app model. Task 10
-/// replaces these negative-intent consumers with positive selection.
-public enum AgentDisconnectPersistence { public static func recordingIntent(for ids: Set<String>, into existing: Set<String>) -> Set<String> { existing.union(ids) }; public static func clearingIntent(for id: String, from existing: Set<String>) -> Set<String> { existing.subtracting([id]) } }
-public enum AgentAutomaticConnectionPolicy { public static func mayMutate(agentID: String, recordedDisconnectIntents: Set<String>) -> Bool { !recordedDisconnectIntents.contains(agentID) } }
-
 /// The only allowed follow-ups after an explicit disconnect attempt. In
 /// particular there is deliberately no reconnect/repair case: a helper that
 /// removes hooks and then fails or times out must not have that removal
