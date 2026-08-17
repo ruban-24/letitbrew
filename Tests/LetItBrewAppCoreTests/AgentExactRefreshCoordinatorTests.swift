@@ -97,3 +97,34 @@ private func refreshSnapshot(_ path: String) throws -> ExactFileSnapshot {
     #expect(!refused.completion.changedVendorBytes)
     #expect(!refused.completion.shouldRestartSessions)
 }
+
+@Test func exactRefreshPresentationUsesRecordedCodexTargetAndRejectsFailedPostInspection() throws {
+    let recorded = URL(fileURLWithPath: "/tmp/codex-recorded-A")
+    let ambient = URL(fileURLWithPath: "/tmp/codex-ambient-B")
+    let snapshot = try refreshSnapshot(recorded.path)
+    let codex = try AgentExactRefreshCoordinator.run(
+        agent: .codex, recordedTarget: recorded.path, configuredTarget: ambient, firstConnectResolvedTarget: ambient,
+        inspect: { target in
+            #expect(target == recorded)
+            return .init(snapshot: snapshot, inspection: .healthyOwned)
+        },
+        launch: { agent, _ in #expect(agent == .codex); return true }
+    )
+    #expect(codex.target == recorded)
+    #expect(AgentExactRefreshCoordinator.mayPresentConnected(codex))
+
+    for agent in [AgentID.cursor, .opencode, .copilot] {
+        var calls = 0
+        let result = try AgentExactRefreshCoordinator.run(
+            agent: agent, recordedTarget: recorded.path, configuredTarget: ambient, firstConnectResolvedTarget: ambient,
+            inspect: { target in
+                calls += 1; #expect(target == recorded)
+                return .init(snapshot: snapshot, inspection: calls == 1 ? .repairableOwned : .invalid)
+            },
+            launch: { launchedAgent, _ in #expect(launchedAgent == agent); return true }
+        )
+        #expect(result.helperSucceeded)
+        #expect(result.final.inspection == .invalid)
+        #expect(!AgentExactRefreshCoordinator.mayPresentConnected(result))
+    }
+}

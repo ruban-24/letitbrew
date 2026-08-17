@@ -16,9 +16,11 @@ INSTALL_SOURCE="$SCRIPT_DIR/../Sources/letitbrew/InstallCommand.swift"
 # This is intentionally a source gate as well as behavioral coverage: the
 # Task 8 command flow must not regress to fd pseudo-path transport, Foundation
 # path mutation, or URL AtomicFile compatibility overloads after selection.
-! rg -F -e '/dev/fd' -e 'Data(contentsOf:' -e '.write(to:' -e 'FileManager.default.createDirectory' -e 'FileManager.default.removeItem' -e 'FileManager.default.moveItem' -e 'FileManager.default.replaceItem' "$INSTALL_SOURCE"
-! rg -F 'AtomicFile.write(' "$INSTALL_SOURCE" | rg -Fq 'to:'
-! rg -F 'AtomicFile.remove(' "$INSTALL_SOURCE" | rg -Fq 'ifUnchangedFrom:'
+python3 "$SCRIPT_DIR/check-task8-source-gate.py" "$INSTALL_SOURCE"
+if python3 "$SCRIPT_DIR/check-task8-source-gate.py" "$SCRIPT_DIR/fixtures/task8-multiline-legacy-atomic.swift" >/dev/null 2>&1; then
+  echo "FATAL: source gate accepted multiline legacy AtomicFile/path open fixture" >&2
+  exit 1
+fi
 grep -Fq 'AtomicFile.write(data, replacing: capture, permissions: .exact(0o600))' "$INSTALL_SOURCE"
 ! sed -n '/private func loadRegistry/,/private func resolveJSONTarget/p' "$INSTALL_SOURCE" | grep -Eq 'Data\(contentsOf:|FileManager\.(default\.)?(createDirectory|removeItem|moveItem|replaceItem)'
 INSTALL_BLOCK="$(sed -n '/func runInstall/,/func runUninstall/p' "$INSTALL_SOURCE")"
@@ -258,7 +260,7 @@ for agent in claude codex cursor copilot opencode; do
   test -e "$TARGET" && cp "$TARGET" "$FAULT_HOME/after-removal" || : > "$FAULT_HOME/after-removal"
   env LETITBREW_TEST_HOME="$FAULT_HOME" "$CLI" uninstall "$agent" >/dev/null
   cmp -s "$FAULT_HOME/after-removal" "$TARGET" 2>/dev/null || test ! -e "$TARGET"
-  ! python3 -c 'import json,sys; assert sys.argv[2] not in json.load(open(sys.argv[1]))["targets"]' "$FAULT_HOME/Library/Application Support/LetItBrew/agent-hook-targets.json" "$agent"
+  python3 -c 'import json,sys; assert sys.argv[2] not in json.load(open(sys.argv[1]))["targets"]' "$FAULT_HOME/Library/Application Support/LetItBrew/agent-hook-targets.json" "$agent"
   rm -rf "$FAULT_HOME"
 done
 

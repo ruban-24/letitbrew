@@ -5,12 +5,19 @@ import Foundation
 /// Reads one already-open regular descriptor without silently accepting an
 /// interrupted syscall or a short read. Callers pair it with pre/post `fstat`
 /// evidence so the bytes, identity, and metadata are one coherent capture.
-func readExactFileBytes(from fd: Int32, expectedSize: off_t, path: String) throws -> Data {
+typealias ExactFileRead = (Int32, UnsafeMutablePointer<UInt8>, Int) -> Int
+
+func readExactFileBytes(
+    from fd: Int32,
+    expectedSize: off_t,
+    path: String,
+    reader: ExactFileRead = { descriptor, buffer, count in Darwin.read(descriptor, buffer, count) }
+) throws -> Data {
     guard expectedSize >= 0 else { throw ExactFileSnapshotError.changed(path) }
     var bytes = Data()
     var buffer = [UInt8](repeating: 0, count: 8192)
     while true {
-        let count = Darwin.read(fd, &buffer, buffer.count)
+        let count = buffer.withUnsafeMutableBufferPointer { reader(fd, $0.baseAddress!, $0.count) }
         if count < 0 && errno == EINTR { continue }
         guard count >= 0 else { throw ExactFileSnapshotError.unreadable(path) }
         if count == 0 { break }

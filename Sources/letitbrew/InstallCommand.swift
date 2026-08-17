@@ -17,17 +17,6 @@ private func throwTestFault(_ name: String, filesystem: CommandFilesystem) throw
     if hasTestFault(name, filesystem: filesystem) { throw TestFault(name: name) }
 }
 
-private func writeTestReplacement(at path: String) throws {
-    let descriptor = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0o600)
-    guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
-    defer { close(descriptor) }
-    let bytes = Array("foreign replacement after quarantine".utf8)
-    let written = bytes.withUnsafeBytes { write(descriptor, $0.baseAddress, bytes.count) }
-    guard written == bytes.count, fsync(descriptor) == 0 else {
-        throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-    }
-}
-
 private enum Operation { case install, uninstall, doctor }
 
 func resolvedCLIPath() -> String {
@@ -203,7 +192,9 @@ func runUninstall(agents: Set<AgentID> = Set(AgentID.allCases)) -> Int32 {
                         guard try replacement(agent: agent, data: existing, cli: cli, removing: true) == nil else { throw UnsafeTarget(path: target.displayPath) }
                         try throwTestFault("vendor-remove", filesystem: filesystem)
                         let hooks = hasTestFault("active-replacement", filesystem: filesystem)
-                            ? AtomicFile.RaceHooks(afterQuarantineValidationBeforePublish: { try writeTestReplacement(at: target.displayPath) })
+                            ? AtomicFile.RaceHooks(afterQuarantineValidationBeforePublish: {
+                                try AtomicFile.testOnlyPublishActiveReplacement(observed, data: Data("foreign replacement after quarantine".utf8))
+                            })
                             : AtomicFile.RaceHooks()
                         try AtomicFile.remove(observed, expectedData: existing, hooks: hooks)
                     } else if (try validate(agent: agent, data: existing, cli: cli)).isAbsent {

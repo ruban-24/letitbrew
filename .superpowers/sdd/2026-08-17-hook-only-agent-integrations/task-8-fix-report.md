@@ -10,9 +10,9 @@ and command-level fault seams prove real persistence/removal ordering only
 inside an anchored test home.
 
 ```text
-swift test                                                       PASS (625 tests)
+swift test                                                       PASS (629 tests)
 swift test --filter 'ExactFileSnapshotTests|ExactFileTargetTests|AgentInstallRegistryTests'
-                                                                 PASS (54 tests)
+                                                                 PASS (58 tests)
 swift build                                                      PASS
 agent contract, repo root and /private/tmp                       PASS
 uninstall contract, repo root and /private/tmp                   PASS
@@ -33,6 +33,10 @@ git diff --check                                                 PASS
 5. Snapshot, production-closure, A/B, doctor, shell, OpenCode, and uninstall
    safety matrices are executable, including exact foreign structural and
    `SleepDisabled` preservation.
+6. Final-fix review: app presentation consumes selected A/final health;
+   test replacement is descriptor-relative; the source gate parses whole calls
+   and rejects an adversarial multiline fixture; retry, EINTR/short-read, and
+   absent-post-publish assertions are executable.
 
 ## Final slice files
 

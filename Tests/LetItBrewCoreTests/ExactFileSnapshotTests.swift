@@ -60,3 +60,26 @@ private func snapshotFile(_ data: String) throws -> URL {
         #expect(throws: ExactFileSnapshotError.self) { try change(snapshot).verify() }
     }
 }
+
+@Test func exactReadRetriesEINTRAndRejectsShortCount() throws {
+    var interruptedCalls = 0
+    let bytes = try readExactFileBytes(from: -1, expectedSize: 3, path: "/tmp/read", reader: { _, buffer, _ in
+        interruptedCalls += 1
+        if interruptedCalls == 1 { errno = EINTR; return -1 }
+        if interruptedCalls == 2 {
+            buffer[0] = 97; buffer[1] = 98; buffer[2] = 99
+            return 3
+        }
+        return 0
+    })
+    #expect(bytes == Data("abc".utf8))
+    #expect(interruptedCalls == 3)
+    var shortCalls = 0
+    #expect(throws: ExactFileSnapshotError.self) {
+        _ = try readExactFileBytes(from: -1, expectedSize: 3, path: "/tmp/read", reader: { _, buffer, _ in
+            shortCalls += 1
+            guard shortCalls == 1 else { return 0 }
+            buffer[0] = 97; return 1
+        })
+    }
+}

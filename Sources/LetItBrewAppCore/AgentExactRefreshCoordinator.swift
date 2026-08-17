@@ -15,6 +15,15 @@ public enum AgentExactRefreshCoordinator {
         }
     }
 
+    /// Presentation must consume the coordinator's final observation, rather
+    /// than treating a zero helper exit as evidence that the exact target is
+    /// still connected.  Keeping this policy here makes the app's UI branch
+    /// independently testable and prevents a selected recorded target from
+    /// drifting back to ambient configuration during presentation.
+    public static func mayPresentConnected(_ result: Result) -> Bool {
+        result.helperSucceeded && result.final.inspection == .healthyOwned
+    }
+
     public struct Result: Sendable, Equatable {
         public let target: URL
         public let request: Data?

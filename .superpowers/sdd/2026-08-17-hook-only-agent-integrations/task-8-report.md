@@ -3,9 +3,9 @@
 ## Final green evidence
 
 ```text
-swift test                                                       PASS (625 tests)
+swift test                                                       PASS (629 tests)
 swift test --filter 'ExactFileSnapshotTests|ExactFileTargetTests|AgentInstallRegistryTests'
-                                                                 PASS (54 tests)
+                                                                 PASS (58 tests)
 swift build                                                      PASS
 scripts/test-agent-hook-contracts.sh <absolute CLI>              PASS (repo root)
 scripts/test-uninstall-safety.sh <absolute CLI>                  PASS (repo root)
@@ -55,6 +55,9 @@ Descriptor-anchor work: `7704659`, `a4dc538`, `cd7793f`, `9579c78`,
 `e8a0cab`, `eff0efd`, `372dc86`, `afaed86`, `086b2d6`, `24c4bcd`.
 
 Final rereview fixes: `862e8f7`, `4898e6e`, `faa66d3`, `177a5e5`.
+Final-fix rereview: descriptor-contained replacement seam, cross-line source
+gate fixture, exact EINTR/short-read and absent-publish tests, and selected-A
+app presentation/trust completion (recorded by the final fix commit).
 
 ## Self-review
 

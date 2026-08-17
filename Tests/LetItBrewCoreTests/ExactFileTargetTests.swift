@@ -136,7 +136,7 @@ private enum DescriptorTestFailure: Error { case parentSync }
     let root = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: root) }
     let file = root.appendingPathComponent("target"); try Data("original".utf8).write(to: file)
     let observed = try DirectoryAnchor.openNoFollow(at: root).target(atAbsoluteURL: file).capture()
-    #expect(throws: ConcurrentModification.self) {
+    #expect(throws: Error.self) {
         try AtomicFile.write(Data("ours".utf8), replacing: observed, hooks: .init(afterPublish: {
             try replaceNamedEntry(in: root, name: "target", with: "foreign replacement")
         }))
@@ -342,6 +342,19 @@ private enum DescriptorTestFailure: Error { case parentSync }
     #expect(try String(contentsOf: file, encoding: .utf8) == "foreign")
 }
 
+@Test func descriptorAbsentPostPublishReplacementIsRefusedAndSurvives() throws {
+    let root = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let file = root.appendingPathComponent("target")
+    let observed = try DirectoryAnchor.openNoFollow(at: root).target(atAbsoluteURL: file).capture()
+    #expect(throws: ConcurrentModification.self) {
+        try AtomicFile.write(Data("ours".utf8), replacing: observed, hooks: .init(afterPublish: {
+            try FileManager.default.removeItem(at: file)
+            try Data("foreign".utf8).write(to: file)
+        }))
+    }
+    #expect(try String(contentsOf: file, encoding: .utf8) == "foreign")
+}
+
 @Test func descriptorPreQuarantineReplacementSurvives() throws {
     let root = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: root) }
     let file = root.appendingPathComponent("target"); try Data("original".utf8).write(to: file)
@@ -382,6 +395,23 @@ private enum DescriptorTestFailure: Error { case parentSync }
     }))
     #expect(try String(contentsOf: file, encoding: .utf8) == "foreign")
     #expect(try recoveryContents(in: root, marker: "remove-quarantine") == nil)
+}
+
+@Test func descriptorReplacementSeamRefusesComponentSwapWithoutTouchingOutside() throws {
+    let root = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let parent = root.appendingPathComponent("nested"); try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+    let file = parent.appendingPathComponent("target"); try Data("original".utf8).write(to: file)
+    let outside = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: outside) }
+    let observed = try DirectoryAnchor.openNoFollow(at: root).target(atAbsoluteURL: file).capture()
+    #expect(throws: Error.self) {
+        try AtomicFile.remove(observed, expectedData: Data("original".utf8), hooks: .init(afterQuarantineValidationBeforePublish: {
+            let retained = root.appendingPathComponent("retained")
+            try FileManager.default.moveItem(at: parent, to: retained)
+            try FileManager.default.createSymbolicLink(at: parent, withDestinationURL: outside)
+            try AtomicFile.testOnlyPublishActiveReplacement(observed, data: Data("foreign".utf8))
+        }))
+    }
+    #expect(!FileManager.default.fileExists(atPath: outside.appendingPathComponent("target").path))
 }
 
 @Test func descriptorWriteRejectsSameInodeSameSizeRestoredMTimeByBytesAndDigest() throws {

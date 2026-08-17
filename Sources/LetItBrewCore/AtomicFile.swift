@@ -48,6 +48,32 @@ public enum AtomicFile {
         }
     }
 
+    /// Narrow test-only action for the command's active-replacement race.
+    /// It deliberately publishes a foreign active name through the retained
+    /// parent descriptor, after route revalidation, so a swapped lexical
+    /// component cannot redirect the test seam outside an anchored test home.
+    public static func testOnlyPublishActiveReplacement(_ captured: CapturedExactFile, data: Data) throws {
+        guard let parent = captured.parent, let name = captured.name,
+              try captured.target.revalidates(parent) else {
+            throw ConcurrentModification(path: captured.snapshot.path)
+        }
+        let descriptor = name.withCString {
+            openat(parent.descriptor.rawValue, $0, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        }
+        guard descriptor >= 0 else { throw ConcurrentModification(path: captured.snapshot.path) }
+        defer { close(descriptor) }
+        try data.withUnsafeBytes { raw in
+            var offset = 0
+            while offset < raw.count {
+                let written = Darwin.write(descriptor, raw.baseAddress!.advanced(by: offset), raw.count - offset)
+                if written < 0 && errno == EINTR { continue }
+                guard written > 0 else { throw ConcurrentModification(path: captured.snapshot.path) }
+                offset += written
+            }
+        }
+        guard fsync(descriptor) == 0 else { throw ConcurrentModification(path: captured.snapshot.path) }
+    }
+
     /// Descriptor-native publication for an anchored target.  The retained
     /// parent descriptor is the only namespace used for temp/quarantine names.
     @discardableResult public static func write(_ data: Data, replacing input: CapturedExactFile, permissions: Permissions = .preserveExisting(defaultMode: 0o600), hooks: RaceHooks = RaceHooks()) throws -> CapturedExactFile {
