@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 /// Thrown when the target file changed between a caller's read and this
 /// write — another process or a hand edit landed in that window. With no
@@ -59,6 +60,84 @@ public enum AtomicFile {
             try? FileManager.default.removeItem(at: tempURL)
             throw ConcurrentModification(path: url.path)
         }
-        _ = try FileManager.default.replaceItemAt(url, withItemAt: tempURL)
+        if priorModified == nil {
+            try FileManager.default.moveItem(at: tempURL, to: url)
+        } else {
+            _ = try FileManager.default.replaceItemAt(url, withItemAt: tempURL)
+        }
+    }
+
+    /// Removes an owned regular file without ever unlinking the active name.
+    /// The name is first moved aside, then the opened quarantine inode is
+    /// validated and unlinked only if it is still that same inode.  This is
+    /// deliberately a separate primitive from `write`: uninstall must not
+    /// turn a concurrent replacement into an accidental deletion.
+    public static func remove(
+        _ url: URL,
+        ifUnchangedFrom expectedData: Data,
+        afterQuarantine: (URL) throws -> Void = { _ in },
+        afterValidation: (URL) throws -> Void = { _ in }
+    ) throws {
+        let parent = url.deletingLastPathComponent()
+        let fd = open(parent.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+        guard fd >= 0 else { throw ConcurrentModification(path: url.path) }
+        defer { close(fd) }
+        let name = url.lastPathComponent
+        var sourceStat = stat()
+        let sourceResult = name.withCString { fstatat(fd, $0, &sourceStat, AT_SYMLINK_NOFOLLOW) }
+        guard sourceResult == 0, (sourceStat.st_mode & S_IFMT) == S_IFREG else {
+            throw ConcurrentModification(path: url.path)
+        }
+        let quarantineName = ".\(name).\(UUID().uuidString).letitbrew-quarantine"
+        let renamed = name.withCString { oldName in
+            quarantineName.withCString { newName in
+                renameatx_np(fd, oldName, fd, newName, UInt32(RENAME_EXCL))
+            }
+        }
+        guard renamed == 0 else { throw ConcurrentModification(path: url.path) }
+        let quarantine = parent.appendingPathComponent(quarantineName)
+        do {
+            try afterQuarantine(quarantine)
+            let qfd = quarantineName.withCString { openat(fd, $0, O_RDONLY | O_NOFOLLOW | O_CLOEXEC) }
+            guard qfd >= 0 else { throw ConcurrentModification(path: quarantine.path) }
+            defer { close(qfd) }
+            var captured = stat()
+            guard fstat(qfd, &captured) == 0, (captured.st_mode & S_IFMT) == S_IFREG else {
+                throw ConcurrentModification(path: quarantine.path)
+            }
+            var data = Data()
+            var buffer = [UInt8](repeating: 0, count: 8192)
+            while true {
+                let count = read(qfd, &buffer, buffer.count)
+                if count < 0 { throw ConcurrentModification(path: quarantine.path) }
+                if count == 0 { break }
+                data.append(buffer, count: Int(count))
+            }
+            try afterValidation(quarantine)
+            func isCaptured() -> Bool {
+                var current = stat()
+                return quarantineName.withCString {
+                    fstatat(fd, $0, &current, AT_SYMLINK_NOFOLLOW) == 0 &&
+                    current.st_dev == captured.st_dev && current.st_ino == captured.st_ino
+                }
+            }
+            guard isCaptured() else { throw ConcurrentModification(path: quarantine.path) }
+            if data != expectedData {
+                // Restore only into an absent original name.  If something
+                // appeared there, retain the quarantine as recovery evidence.
+                let restored = quarantineName.withCString { oldName in
+                    name.withCString { newName in renameatx_np(fd, oldName, fd, newName, UInt32(RENAME_EXCL)) }
+                }
+                if restored != 0 {
+                    throw ConcurrentModification(path: "\(url.path) (recovery preserved at \(quarantine.path))")
+                }
+                throw ConcurrentModification(path: url.path)
+            }
+            guard isCaptured(), quarantineName.withCString({ unlinkat(fd, $0, 0) }) == 0 else {
+                throw ConcurrentModification(path: quarantine.path)
+            }
+        } catch {
+            throw error
+        }
     }
 }

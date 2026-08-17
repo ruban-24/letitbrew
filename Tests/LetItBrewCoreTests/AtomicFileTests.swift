@@ -79,3 +79,44 @@ import Foundation
     // via the rename.
     #expect(try String(contentsOf: url, encoding: .utf8) == "concurrent edit")
 }
+
+private func ownedTemporaryFile(_ contents: String) throws -> URL {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("atomic-remove-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let url = directory.appendingPathComponent("owned")
+    try Data(contents.utf8).write(to: url)
+    return url
+}
+
+@Test func removeDeletesAnUnchangedOwnedFile() throws {
+    let url = try ownedTemporaryFile("owned"); defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+    try AtomicFile.remove(url, ifUnchangedFrom: Data("owned".utf8))
+    #expect(!FileManager.default.fileExists(atPath: url.path))
+}
+
+@Test func quarantinedRemovalPreservesAReplacementAtTheOriginalPath() throws {
+    let url = try ownedTemporaryFile("owned"); defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+    try AtomicFile.remove(url, ifUnchangedFrom: Data("owned".utf8), afterQuarantine: { _ in try Data("foreign replacement".utf8).write(to: url) })
+    #expect(try String(contentsOf: url, encoding: .utf8) == "foreign replacement")
+}
+
+@Test func quarantineMismatchRestoresTheOriginal() throws {
+    let url = try ownedTemporaryFile("owned"); defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+    #expect(throws: ConcurrentModification.self) { try AtomicFile.remove(url, ifUnchangedFrom: Data("different".utf8)) }
+    #expect(try String(contentsOf: url, encoding: .utf8) == "owned")
+}
+
+@Test func postValidationQuarantineReplacementIsNeverUnlinked() throws {
+    let url = try ownedTemporaryFile("owned"); defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+    var recoveryURL: URL?; var replacementURL: URL?
+    #expect(throws: ConcurrentModification.self) {
+        try AtomicFile.remove(url, ifUnchangedFrom: Data("owned".utf8), afterValidation: { quarantine in
+            let recovery = quarantine.appendingPathExtension("recovery")
+            try FileManager.default.moveItem(at: quarantine, to: recovery)
+            try Data("foreign quarantine replacement".utf8).write(to: quarantine)
+            recoveryURL = recovery; replacementURL = quarantine
+        })
+    }
+    #expect(try String(contentsOf: #require(recoveryURL), encoding: .utf8) == "owned")
+    #expect(try String(contentsOf: #require(replacementURL), encoding: .utf8) == "foreign quarantine replacement")
+}

@@ -65,7 +65,7 @@ case "$TEST_HOME" in
 esac
 trap 'rm -rf "$TEST_HOME"' EXIT
 export LETITBREW_TEST_HOME="$TEST_HOME"
-mkdir -p "$TEST_HOME/.claude" "$TEST_HOME/.codex"
+mkdir -p "$TEST_HOME/.claude" "$TEST_HOME/.codex" "$TEST_HOME/.cursor" "$TEST_HOME/.copilot/hooks" "$TEST_HOME/.config/opencode/plugins"
 
 # A user hook Let It Brew must never touch.
 cat > "$TEST_HOME/.claude/settings.json" <<'JSON'
@@ -85,6 +85,8 @@ groups=doc.get("hooks",{}).get("Stop",[])
 kept=[g for g in groups if not any(h.get("command","").endswith(": # __letitbrew_hook") for h in g.get("hooks",[]))]
 print(json.dumps({"model":doc.get("model"),"kept":kept},sort_keys=True))
 ' "$TEST_HOME/.claude/settings.json")"
+printf '{"version":1,"hooks":{"foreign":[]}}' > "$TEST_HOME/.cursor/hooks.json"
+printf '{"version":1,"hooks":{"foreign":[]}}' > "$TEST_HOME/.copilot/hooks/letitbrew.json"
 
 install_status=0
 "$CLI" install >/dev/null 2>&1 || install_status=$?
@@ -99,6 +101,9 @@ check "Let It Brew's Claude entries are present after install" \
     grep -qF "$CLAUDE_MARKER_SUFFIX" "$TEST_HOME/.claude/settings.json"
 check "Let It Brew's Codex entries are present after install" \
     grep -qF "$CODEX_MARKER_SUFFIX" "$TEST_HOME/.codex/hooks.json"
+check "Let It Brew's Cursor entries are present after install" grep -q '__letitbrew_cursor_hook' "$TEST_HOME/.cursor/hooks.json"
+check "Let It Brew's OpenCode plugin is present after install" grep -q '^// __letitbrew_opencode_plugin$' "$TEST_HOME/.config/opencode/plugins/letitbrew.js"
+check "Let It Brew's Copilot entries are present after install" grep -q '__letitbrew_copilot_hook' "$TEST_HOME/.copilot/hooks/letitbrew.json"
 
 uninstall_status=0
 "$CLI" uninstall >/dev/null 2>&1 || uninstall_status=$?
@@ -119,6 +124,9 @@ check "the user's own Claude configuration survived unchanged" \
 
 check "Let It Brew's Codex entries are gone" \
     bash -c '! grep -qF "$1" "$0/.codex/hooks.json" 2>/dev/null' "$TEST_HOME" "$CODEX_MARKER_SUFFIX"
+check "Let It Brew's Cursor entries are gone" bash -c '! grep -q __letitbrew_cursor_hook "$0/.cursor/hooks.json"' "$TEST_HOME"
+check "Let It Brew's OpenCode plugin is gone" test ! -e "$TEST_HOME/.config/opencode/plugins/letitbrew.js"
+check "Let It Brew's Copilot entries are gone" bash -c '! grep -q __letitbrew_copilot_hook "$0/.copilot/hooks/letitbrew.json"' "$TEST_HOME"
 
 # A malformed file must be refused, never rewritten.
 printf '{ this is not json' > "$TEST_HOME/.codex/hooks.json"

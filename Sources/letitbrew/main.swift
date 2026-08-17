@@ -13,8 +13,8 @@ case "install":
     if arguments.count == 1 {
         exit(runInstall())
     }
-    guard arguments.count == 2, let agent = HookAgent(rawValue: arguments[1]) else {
-        FileHandle.standardError.write(Data("Usage: letitbrew install [claude|codex]\n".utf8))
+    guard arguments.count == 2, let agent = AgentID(rawValue: arguments[1]) else {
+        FileHandle.standardError.write(Data("Usage: letitbrew install [claude|codex|cursor|opencode|copilot]\n".utf8))
         exit(1)
     }
     exit(runInstall(agents: [agent]))
@@ -22,13 +22,16 @@ case "uninstall":
     if arguments.count == 1 {
         exit(runUninstall())
     }
-    guard arguments.count == 2, let agent = HookAgent(rawValue: arguments[1]) else {
-        FileHandle.standardError.write(Data("Usage: letitbrew uninstall [claude|codex]\n".utf8))
+    guard arguments.count == 2, let agent = AgentID(rawValue: arguments[1]) else {
+        FileHandle.standardError.write(Data("Usage: letitbrew uninstall [claude|codex|cursor|opencode|copilot]\n".utf8))
         exit(1)
     }
     exit(runUninstall(agents: [agent]))
 case "doctor":
     exit(runDoctor())
+case "prepare-exact":
+    guard arguments.count == 2, let agent = AgentID(rawValue: arguments[1]) else { exit(1) }
+    exit(runPrepareExact(agent: agent, input: FileHandle.standardInput.readDataToEndOfFile()))
 case "watch":
     exit(runWatch(lidClosed: arguments.contains("--lid-closed")))
 case "status":
@@ -43,10 +46,10 @@ default:
     letitbrew - keep your Mac awake while AI agents work
 
     Usage:
-      letitbrew install [claude|codex]
-                              install hooks for both agents, or one agent
-      letitbrew uninstall [claude|codex]
-                              remove hooks for both agents, or one agent
+      letitbrew install [claude|codex|cursor|opencode|copilot]
+                              install hooks for all agents, or one agent
+      letitbrew uninstall [claude|codex|cursor|opencode|copilot]
+                              remove hooks for all agents, or one agent
       letitbrew doctor         report install health per event
       letitbrew watch          hold the Mac awake while agents work
       letitbrew watch --lid-closed
