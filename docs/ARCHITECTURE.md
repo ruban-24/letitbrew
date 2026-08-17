@@ -44,18 +44,25 @@ hold or release
 every supported adapter to only **Working** and **Idle** (or removes a terminal
 record); there is no third permission or waiting state.
 
-The complete lifecycle mapping is:
+The common lifecycle mapping is:
 
-- `SessionStart` maps to **idle, not working**. A session that has never been
+- `SessionStart` maps to **idle, not working**, except `source=compact`, which
+  maps to **Working**. A session that has never been
   prompted emits no further events, so treating it as working would hold the Mac
   awake for as long as that process lives.
-- `UserPromptSubmit`, `PreToolUse`, and `PostToolUse` set **Working**.
+- `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PreCompact`, `PostCompact`,
+  and `SubagentStart` set **Working**.
 - `Stop` and an `idle_prompt` `Notification` set **Idle**. Idle rows are hidden
-  and stop contributing to the hold on the next one-second app poll.
+  and stop contributing to the hold on the next one-second app poll. `Stop`
+  with nonempty `background_tasks` remains **Working**; `StopFailure` is Idle.
 - `PermissionRequest` and `permission_prompt` notifications return no effect,
   preserving the prior Working or Idle state. Permission is not a third session
   state.
-- `SessionEnd` removes the active record.
+- `SubagentStop` and `SessionEnd` remove the addressed active record.
+
+Each adapter's exact source-event vocabulary is frozen in
+[AGENT-HOOK-CONTRACTS.md](AGENT-HOOK-CONTRACTS.md); unsupported source events do
+not infer a state.
 
 `Decision.decide()` is a pure function over sessions, settings, and power state.
 It is where the battery floor and thermal release live. `PowerState.trusted`
@@ -182,9 +189,11 @@ The five adapters are deliberately narrow and user-scoped: Claude Code uses
 its one global plugin at `~/.config/opencode/plugins/letitbrew.js` or
 `$OPENCODE_CONFIG_DIR/plugins/letitbrew.js`; and GitHub Copilot CLI uses
 `~/.copilot/hooks/letitbrew.json` or `$COPILOT_HOME/hooks/letitbrew.json`.
-Claude, Codex, Cursor, and Copilot entries carry an ownership marker
-(`__letitbrew_hook`); OpenCode owns only its named plugin. The versioned registry
-at `~/Library/Application Support/LetItBrew/agent-hook-targets.json` records the
+The four JSON markers are adapter-specific and frozen: Claude uses
+`__letitbrew_hook`, Codex `__letitbrew_codex_hook`, Cursor
+`__letitbrew_cursor_hook`, and Copilot `__letitbrew_copilot_hook`. OpenCode owns
+only its named plugin. The versioned registry at
+`~/Library/Application Support/LetItBrew/agent-hook-targets.json` records the
 exact selected target, so later environment changes cannot redirect an owned
 connection.
 
@@ -196,14 +205,16 @@ Three constraints shape that code:
 - **Only the events `HookReducer` maps.** Nothing speculative.
 - **Unparseable configuration is left alone.** An unreadable file, a non-object
   root, or a `hooks` value that isn't the expected shape is reported as **Action
-  needed** rather than rewritten. Other tools' hooks are preserved verbatim.
+  needed** rather than rewritten. Other tools' JSON structure and values are
+  preserved, although JSON adapters may reserialize formatting.
 
 Claude requires workspace trust before its hooks run. Codex additionally
 requires an explicit `/hooks` trust step; Let It Brew cannot approve it. Cursor
 maps desktop Agent and local CLI events through its user hooks. OpenCode is
 limited to its stable 1.x local runtime and preserves unrelated plugins.
-Copilot's `ErrorOccurred` hook returns success but is not a decision-capable
-lifecycle event.
+v0.6 installs no Copilot `ErrorOccurred` hook: an error without `Stop` or
+`SessionEnd` relies on the 12-hour stale-record backstop or **Stop Tracking**.
+The selected Copilot hooks themselves are silent and exit zero.
 
 ## Updating
 

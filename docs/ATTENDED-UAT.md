@@ -93,13 +93,41 @@ installed vendor version. If a vendor is absent, mark that vendor's live UAT as
 not run and keep it as a release gate; do not replace it with process-detection
 or simulated evidence.
 
+### Exact-target preservation and recovery (required for every vendor)
+
 Before each vendor pass, resolve the selected user configuration target without
-replacing a symlink, record whether it is absent, and back up its exact bytes,
-mode, inode, and timestamps in a new private `0700` directory beneath
-`/private/tmp`. Record the exact registry
-`~/Library/Application Support/LetItBrew/agent-hook-targets.json` in the same
-way. Choose explicit **Connect**, verify its healthy state, and record whether
-an existing session needs restart. For every pass use harmless work and verify:
+replacing its lexical symlink and make a private `0700` evidence directory
+beneath `/private/tmp`. For each present final regular file, reserve a unique
+recovery **name in that file's same parent directory and filesystem**. Do the
+identical procedure for the exact registry
+`~/Library/Application Support/LetItBrew/agent-hook-targets.json`.
+
+For every present target and registry, record bytes and SHA-256, device/inode,
+mode, owner/group, flags, mtime and birthtime where available, ACLs, and extended
+attributes. `ctime` and link count are audit observations only: a same-directory
+rename can legitimately change them, so do not require impossible equality.
+Retain the original inode by atomically moving the original final file to a
+unique same-directory recovery name, then create a disposable test copy at the
+lexical target. Keep any lexical symlink unchanged. This lets Connect and
+Disconnect operate only on the disposable copy while the original inode remains
+recoverable.
+
+On normal cleanup, quit the Dev candidate, atomically move any test target to a
+unique same-directory quarantine name, then atomically rename the retained
+original recovery inode back to its lexical final target. Verify the recorded
+bytes, digest, device/inode, mode, ownership, flags, mtime/birthtime where
+available, ACLs, and xattrs. Apply this verification to the registry too. If a
+test or Mac crashes, do not reconnect or overwrite anything: with the candidate
+quit, perform that same quarantine-then-rename recovery before resuming normal
+use. Keep the quarantine file for diagnosis until the verification succeeds.
+
+For a truly absent target or registry, record absence rather than creating a
+placeholder or recovery inode. After the pass, quarantine any created test file
+and verify absence again. Do not promise inode identity for a file that did not
+exist before the pass.
+
+Choose explicit **Connect**, verify its healthy state, and record whether an
+existing session needs restart. For every pass use harmless work and verify:
 
 1. `SessionStart` is Idle; a prompt makes it Working; a stop makes it Idle; and
    session end removes the record.
@@ -152,10 +180,10 @@ limitation without installing a decision-capable hook. Permission-wait UAT is
 **N/A — no documented supported hook** for v0.6 unless a later documented
 version changes it.
 
-At the end of each pass, verify the registry and every selected configuration
-target match the pre-test bytes and metadata exactly. This matrix never permits
-live process detection, CPU detection, or transcript parsing as a substitute
-for a lifecycle hook.
+At the end of each pass, complete the exact-target recovery and verification
+above for the registry and every selected configuration target. This matrix never
+permits live process detection, CPU detection, or transcript parsing as a
+substitute for a lifecycle hook.
 
 ## Concurrent Working sessions and adaptive menu
 
@@ -165,11 +193,10 @@ do not approve or register the Dev background service, and confirm
 `com.ruban24.letitbrew.dev.daemon` is absent before, during, and after the run.
 This is an open-lid assertion and menu test; it must not change `SleepDisabled`.
 
-Before connecting any agent, create a unique private backup directory with
-`mktemp -d /private/tmp/LetItBrew-UAT.XXXXXX` and require mode `0700`. Resolve
-each existing selected agent config symlink to its target without replacing the
-symlink. Preserve every target's bytes and metadata in the backup directory
-(for example, with `ditto`). Record true absence separately; do not create a
+Before connecting any agent, follow **Exact-target preservation and recovery**
+above for every selected target and registry. Do not use `ditto` or another
+copy as restoration evidence: the retained same-directory original inode is the
+only restore authority. Record true absence separately; do not create a
 placeholder backup for an absent config.
 
 Then record:
@@ -234,13 +261,12 @@ Record these visual and accessibility results during the matrix:
 
 At cleanup, quit the Dev app and end the test sessions before removing only the
 exact disposable root. Unless the user explicitly approves retaining the
-validated Let It Brew-owned hooks, restore each existing config's resolved target
-from its byte-and-metadata-preserved backup without replacing its symlink. Remove
-a newly created config only when preflight recorded true absence. Recompute each
-target's SHA-256 and require exact equality with its pre-test hash, then remove
-only the exact backup directory. Finally record the visible Working count as zero,
-the open-lid assertion as absent, and the Dev daemon registration and process as
-absent throughout.
+validated Let It Brew-owned hooks, use the quarantine-then-atomic-rename
+procedure above to restore each retained original target and registry inode
+without replacing a lexical symlink. Quarantine a newly created config only when
+preflight recorded true absence. Finally record the visible Working count as
+zero, the open-lid assertion as absent, and the Dev daemon registration and
+process as absent throughout.
 
 ## Uninstall
 

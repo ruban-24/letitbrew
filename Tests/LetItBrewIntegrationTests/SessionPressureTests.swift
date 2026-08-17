@@ -5,7 +5,7 @@ import Testing
 
 @Test func concurrentSessionCountMatrixPreservesEveryIndependentRecord() async throws {
     for count in pressureCounts() {
-        let directory = pressureTempDirectory(label: "matrix-\(count)")
+        let directory = try pressureTempDirectory(label: "matrix-\(count)")
         defer { try? FileManager.default.removeItem(at: directory) }
         let records = try await writeConcurrentSessions(
             count: count,
@@ -21,8 +21,25 @@ import Testing
     }
 }
 
+@Test func directPressureFixtureUsesItsOwnValidatedPrivateRoot() throws {
+    let directory = try pressureTempDirectory(label: "direct-root")
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let root = directory.path
+    #expect(root.hasPrefix("/private/tmp/letitbrew-session-pressure."))
+}
+
+@Test func suppliedPressureRootContainsEveryFixtureDirectory() throws {
+    let root = try pressureTempDirectory(label: "supplied-root")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let child = try pressureTempDirectory(label: "records", suppliedRoot: root.path)
+
+    #expect(child.path.hasPrefix(root.path + "/"))
+    #expect(child.path.contains("/records-records-"))
+}
+
 @Test func hundredConcurrentSessionsRoundRobinEverySupportedAgentAndHoldTheSystem() async throws {
-    let directory = pressureTempDirectory(label: "five-agent-hundred")
+    let directory = try pressureTempDirectory(label: "five-agent-hundred")
     defer { try? FileManager.default.removeItem(at: directory) }
 
     let records = try await writeConcurrentSessions(
@@ -44,7 +61,7 @@ import Testing
 }
 
 @Test func pressureSnapshotPreservesAgentAndFullRepositoryAttribution() async throws {
-    let directory = pressureTempDirectory(label: "attribution")
+    let directory = try pressureTempDirectory(label: "attribution")
     defer { try? FileManager.default.removeItem(at: directory) }
     let storage = SessionStorage(directory: directory)
 
@@ -85,7 +102,7 @@ import Testing
 }
 
 @Test func oneStoppedSessionDoesNotChangeNinetyNineWorkingSessions() async throws {
-    let directory = pressureTempDirectory(label: "one-stop")
+    let directory = try pressureTempDirectory(label: "one-stop")
     defer { try? FileManager.default.removeItem(at: directory) }
     let storage = SessionStorage(directory: directory)
     _ = try await writeConcurrentSessions(
@@ -113,7 +130,7 @@ import Testing
 }
 
 @Test func corruptRecordBesideOneHundredHealthyRecordsIsIsolated() async throws {
-    let directory = pressureTempDirectory(label: "corrupt")
+    let directory = try pressureTempDirectory(label: "corrupt")
     defer { try? FileManager.default.removeItem(at: directory) }
     let storage = SessionStorage(directory: directory)
     _ = try await writeConcurrentSessions(
@@ -131,7 +148,7 @@ import Testing
 }
 
 @Test func aggregateHoldReleasesOnlyAfterTheLastWorkingSessionStops() async throws {
-    let directory = pressureTempDirectory(label: "aggregate-hold")
+    let directory = try pressureTempDirectory(label: "aggregate-hold")
     defer { try? FileManager.default.removeItem(at: directory) }
     let storage = SessionStorage(directory: directory)
     _ = try await writeConcurrentSessions(
@@ -171,7 +188,7 @@ import Testing
 }
 
 @Test func newerIdleEventWinsOverAnOlderWorkingEventForEveryAgent() throws {
-    let directory = pressureTempDirectory(label: "event-race")
+    let directory = try pressureTempDirectory(label: "event-race")
     defer { try? FileManager.default.removeItem(at: directory) }
     let storage = SessionStorage(directory: directory)
 
@@ -208,7 +225,7 @@ import Testing
 }
 
 @Test func disconnectedFifthAgentStaysStoredButCannotHoldTheSystem() async throws {
-    let directory = pressureTempDirectory(label: "visibility")
+    let directory = try pressureTempDirectory(label: "visibility")
     defer { try? FileManager.default.removeItem(at: directory) }
     let storage = SessionStorage(directory: directory)
     let records = try await writeConcurrentSessions(
@@ -248,12 +265,14 @@ import Testing
 }
 
 @Test func childSessionsRemainIndependentOfSiblingAndParentStops() throws {
-    let directory = pressureTempDirectory(label: "children")
-    defer { try? FileManager.default.removeItem(at: directory) }
-    let storage = SessionStorage(directory: directory)
-
     for (agentIndex, agent) in [AgentID.claude, .codex, .cursor].enumerated() {
+        let directory = try pressureTempDirectory(label: "children-\(agent.rawValue)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = SessionStorage(directory: directory)
         let parent = "parent-\(agent.rawValue)"
+        let childA = HookRecordID(agent: agent, parentID: parent, childID: "child-a")!.encoded
+        let childB = HookRecordID(agent: agent, parentID: parent, childID: "child-b")!.encoded
+        let parentID = HookRecordID(agent: agent, parentID: parent)!.encoded
         for child in ["child-a", "child-b"] {
             let payload = agent == .cursor
                 ? HookPayload(sessionId: parent, parentConversationId: parent, subagentId: child, cwd: "/private/tmp/pressure/children")
@@ -279,6 +298,18 @@ import Testing
             observedAt: Date(timeIntervalSince1970: 200),
             storage: storage
         )
+        #expect(Set(storage.loadAll().map(\.id)) == [childB])
+        #expect(storage.load(id: childA) == nil)
+        #expect(storage.load(id: childB)?.state == .working)
+        #expect(storage.load(id: parentID) == nil)
+        let childOnlyDecision = decide(
+            sessions: storage.loadAll(),
+            now: Date(timeIntervalSince1970: 250),
+            settings: Settings(),
+            power: PowerState(onBattery: false, batteryPercent: 100, thermal: .nominal)
+        )
+        #expect(childOnlyDecision.holdSystem)
+        #expect(childOnlyDecision.holdLidClosed)
         try HookSessionUpdater.apply(
             event: "Stop",
             payload: HookPayload(sessionId: parent, cwd: "/private/tmp/pressure/children"),
@@ -287,23 +318,23 @@ import Testing
             observedAt: Date(timeIntervalSince1970: 300),
             storage: storage
         )
+        #expect(Set(storage.loadAll().map(\.id)) == [childB, parentID])
+        #expect(storage.load(id: childA) == nil)
+        #expect(storage.load(id: childB)?.state == .working)
+        #expect(storage.load(id: parentID)?.state == .idle)
+        let parentStopDecision = decide(
+            sessions: storage.loadAll(),
+            now: Date(timeIntervalSince1970: 350),
+            settings: Settings(),
+            power: PowerState(onBattery: false, batteryPercent: 100, thermal: .nominal)
+        )
+        #expect(parentStopDecision.holdSystem)
+        #expect(parentStopDecision.holdLidClosed)
     }
-
-    let records = storage.loadAll()
-    #expect(records.count == 6)
-    #expect(records.count { $0.state == .working } == 3)
-    #expect(records.count { $0.state == .idle } == 3)
-    let decision = decide(
-        sessions: records,
-        now: Date(timeIntervalSince1970: 400),
-        settings: Settings(),
-        power: PowerState(onBattery: false, batteryPercent: 100, thermal: .nominal)
-    )
-    #expect(decision.holdSystem)
 }
 
 @Test func oneHundredRecordWriteLoadAndPresentationReportsTiming() async throws {
-    let directory = pressureTempDirectory(label: "metric")
+    let directory = try pressureTempDirectory(label: "metric")
     defer { try? FileManager.default.removeItem(at: directory) }
     let clock = ContinuousClock()
     let started = clock.now
@@ -392,12 +423,40 @@ private func pressureAgents() -> [AgentID] {
     return Set(agents ?? []) == Set(AgentID.allCases) ? agents! : AgentID.allCases
 }
 
-private func pressureTempDirectory(label: String) -> URL {
+private enum PressureFixtureError: Error {
+    case invalidRoot(String)
+}
+
+private func pressureTempDirectory(
+    label: String,
+    suppliedRoot: String? = ProcessInfo.processInfo.environment["LETITBREW_SESSION_PRESSURE_ROOT"]
+) throws -> URL {
+    if let suppliedRoot {
+        let root = try validatedPressureRoot(URL(fileURLWithPath: suppliedRoot, isDirectory: true))
+        let directory = root.appendingPathComponent("records-\(label)-\(UUID().uuidString)", isDirectory: true)
+        guard directory.path.hasPrefix(root.path + "/") else {
+            throw PressureFixtureError.invalidRoot(directory.path)
+        }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        return directory
+    }
+
     let directory = URL(fileURLWithPath: "/private/tmp", isDirectory: true)
         .appendingPathComponent(
-            "letitbrew-pressure-\(label)-\(UUID().uuidString)",
+            "letitbrew-session-pressure.\(label).\(UUID().uuidString)",
             isDirectory: true
         )
-    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    return directory
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+    return try validatedPressureRoot(directory)
+}
+
+private func validatedPressureRoot(_ candidate: URL) throws -> URL {
+    guard candidate.path.hasPrefix("/private/tmp/letitbrew-session-pressure.") else {
+        throw PressureFixtureError.invalidRoot(candidate.path)
+    }
+    let values = try candidate.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+    guard values.isDirectory == true, values.isSymbolicLink != true else {
+        throw PressureFixtureError.invalidRoot(candidate.path)
+    }
+    return candidate
 }

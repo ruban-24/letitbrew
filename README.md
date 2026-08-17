@@ -216,8 +216,10 @@ To stop using one integration, open that agent's `…` menu in
 **Settings → Agents** and choose **Disconnect**. That removes only Let It Brew's
 own entries and persists across relaunches. Claude Code needs the selected
 workspace to trust the installed hook. Codex needs the `/hooks` trust approval.
-Copilot's `ErrorOccurred` hook exits successfully but is not a decision-capable
-lifecycle edge, so it does not create a Working or Idle state. OpenCode's
+v0.6 does not install Copilot's `ErrorOccurred` hook. An error path without
+`Stop` or `SessionEnd` therefore relies on the 12-hour stale-record backstop or
+**Stop Tracking**; the hooks that are selected remain silent and exit zero.
+OpenCode's
 `OPENCODE_CONFIG_DIR`, when set, is additive: Let It Brew adds its owned global
 plugin at that selected directory and does not replace standard config roots or
 other OpenCode plugins.
