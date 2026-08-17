@@ -76,12 +76,29 @@ python3 -c 'import hashlib,json,os,sys; p=sys.argv[1]; s=os.stat(p); print(json.
 env LETITBREW_TEST_HOME="$PREP_HOME" "$CLI" prepare-exact claude < "$PREP_REPAIR" >/dev/null
 grep -q '__letitbrew_hook' "$PREP_CLAUDE"
 ! grep -qF '/private/tmp/letitbrew-stale' "$PREP_CLAUDE"
+# Once recorded, both whole-file adapters keep using their exact A target even
+# if a caller supplies a different ambient B home.  Test-home mode purposely
+# ignores ambient variables, so this also proves they cannot redirect writes.
+AB_HOME="$(mktemp -d /tmp/letitbrew-recorded-target.XXXXXX)"
+mkdir -p "$AB_HOME/custom" "$AB_HOME/ambient-copilot/hooks" "$AB_HOME/ambient-opencode/plugins"
+AB_COPILOT="$AB_HOME/custom/copilot.json"
+AB_OPENCODE="$AB_HOME/custom/opencode.js"
+printf '{"version":1,"hooks":{"foreign":[]}}' > "$AB_COPILOT"
+python3 -c 'import json,sys; print(json.dumps({"version":1,"targets":{"copilot":sys.argv[1],"opencode":sys.argv[2]}}))' "$AB_COPILOT" "$AB_OPENCODE" > "$AB_HOME/registry.json"
+mkdir -p "$AB_HOME/Library/Application Support/LetItBrew"
+mv "$AB_HOME/registry.json" "$AB_HOME/Library/Application Support/LetItBrew/agent-hook-targets.json"
+env LETITBREW_TEST_HOME="$AB_HOME" COPILOT_HOME="$AB_HOME/ambient-copilot" OPENCODE_CONFIG_DIR="$AB_HOME/ambient-opencode" "$CLI" install copilot >/dev/null
+env LETITBREW_TEST_HOME="$AB_HOME" COPILOT_HOME="$AB_HOME/ambient-copilot" OPENCODE_CONFIG_DIR="$AB_HOME/ambient-opencode" "$CLI" install opencode >/dev/null
+grep -q '__letitbrew_copilot_hook' "$AB_COPILOT"
+grep -q '^// __letitbrew_opencode_plugin$' "$AB_OPENCODE"
+! test -e "$AB_HOME/ambient-copilot/hooks/letitbrew.json"
+! test -e "$AB_HOME/ambient-opencode/plugins/letitbrew.js"
 # Registry parent symlinks are unsafe even with a non-symlink final name: a
 # test-home operation must fail before either vendor config or registry bytes
 # can escape through the parent.
 SYMLINK_HOME="$(mktemp -d /tmp/letitbrew-registry-link.XXXXXX)"
 OUTSIDE_HOME="$(mktemp -d /tmp/letitbrew-registry-outside.XXXXXX)"
-trap 'rm -rf "$TEST_HOME" "$SYMLINK_HOME" "$OUTSIDE_HOME" "$PREP_HOME"' EXIT
+trap 'rm -rf "$TEST_HOME" "$SYMLINK_HOME" "$OUTSIDE_HOME" "$PREP_HOME" "$AB_HOME"' EXIT
 mkdir -p "$SYMLINK_HOME/Library/Application Support"
 ln -s "$OUTSIDE_HOME" "$SYMLINK_HOME/Library/Application Support/LetItBrew"
 ! env LETITBREW_TEST_HOME="$SYMLINK_HOME" "$CLI" install claude >/dev/null 2>&1
