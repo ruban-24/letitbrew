@@ -34,7 +34,8 @@ private func requireSoleOwnedEntry(
 
 @Test func hookCommandPinsExitZeroAndCarriesTheMarker() throws {
     let command = try ClaudeHooks.hookCommand(event: "PreToolUse", cliPath: "/opt/letitbrew")
-    #expect(command.contains("hook PreToolUse"))
+    #expect(command.contains("hook claude PreToolUse"))
+    #expect(command.contains(">/dev/null 2>&1"))
     // Anchored exactly at the end, matching how HookFile.isOurs matches
     // ownership with hasSuffix: text appended after the sentinel is the exact
     // thing that would make a live hook unrecognizable to uninstall.

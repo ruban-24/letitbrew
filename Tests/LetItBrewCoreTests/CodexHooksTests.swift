@@ -17,7 +17,9 @@ private func object(_ data: Data) throws -> [String: Any] {
     // order — is what actually encodes the edge, and needs no element
     // access at all.
     #expect(CodexHooks.events == ["SessionStart", "UserPromptSubmit", "PreToolUse",
-                                  "PostToolUse", "PermissionRequest", "Stop", "SessionEnd"])
+                                  "PostToolUse", "PermissionRequest", "PreCompact",
+                                  "PostCompact", "SubagentStart", "SubagentStop", "Stop",
+                                  "SessionEnd"])
 }
 
 @Test func topLevelHasOnlyDescriptionAndHooks() throws {
@@ -127,7 +129,8 @@ private func object(_ data: Data) throws -> [String: Any] {
     let command = try CodexHooks.hookCommand(event: "Stop", cliPath: "/opt/letitbrew")
     #expect(command.contains(CodexHooks.marker))
     #expect(!command.contains(ClaudeHooks.marker))
-    #expect(command.contains("hook Stop"))
+    #expect(command.contains("hook codex Stop"))
+    #expect(command.contains(">/dev/null 2>&1"))
     #expect(command.contains(": #"))
 }
 

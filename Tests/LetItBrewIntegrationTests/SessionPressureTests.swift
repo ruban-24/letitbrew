@@ -31,7 +31,7 @@ import Testing
             try HookSessionUpdater.apply(
                 event: "UserPromptSubmit",
                 payload: HookPayload(sessionId: "claude", cwd: "/private/tmp/one/app"),
-                agentName: "claude",
+                agent: .claude,
                 agentPID: 101,
                 observedAt: Date(timeIntervalSince1970: 101),
                 storage: storage
@@ -45,7 +45,7 @@ import Testing
                     cwd: "/private/tmp/two/app",
                     toolName: "Read"
                 ),
-                agentName: "codex",
+                agent: .codex,
                 agentPID: 202,
                 observedAt: Date(timeIntervalSince1970: 202),
                 storage: storage
@@ -78,7 +78,7 @@ import Testing
             sessionId: pressureSessionID(0),
             cwd: "/private/tmp/pressure/shared-folder"
         ),
-        agentName: "claude",
+        agent: .claude,
         agentPID: 1_000,
         observedAt: Date(timeIntervalSince1970: 10_000),
         storage: storage
@@ -132,7 +132,7 @@ import Testing
                 sessionId: pressureSessionID(index),
                 cwd: "/private/tmp/pressure/shared-folder"
             ),
-            agentName: index.isMultiple(of: 2) ? "claude" : "codex",
+            agent: index.isMultiple(of: 2) ? .claude : .codex,
             agentPID: Int32(index + 1),
             observedAt: Date(timeIntervalSince1970: TimeInterval(20_000 + index)),
             storage: storage
@@ -201,7 +201,7 @@ private func writeConcurrentSessions(
                         cwd: cwd,
                         toolName: index.isMultiple(of: 3) ? "Read" : nil
                     ),
-                    agentName: index.isMultiple(of: 2) ? "claude" : "codex",
+                    agent: index.isMultiple(of: 2) ? .claude : .codex,
                     agentPID: Int32(index + 1),
                     observedAt: Date(timeIntervalSince1970: TimeInterval(1_000 + index)),
                     storage: storage

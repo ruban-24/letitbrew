@@ -31,3 +31,49 @@ import Foundation
     let payload = try JSONDecoder().decode(HookPayload.self, from: Data("{}".utf8))
     #expect(payload.sessionId == nil)
 }
+
+@Test func decodesCursorConversationAndWorkspaceAliases() throws {
+    let data = Data(#"{"conversation_id":"cursor-1","workspace_roots":["/work/app"]}"#.utf8)
+    let payload = try JSONDecoder().decode(HookPayload.self, from: data)
+    #expect(payload.sessionId == "cursor-1")
+    #expect(payload.cwd == "/work/app")
+}
+
+@Test func snakeCaseIdentityWinsOverCompatibilityAliases() throws {
+    let data = Data(#"{"session_id":"primary","conversation_id":"fallback","sessionId":"camel"}"#.utf8)
+    let payload = try JSONDecoder().decode(HookPayload.self, from: data)
+    #expect(payload.sessionId == "primary")
+}
+
+@Test func childIdentityAndCompactionSourceDecodeWithoutTranscriptAccess() throws {
+    let data = Data(#"{"session_id":"parent","agent_id":"child","source":"compact"}"#.utf8)
+    let payload = try JSONDecoder().decode(HookPayload.self, from: data)
+    #expect(payload.recordID(agent: .claude, event: "SubagentStart")
+            == "v1|6:claude|6:parent|5:child")
+    #expect(payload.source == "compact")
+}
+
+@Test func cursorSubagentIdentityUsesItsDocumentedAliases() throws {
+    let data = Data(#"{"session_id":"wrong","conversation_id":"also-wrong","parent_conversation_id":"parent","subagent_id":"child"}"#.utf8)
+    let payload = try JSONDecoder().decode(HookPayload.self, from: data)
+    #expect(payload.recordID(agent: .cursor, event: "SubagentStart")
+            == "v1|6:cursor|6:parent|5:child")
+}
+
+@Test func equalVendorSessionIDsRemainDistinct() {
+    let payload = HookPayload(sessionId: "same")
+    #expect(payload.recordID(agent: .claude, event: "Stop")
+            != payload.recordID(agent: .codex, event: "Stop"))
+}
+
+@Test func claudeBackgroundTaskPresenceIsStructuralOnly() throws {
+    let data = Data(#"{"session_id":"parent","background_tasks":[{"id":"bg-1","description":"ignored"}]}"#.utf8)
+    let payload = try JSONDecoder().decode(HookPayload.self, from: data)
+    #expect(payload.hasBackgroundTasks)
+}
+
+@Test func sessionCronsDoNotCountAsBackgroundTasks() throws {
+    let data = Data(#"{"session_id":"parent","session_crons":[{"id":"cron-1"}]}"#.utf8)
+    let payload = try JSONDecoder().decode(HookPayload.self, from: data)
+    #expect(!payload.hasBackgroundTasks)
+}

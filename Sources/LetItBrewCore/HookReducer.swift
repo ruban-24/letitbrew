@@ -22,15 +22,19 @@ public enum HookReducer {
     public static func reduce(
         event: String,
         toolName: String?,
-        notificationType: String?
+        notificationType: String?,
+        source: String? = nil,
+        hasBackgroundTasks: Bool = false
     ) -> HookEffect? {
         switch event {
         case "SessionStart":
             // Idle, not working: a session that has never been prompted emits
             // no further events, so `working` here would hold the Mac awake
             // for as long as the process lives. Still writes a record, so the
-            // session appears immediately and the pid join lands.
-            return .set(.idle, detail: nil)
+            // session appears immediately.
+            return source == "compact" ? .set(.working, detail: nil) : .set(.idle, detail: nil)
+        case "PreCompact", "PostCompact", "SubagentStart":
+            return .set(.working, detail: nil)
         case "UserPromptSubmit", "PostToolUse":
             return .set(.working, detail: nil)
         case "PreToolUse":
@@ -40,8 +44,10 @@ public enum HookReducer {
         case "Notification":
             return notificationType == "idle_prompt" ? .set(.idle, detail: nil) : nil
         case "Stop":
+            return hasBackgroundTasks ? .set(.working, detail: nil) : .set(.idle, detail: nil)
+        case "StopFailure":
             return .set(.idle, detail: nil)
-        case "SessionEnd":
+        case "SubagentStop", "SessionEnd":
             return .end
         default:
             // Unknown events change nothing. Both tools add names over time.

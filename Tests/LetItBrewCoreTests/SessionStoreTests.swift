@@ -77,8 +77,8 @@ private func record(_ id: String, pid: Int32?, ageSeconds: TimeInterval,
 // filtering logic but says nothing about whether `KillZeroLiveness` itself
 // talks to the kernel correctly. This project already shipped one defect
 // that looked correct against a scripted table and only broke against real
-// process data (`ProcessAncestry` reading `p_comm`, a version string, instead
-// of argv[0]) — these tests exercise the real `kill(2)` syscall instead of a
+// process data (reading `p_comm`, a version string, instead of argv[0]) —
+// these tests exercise the real `kill(2)` syscall instead of a
 // fake, so a regression in the non-positive-pid guard or the ESRCH/EPERM
 // handling shows up here rather than staying hidden behind a green suite.
 

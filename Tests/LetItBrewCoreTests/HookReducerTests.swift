@@ -1,6 +1,20 @@
 import Testing
 @testable import LetItBrewCore
 
+private func reduce(
+    _ event: String,
+    source: String? = nil,
+    hasBackgroundTasks: Bool = false
+) -> HookEffect? {
+    HookReducer.reduce(
+        event: event,
+        toolName: nil,
+        notificationType: nil,
+        source: source,
+        hasBackgroundTasks: hasBackgroundTasks
+    )
+}
+
 @Test func sessionStartIsIdleNotWorking() {
     // A REPL opened and never prompted emits no further events. Marking it
     // working would hold the Mac awake for the life of the process.
@@ -62,4 +76,15 @@ import Testing
     // Both tools add event names over time. A new one must change nothing.
     #expect(HookReducer.reduce(event: "SomeFutureEvent", toolName: nil, notificationType: nil) == nil)
     #expect(HookReducer.reduce(event: "", toolName: nil, notificationType: nil) == nil)
+}
+
+@Test func compactionSubagentsFailuresAndBackgroundWorkStayTwoState() {
+    #expect(reduce("SessionStart", source: "compact") == .set(.working, detail: nil))
+    #expect(reduce("PreCompact") == .set(.working, detail: nil))
+    #expect(reduce("PostCompact") == .set(.working, detail: nil))
+    #expect(reduce("SubagentStart") == .set(.working, detail: nil))
+    #expect(reduce("SubagentStop") == .end)
+    #expect(reduce("StopFailure") == .set(.idle, detail: nil))
+    #expect(reduce("Stop", hasBackgroundTasks: true) == .set(.working, detail: nil))
+    #expect(reduce("Stop", hasBackgroundTasks: false) == .set(.idle, detail: nil))
 }

@@ -9,29 +9,31 @@ import Testing
     defer { try? FileManager.default.removeItem(at: directory) }
     let storage = SessionStorage(directory: directory)
     let payload = HookPayload(sessionId: "same", cwd: "/work/app")
+    let id = hookUpdaterID("same")
 
     try HookSessionUpdater.apply(
-        event: "Stop", payload: payload, agentName: "codex", agentPID: nil,
+        event: "Stop", payload: payload, agent: .codex, agentPID: nil,
         observedAt: Date(timeIntervalSince1970: 200), storage: storage
     )
     try HookSessionUpdater.apply(
-        event: "PreToolUse", payload: payload, agentName: "codex", agentPID: nil,
+        event: "PreToolUse", payload: payload, agent: .codex, agentPID: nil,
         observedAt: Date(timeIntervalSince1970: 100), storage: storage
     )
 
-    #expect(storage.load(id: "same")?.state == .idle)
-    #expect(storage.load(id: "same")?.eventObservedAt == 200)
+    #expect(storage.load(id: id)?.state == .idle)
+    #expect(storage.load(id: id)?.eventObservedAt == 200)
 }
 
 @Test func staleWorkingEventCannotRecreateSessionAfterNewerEndAcrossStorageInstances() throws {
     let directory = hookUpdaterTempDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let payload = HookPayload(sessionId: "ended", cwd: "/work/app")
+    let id = hookUpdaterID("ended")
 
     try HookSessionUpdater.apply(
         event: "UserPromptSubmit",
         payload: payload,
-        agentName: "codex",
+        agent: .codex,
         agentPID: nil,
         observedAt: Date(timeIntervalSince1970: 50),
         storage: SessionStorage(directory: directory)
@@ -39,52 +41,53 @@ import Testing
     try HookSessionUpdater.apply(
         event: "SessionEnd",
         payload: payload,
-        agentName: "codex",
+        agent: .codex,
         agentPID: nil,
         observedAt: Date(timeIntervalSince1970: 200),
         storage: SessionStorage(directory: directory)
     )
-    #expect(SessionStorage(directory: directory).load(id: "ended") == nil)
+    #expect(SessionStorage(directory: directory).load(id: id) == nil)
 
     // A fresh storage value models another hook process starting after the
     // terminal update completed. Ordering must survive process boundaries.
     try HookSessionUpdater.apply(
         event: "PreToolUse",
         payload: payload,
-        agentName: "codex",
+        agent: .codex,
         agentPID: nil,
         observedAt: Date(timeIntervalSince1970: 100),
         storage: SessionStorage(directory: directory)
     )
 
-    #expect(SessionStorage(directory: directory).load(id: "ended") == nil)
+    #expect(SessionStorage(directory: directory).load(id: id) == nil)
 }
 
 @Test func terminalEventMovesOneDecodableTombstoneOutOfTheSessionScan() throws {
     let directory = hookUpdaterTempDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let storage = SessionStorage(directory: directory)
+    let id = hookUpdaterID("terminal")
 
     try HookSessionUpdater.apply(
         event: "SessionEnd",
         payload: HookPayload(sessionId: "terminal", cwd: "/work/app"),
-        agentName: "codex",
+        agent: .codex,
         agentPID: nil,
         observedAt: Date(timeIntervalSince1970: 200),
         storage: storage
     )
 
-    let activeURL = hookUpdaterActiveURL(id: "terminal", directory: directory)
-    let tombstoneURL = hookUpdaterTombstoneURL(id: "terminal", directory: directory)
+    let activeURL = hookUpdaterActiveURL(id: id, directory: directory)
+    let tombstoneURL = hookUpdaterTombstoneURL(id: id, directory: directory)
     #expect(!FileManager.default.fileExists(atPath: activeURL.path))
     let data = try Data(contentsOf: tombstoneURL)
     let object = try #require(
         JSONSerialization.jsonObject(with: data) as? [String: Any]
     )
     #expect(object["kind"] as? String == "terminal")
-    #expect(object["id"] as? String == "terminal")
+    #expect(object["id"] as? String == id)
     #expect(object["observed_at"] as? Double == 200)
-    #expect(storage.load(id: "terminal") == nil)
+    #expect(storage.load(id: id) == nil)
     #expect(storage.loadAll().isEmpty)
 
     var status = stat()
@@ -102,7 +105,7 @@ import Testing
         try HookSessionUpdater.apply(
             event: "SessionEnd",
             payload: HookPayload(sessionId: "ended-\(index)", cwd: "/work/app"),
-            agentName: "codex",
+            agent: .codex,
             agentPID: nil,
             observedAt: Date(timeIntervalSince1970: TimeInterval(index + 1)),
             storage: storage
@@ -121,11 +124,12 @@ import Testing
 @Test func hiddenTombstonePersistsAcrossFreshStorageAndBlocksStaleWork() throws {
     let directory = hookUpdaterTempDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
-    let id = "durable-terminal"
-    let payload = HookPayload(sessionId: id, cwd: "/work/app")
+    let parentID = "durable-terminal"
+    let id = hookUpdaterID(parentID)
+    let payload = HookPayload(sessionId: parentID, cwd: "/work/app")
 
     try HookSessionUpdater.apply(
-        event: "SessionEnd", payload: payload, agentName: "codex", agentPID: nil,
+        event: "SessionEnd", payload: payload, agent: .codex, agentPID: nil,
         observedAt: Date(timeIntervalSince1970: 200),
         storage: SessionStorage(directory: directory)
     )
@@ -137,7 +141,7 @@ import Testing
     ))
 
     try HookSessionUpdater.apply(
-        event: "PreToolUse", payload: payload, agentName: "codex", agentPID: nil,
+        event: "PreToolUse", payload: payload, agent: .codex, agentPID: nil,
         observedAt: Date(timeIntervalSince1970: 100),
         storage: SessionStorage(directory: directory)
     )
@@ -158,23 +162,26 @@ import Testing
 @Test func crashIntermediateAtActivePathIsInvisibleAndRetainsEqualArrivalRule() throws {
     let directory = hookUpdaterTempDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
-    let id = "crash-intermediate"
-    let payload = HookPayload(sessionId: id, cwd: "/work/app")
+    let parentID = "crash-intermediate"
+    let id = hookUpdaterID(parentID)
+    let payload = HookPayload(sessionId: parentID, cwd: "/work/app")
     let activeURL = hookUpdaterActiveURL(id: id, directory: directory)
-    let staged = Data(#"{"kind":"terminal","id":"crash-intermediate","observed_at":200}"#.utf8)
+    let staged = try JSONSerialization.data(withJSONObject: [
+        "kind": "terminal", "id": id, "observed_at": 200,
+    ])
     try staged.write(to: activeURL, options: .atomic)
 
     let storage = SessionStorage(directory: directory)
     #expect(storage.load(id: id) == nil)
     #expect(storage.loadAll().isEmpty)
     try HookSessionUpdater.apply(
-        event: "PreToolUse", payload: payload, agentName: "codex", agentPID: nil,
+        event: "PreToolUse", payload: payload, agent: .codex, agentPID: nil,
         observedAt: Date(timeIntervalSince1970: 100), storage: storage
     )
     #expect(try Data(contentsOf: activeURL) == staged)
 
     try HookSessionUpdater.apply(
-        event: "SessionStart", payload: payload, agentName: "codex", agentPID: nil,
+        event: "SessionStart", payload: payload, agent: .codex, agentPID: nil,
         observedAt: Date(timeIntervalSince1970: 200), storage: storage
     )
     #expect(storage.load(id: id)?.eventObservedAt == 200)
@@ -212,30 +219,31 @@ import Testing
     defer { try? FileManager.default.removeItem(at: directory) }
     let payload = HookPayload(sessionId: "reused", cwd: "/work/app")
     let storage = SessionStorage(directory: directory)
+    let id = hookUpdaterID("reused")
 
     try HookSessionUpdater.apply(
-        event: "SessionEnd", payload: payload, agentName: "codex", agentPID: nil,
+        event: "SessionEnd", payload: payload, agent: .codex, agentPID: nil,
         observedAt: Date(timeIntervalSince1970: 200), storage: storage
     )
-    let tombstoneURL = hookUpdaterTombstoneURL(id: "reused", directory: directory)
+    let tombstoneURL = hookUpdaterTombstoneURL(id: id, directory: directory)
     #expect(FileManager.default.fileExists(atPath: tombstoneURL.path))
     try HookSessionUpdater.apply(
-        event: "SessionStart", payload: payload, agentName: "codex", agentPID: nil,
+        event: "SessionStart", payload: payload, agent: .codex, agentPID: nil,
         observedAt: Date(timeIntervalSince1970: 200), storage: storage
     )
-    #expect(storage.load(id: "reused")?.eventObservedAt == 200)
+    #expect(storage.load(id: id)?.eventObservedAt == 200)
     #expect(!FileManager.default.fileExists(atPath: tombstoneURL.path))
-    let equalEntry = try hookUpdaterEntryObject(id: "reused", directory: directory)
+    let equalEntry = try hookUpdaterEntryObject(id: id, directory: directory)
     var entry = try #require(equalEntry)
     #expect(entry["kind"] as? String == "active")
 
     try HookSessionUpdater.apply(
-        event: "UserPromptSubmit", payload: payload, agentName: "codex", agentPID: nil,
+        event: "UserPromptSubmit", payload: payload, agent: .codex, agentPID: nil,
         observedAt: Date(timeIntervalSince1970: 201), storage: storage
     )
-    #expect(storage.load(id: "reused")?.state == .working)
-    #expect(storage.load(id: "reused")?.eventObservedAt == 201)
-    let newerEntry = try hookUpdaterEntryObject(id: "reused", directory: directory)
+    #expect(storage.load(id: id)?.state == .working)
+    #expect(storage.load(id: id)?.eventObservedAt == 201)
+    let newerEntry = try hookUpdaterEntryObject(id: id, directory: directory)
     entry = try #require(newerEntry)
     #expect(entry["kind"] as? String == "active")
     let active = try #require(entry["record"] as? [String: Any])
@@ -333,7 +341,7 @@ import Testing
                         cwd: "/work/app",
                         toolName: event == "PreToolUse" ? "Bash" : nil
                     ),
-                    agentName: index.isMultiple(of: 2) ? "codex" : "claude",
+                    agent: .codex,
                     agentPID: Int32(index),
                     observedAt: Date(timeIntervalSince1970: TimeInterval(index)),
                     storage: storage
@@ -346,11 +354,14 @@ import Testing
 
     group.wait()
     #expect(failures.values.isEmpty)
-    let record = try #require(storage.load(id: "mixed"))
+    let id = hookUpdaterID("mixed")
+    let record = try #require(storage.load(id: id))
     #expect(record.eventObservedAt == 80)
     #expect(record.state == .idle)
     #expect(record.lastEvent == "Stop")
-    let data = try Data(contentsOf: directory.appendingPathComponent("mixed.json"))
+    let data = try Data(contentsOf: directory.appendingPathComponent(
+        SessionStorage.safeFilename(for: id)
+    ))
     #expect(throws: Never.self) {
         try JSONSerialization.jsonObject(with: data)
     }
@@ -364,7 +375,7 @@ import Testing
     try HookSessionUpdater.apply(
         event: "PermissionRequest",
         payload: HookPayload(sessionId: "no-op", cwd: "/work/app"),
-        agentName: "codex",
+        agent: .codex,
         agentPID: nil,
         observedAt: Date(timeIntervalSince1970: 100),
         storage: SessionStorage(directory: sessions)
@@ -587,11 +598,224 @@ import Testing
             == "outside-state-must-survive")
 }
 
+@Test func compactSessionLifecycleStaysWorkingThroughStorage() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+    let timestamp = Date(timeIntervalSince1970: 100)
+
+    try applyDecodedHook(
+        event: "SessionStart",
+        json: #"{"session_id":"compact-parent","cwd":"/work/app","source":"compact"}"#,
+        agent: .claude,
+        observedAt: timestamp,
+        storage: storage
+    )
+    let id = try #require(HookPayload(sessionId: "compact-parent")
+        .recordID(agent: .claude, event: "SessionStart"))
+    let transitionID = try #require(storage.load(id: id)?.stateTransitionID)
+
+    try applyDecodedHook(
+        event: "PreCompact",
+        json: #"{"session_id":"compact-parent","cwd":"/work/app"}"#,
+        agent: .claude,
+        observedAt: timestamp.addingTimeInterval(1),
+        storage: storage
+    )
+    try applyDecodedHook(
+        event: "PostCompact",
+        json: #"{"session_id":"compact-parent","cwd":"/work/app"}"#,
+        agent: .claude,
+        observedAt: timestamp.addingTimeInterval(2),
+        storage: storage
+    )
+
+    let record = try #require(storage.load(id: id))
+    #expect(record.state == .working)
+    #expect(record.lastEvent == "PostCompact")
+    #expect(record.stateTransitionID == transitionID)
+    #expect(storage.loadAll().count == 1)
+}
+
+@Test func claudeBackgroundTasksAndSessionCronsDriveStopStructurally() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+    let id = try #require(HookPayload(sessionId: "claude-parent")
+        .recordID(agent: .claude, event: "Stop"))
+
+    try applyDecodedHook(
+        event: "Stop",
+        json: #"{"session_id":"claude-parent","background_tasks":[{"description":"ignored"}]}"#,
+        agent: .claude,
+        observedAt: Date(timeIntervalSince1970: 100),
+        storage: storage
+    )
+    #expect(storage.load(id: id)?.state == .working)
+
+    try applyDecodedHook(
+        event: "Stop",
+        json: #"{"session_id":"claude-parent","background_tasks":[]}"#,
+        agent: .claude,
+        observedAt: Date(timeIntervalSince1970: 101),
+        storage: storage
+    )
+    #expect(storage.load(id: id)?.state == .idle)
+
+    try applyDecodedHook(
+        event: "UserPromptSubmit",
+        json: #"{"session_id":"claude-parent"}"#,
+        agent: .claude,
+        observedAt: Date(timeIntervalSince1970: 102),
+        storage: storage
+    )
+    try applyDecodedHook(
+        event: "Stop",
+        json: #"{"session_id":"claude-parent","session_crons":[{"id":"cron"}]}"#,
+        agent: .claude,
+        observedAt: Date(timeIntervalSince1970: 103),
+        storage: storage
+    )
+    #expect(storage.load(id: id)?.state == .idle)
+}
+
+@Test func stopFailureBecomesIdleThroughStorage() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+
+    try applyDecodedHook(
+        event: "StopFailure",
+        json: #"{"session_id":"failed-stop","cwd":"/work/app"}"#,
+        agent: .claude,
+        observedAt: Date(timeIntervalSince1970: 100),
+        storage: storage
+    )
+
+    let id = try #require(HookPayload(sessionId: "failed-stop")
+        .recordID(agent: .claude, event: "StopFailure"))
+    #expect(storage.load(id: id)?.state == .idle)
+    #expect(storage.load(id: id)?.lastEvent == "StopFailure")
+}
+
+@Test func subagentStopRemovesOnlyTheAddressedChildRecord() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+
+    for (index, child) in ["child-a", "child-b"].enumerated() {
+        try applyDecodedHook(
+            event: "SubagentStart",
+            json: #"{"session_id":"parent","agent_id":"\#(child)","cwd":"/work/app"}"#,
+            agent: .claude,
+            observedAt: Date(timeIntervalSince1970: TimeInterval(100 + index)),
+            storage: storage
+        )
+    }
+
+    let firstID = try #require(HookPayload(sessionId: "parent", agentId: "child-a")
+        .recordID(agent: .claude, event: "SubagentStart"))
+    let secondID = try #require(HookPayload(sessionId: "parent", agentId: "child-b")
+        .recordID(agent: .claude, event: "SubagentStart"))
+    #expect(Set(storage.loadAll().map(\.id)) == [firstID, secondID])
+
+    try applyDecodedHook(
+        event: "SubagentStop",
+        json: #"{"session_id":"parent","agent_id":"child-a"}"#,
+        agent: .claude,
+        observedAt: Date(timeIntervalSince1970: 102),
+        storage: storage
+    )
+
+    #expect(storage.load(id: firstID) == nil)
+    #expect(storage.load(id: secondID)?.state == .working)
+    #expect(storage.loadAll().map(\.id) == [secondID])
+}
+
+@Test func equalRawSessionIDsFromDifferentVendorsStayDistinctInStorage() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+
+    for agent in [AgentID.claude, .codex] {
+        try applyDecodedHook(
+            event: "Stop",
+            json: #"{"session_id":"same","cwd":"/work/app"}"#,
+            agent: agent,
+            observedAt: Date(timeIntervalSince1970: 100),
+            storage: storage
+        )
+    }
+
+    let records = storage.loadAll()
+    #expect(Set(records.map(\.id)).count == 2)
+    #expect(Set(records.map(\.tool)) == ["claude", "codex"])
+}
+
+@Test func equalTimestampOpenCodeStopEdgesRemainOneIdleTransition() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+    let timestamp = Date(timeIntervalSince1970: 100)
+
+    try applyDecodedHook(
+        event: "Stop",
+        json: #"{"session_id":"open-code","cwd":"/work/app"}"#,
+        agent: .opencode,
+        observedAt: timestamp,
+        storage: storage
+    )
+    let first = try #require(storage.loadAll().first)
+    try applyDecodedHook(
+        event: "Stop",
+        json: #"{"session_id":"open-code","cwd":"/work/app"}"#,
+        agent: .opencode,
+        observedAt: timestamp,
+        storage: storage
+    )
+
+    let records = storage.loadAll()
+    try #require(records.count == 1)
+    #expect(records[0].state == .idle)
+    #expect(records[0].stateTransitionID == first.stateTransitionID)
+    #expect(records[0].stateChangedAt == first.stateChangedAt)
+}
+
+private func applyDecodedHook(
+    event: String,
+    json: String,
+    agent: AgentID,
+    observedAt: Date,
+    storage: SessionStorage
+) throws {
+    let payload = try JSONDecoder().decode(HookPayload.self, from: Data(json.utf8))
+    try HookSessionUpdater.apply(
+        event: event,
+        payload: payload,
+        agent: agent,
+        agentPID: nil,
+        observedAt: observedAt,
+        storage: storage
+    )
+}
+
 private func hookUpdaterTempDirectory() -> URL {
     let url = URL(fileURLWithPath: "/private/tmp", isDirectory: true)
         .appendingPathComponent("letitbrew-hook-updater-tests-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
+}
+
+private func hookUpdaterID(
+    _ parentID: String,
+    agent: AgentID = .codex,
+    childID: String? = nil,
+    event: String = "Stop"
+) -> String {
+    guard let id = HookPayload(sessionId: parentID, agentId: childID)
+        .recordID(agent: agent, event: event)
+    else { preconditionFailure("test hook identity must be valid") }
+    return id
 }
 
 private func hookUpdaterRecord(id: String, observedAt: TimeInterval) -> SessionRecord {

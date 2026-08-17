@@ -4,16 +4,18 @@ public enum HookSessionUpdater {
     public static func apply(
         event: String,
         payload: HookPayload,
-        agentName: String,
+        agent: AgentID,
         agentPID: Int32?,
         observedAt: Date,
         storage: SessionStorage
     ) throws {
-        guard let sessionID = payload.sessionId, !sessionID.isEmpty else { return }
+        guard let sessionID = payload.recordID(agent: agent, event: event) else { return }
         guard let effect = HookReducer.reduce(
             event: event,
             toolName: payload.toolName,
-            notificationType: payload.notificationType
+            notificationType: payload.notificationType,
+            source: payload.source,
+            hasBackgroundTasks: payload.hasBackgroundTasks
         ) else { return }
 
         try storage.mutate(
@@ -36,7 +38,7 @@ public enum HookSessionUpdater {
                 )
                 return .replace(SessionRecord(
                     id: sessionID,
-                    tool: agentName,
+                    tool: agent.rawValue,
                     state: state,
                     detail: detail,
                     cwd: payload.cwd ?? FileManager.default.currentDirectoryPath,

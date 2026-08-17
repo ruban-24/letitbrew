@@ -5,8 +5,10 @@ let arguments = Array(CommandLine.arguments.dropFirst())
 
 switch arguments.first {
 case "hook":
-    guard arguments.count >= 2 else { exit(0) }
-    exit(runHook(event: arguments[1]))
+    guard arguments.count == 3,
+          let agent = AgentID(rawValue: arguments[1])
+    else { exit(0) }
+    exit(runHook(agent: agent, event: arguments[2]))
 case "install":
     if arguments.count == 1 {
         exit(runInstall())
@@ -53,7 +55,8 @@ default:
       letitbrew status [--json]  one-shot board
       letitbrew repair          clear a sleep-watchdog lease left by a dead
                               watchdog loop (see `letitbrew doctor`)
-      letitbrew hook <event>   internal: called by agent lifecycle hooks
+      letitbrew hook <agent> <event>
+                              internal: called by agent lifecycle hooks
       letitbrew --version
 
     Testing only:

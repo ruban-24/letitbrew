@@ -71,7 +71,8 @@ public enum CodexHooks {
     /// Codex has no `Notification` event.
     public static let events = [
         "SessionStart", "UserPromptSubmit", "PreToolUse",
-        "PostToolUse", "PermissionRequest", "Stop", "SessionEnd",
+        "PostToolUse", "PermissionRequest", "PreCompact", "PostCompact",
+        "SubagentStart", "SubagentStop", "Stop", "SessionEnd",
     ]
 
     public static let fallbackCLIPath = ClaudeHooks.fallbackCLIPath
@@ -118,7 +119,7 @@ public enum CodexHooks {
         guard cliPath.hasPrefix("/") else { throw RelativeCLIPath(cliPath) }
         return "c=\(ClaudeHooks.shellSingleQuoted(cliPath)); "
             + "[ -x \"$c\" ] || c=\(ClaudeHooks.shellSingleQuoted(fallbackCLIPath)); "
-            + "\"$c\" hook \(event); \(HookFile.ownershipComment(marker: marker))"
+            + "\"$c\" hook codex \(event) >/dev/null 2>&1; \(HookFile.ownershipComment(marker: marker))"
     }
 
     /// Thrown for `hooks.json` content that exists but cannot be safely

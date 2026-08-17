@@ -8,15 +8,28 @@ import Foundation
 /// that reports nothing.
 public struct HookPayload: Decodable, Equatable, Sendable {
     public var sessionId: String?
+    public var parentConversationId: String?
+    public var agentId: String?
+    public var subagentId: String?
     public var cwd: String?
+    public var source: String?
+    public var hasBackgroundTasks: Bool
     public var hookEventName: String?
     public var toolName: String?
     public var notificationType: String?
     public var transcriptPath: String?
 
-    enum CodingKeys: String, CodingKey {
-        case sessionId = "session_id"
+    private enum CodingKeys: String, CodingKey {
+        case sessionID = "session_id"
+        case conversationID = "conversation_id"
+        case parentConversationID = "parent_conversation_id"
+        case camelSessionID = "sessionId"
+        case agentID = "agent_id"
+        case subagentID = "subagent_id"
         case cwd
+        case workspaceRoots = "workspace_roots"
+        case source
+        case backgroundTasks = "background_tasks"
         case hookEventName = "hook_event_name"
         case toolName = "tool_name"
         case notificationType = "notification_type"
@@ -25,17 +38,66 @@ public struct HookPayload: Decodable, Equatable, Sendable {
 
     public init(
         sessionId: String? = nil,
+        parentConversationId: String? = nil,
+        agentId: String? = nil,
+        subagentId: String? = nil,
         cwd: String? = nil,
+        source: String? = nil,
+        hasBackgroundTasks: Bool = false,
         hookEventName: String? = nil,
         toolName: String? = nil,
         notificationType: String? = nil,
         transcriptPath: String? = nil
     ) {
         self.sessionId = sessionId
+        self.parentConversationId = parentConversationId
+        self.agentId = agentId
+        self.subagentId = subagentId
         self.cwd = cwd
+        self.source = source
+        self.hasBackgroundTasks = hasBackgroundTasks
         self.hookEventName = hookEventName
         self.toolName = toolName
         self.notificationType = notificationType
         self.transcriptPath = transcriptPath
     }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        sessionId = try values.decodeIfPresent(String.self, forKey: .sessionID)
+            ?? values.decodeIfPresent(String.self, forKey: .conversationID)
+            ?? values.decodeIfPresent(String.self, forKey: .camelSessionID)
+            ?? values.decodeIfPresent(String.self, forKey: .parentConversationID)
+        parentConversationId = try values.decodeIfPresent(
+            String.self, forKey: .parentConversationID
+        )
+        agentId = try values.decodeIfPresent(String.self, forKey: .agentID)
+        subagentId = try values.decodeIfPresent(String.self, forKey: .subagentID)
+        let roots = try values.decodeIfPresent([String].self, forKey: .workspaceRoots)
+        cwd = try values.decodeIfPresent(String.self, forKey: .cwd) ?? roots?.first
+        source = try values.decodeIfPresent(String.self, forKey: .source)
+        hasBackgroundTasks = !(try values.decodeIfPresent(
+            [BackgroundTask].self, forKey: .backgroundTasks
+        ) ?? []).isEmpty
+        hookEventName = try values.decodeIfPresent(String.self, forKey: .hookEventName)
+        toolName = try values.decodeIfPresent(String.self, forKey: .toolName)
+        notificationType = try values.decodeIfPresent(String.self, forKey: .notificationType)
+        transcriptPath = try values.decodeIfPresent(String.self, forKey: .transcriptPath)
+    }
+
+    public func recordID(agent: AgentID, event: String) -> String? {
+        let isSubagentEdge = event == "SubagentStart" || event == "SubagentStop"
+        let parent = isSubagentEdge
+            ? (parentConversationId ?? sessionId)
+            : sessionId
+        guard let parent, !parent.isEmpty else { return nil }
+        let child = agent == .cursor
+            ? (subagentId ?? agentId)
+            : (agentId ?? subagentId)
+        return HookRecordID(agent: agent, parentID: parent, childID: child)?.encoded
+    }
 }
+
+/// Decodes only the structural presence of an object in `background_tasks`.
+/// Unknown task fields are intentionally discarded.
+private struct BackgroundTask: Decodable {}
