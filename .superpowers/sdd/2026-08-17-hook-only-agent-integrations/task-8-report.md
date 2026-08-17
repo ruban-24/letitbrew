@@ -1,10 +1,11 @@
 # Task 8 report
 
-## Final evidence
+## Final green evidence
 
 ```text
-swift test                                                       PASS (611 tests)
-swift test --filter Task-8 focused adapter/transaction/target suite PASS (130 tests)
+swift test                                                       PASS (625 tests)
+swift test --filter 'ExactFileSnapshotTests|ExactFileTargetTests|AgentInstallRegistryTests'
+                                                                 PASS (54 tests)
 swift build                                                      PASS
 scripts/test-agent-hook-contracts.sh <absolute CLI>              PASS (repo root)
 scripts/test-uninstall-safety.sh <absolute CLI>                  PASS (repo root)
@@ -16,48 +17,50 @@ xcodebuild -project LetItBrew.xcodeproj -scheme LetItBrew
 git diff --check                                                 PASS
 ```
 
-The contract scripts include an automated source gate that rejects Task 8 CLI
-use of `/dev/fd`, `Data(contentsOf:)`, `Data.write(to:)`, Foundation file
-mutation, and URL-based AtomicFile operations after target selection.
+The command contracts run only in throwaway `LETITBREW_TEST_HOME` roots. They
+exercise all five adapters and the real CLI’s preflight/persist/commit/remove/
+clear boundaries. The source gate rejects `/dev/fd`, Foundation path reads or
+mutations, URL-based AtomicFile use after target selection, and the former
+unsound newline-regex check has been replaced with fixed-string `rg` gates.
 
 ## Delivered scope
 
-The hook-only CLI manages Claude, Codex, Cursor, OpenCode, and Copilot through
-strict version-1 registry JSON; exact snapshot/preparation values; descriptor
-bound capture, publication, quarantine, and removal; and an optional exact
-five-agent grammar. Test-home commands retain one no-follow root descriptor
-and use descendant `*at` operations. Registry, install, uninstall, doctor,
-and `prepare-exact` retain selected targets/captures through their transaction
-boundaries. First-connect JSON links resolve once under the anchored root;
-recorded final links and OpenCode final links refuse.
+Claude, Codex, Cursor, OpenCode, and Copilot are managed through a strict
+version-1 registry; exact snapshots/preparations; one-descriptor no-follow
+capture; descriptor-bound quarantine/publication/removal; and an exact
+five-agent CLI grammar. Test homes retain an anchored directory descriptor;
+production symlink compatibility remains limited to the documented JSON
+first-connect behavior. App refresh selects recorded target A before ambient
+B, passes exact preparation to the hidden command, and treats healthy no-write
+as unchanged.
+
+The final safety matrix includes existing-target disappearance, same-size
+restored-mtime edits, each metadata/digest/bytes mismatch including inode,
+malformed JSON for all four JSON agents, unowned/symlinked OpenCode, registry
+persist failure, vendor failure, removal failure, clear failure and real retry,
+active replacement survival, all-five recorded-A versus foreign-B lifecycle,
+full Cursor/Copilot foreign subtree preservation, doctor/watchdog, grammar,
+and exact `SleepDisabled` baselines.
 
 ## Commit chain
 
 Base implementation: `8e22b5b`.
 
-Review and exact-target fixes: `c7c04e3`, `b959985`, `58cd630`, `758edf3`,
+Review/exact-target fixes: `c7c04e3`, `b959985`, `58cd630`, `758edf3`,
 `006f61f`, `0b900cb`, `f786b4b`, `0e2310c`, `4b5b76a`, `ad9e02f`, `31a94db`,
 `e2c1396`, `5d26279`, `e41688a`, `19e635c`, `d1b2096`, `b130512`, `db18a0b`,
 `0fda5a8`, `410cbfa`, `d2c346e`, `4f30308`, `672bdf3`.
 
-Descriptor-anchor completion: `7704659`, `a4dc538`, `cd7793f`, `9579c78`,
-`e8a0cab`, `eff0efd`, `372dc86`, `afaed86`, `086b2d6`.
+Descriptor-anchor work: `7704659`, `a4dc538`, `cd7793f`, `9579c78`,
+`e8a0cab`, `eff0efd`, `372dc86`, `afaed86`, `086b2d6`, `24c4bcd`.
+
+Final rereview fixes: `862e8f7`, `4898e6e`, `faa66d3`, `177a5e5`.
 
 ## Self-review
 
-All ten review findings are closed: coherent one-descriptor evidence;
-strict registry wire format/private publication/baselines; no-follow
-test-home containment; recorded-target symlink refusal; app preparation
-handoff coverage; independent doctor/watchdog states; stale-registry removal
-semantics; preparation/fault matrices; and shell/OpenCode/uninstall contracts.
-The FD delta is closed with retained directory descriptors, route
-revalidation, descriptor-only Task 8 persistence/removal, deterministic
-quarantine/temp races, all-five parent-symlink coverage, and a source gate.
-
-## Remaining attended UAT
-
-No live vendor config, live agent executable, signed/notarized app, or real
-customer home directory was touched. An attended signed-app pass against real
-Claude, Codex, Cursor, OpenCode, and Copilot remains required.
+All ten original findings and the FD design gap are closed in code and
+automated evidence. No live configuration was read or changed. The only
+remaining work is attended UAT with real vendor installations and a
+signed/notarized app; neither is represented by these isolated tests.
 
 DONE

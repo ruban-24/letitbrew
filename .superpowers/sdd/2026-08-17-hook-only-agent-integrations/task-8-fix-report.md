@@ -1,51 +1,58 @@
 # Task 8 review and FD fix report
 
-## Red/green evidence
+## Red to green evidence
 
-Red fixtures covered active-name replacements, quarantine and temporary-name
-substitution, restored-mtime content changes, missing-parent `EEXIST` races,
-root/component swaps, final symlinks, malformed/unowned preflight, and
-registry-to-vendor transaction boundaries. Each now has deterministic green
-coverage.
+The final rereview’s red cases were converted into deterministic executable
+coverage: quarantine mismatch restores or preserves recovery safely;
+publication validates its active name; strict registry extras fail; app
+recorded-A inspection and healthy migration launch the exact helper request;
+and command-level fault seams prove real persistence/removal ordering only
+inside an anchored test home.
 
 ```text
-ExactFileTargetTests                                             PASS (32 tests)
-Task-8 focused adapter/transaction/target suite                 PASS (130 tests)
-swift test                                                       PASS (611 tests)
+swift test                                                       PASS (625 tests)
+swift test --filter 'ExactFileSnapshotTests|ExactFileTargetTests|AgentInstallRegistryTests'
+                                                                 PASS (54 tests)
 swift build                                                      PASS
-agent contract, root and /private/tmp                           PASS
-uninstall contract, root and /private/tmp                       PASS
+agent contract, repo root and /private/tmp                       PASS
+uninstall contract, repo root and /private/tmp                   PASS
 xcodegen generate + unsigned Debug LetItBrew build              PASS
 git diff --check                                                 PASS
 ```
 
-## Closed findings
+## Closed final-rereview findings
 
-1. Preflight bytes/metadata are bound to one capture and descriptor commit.
-2. Registry is strict version-1 `targets` JSON.
-3. Registry loads/saves are no-follow, exact, private `0600`, and baseline-bound.
-4. Test-home root/descendants are retained descriptor anchors.
-5. Recorded final symlink substitution is refused.
-6. Desktop preparation uses exact snapshot handoff for all five agents.
-7. Doctor emits all requested states and always evaluates the watchdog.
-8. Stale JSON registry retry clears only the record without vendor rewrite.
-9. Snapshot/preparation/registry/transaction/fault matrices are executable.
-10. Shell/OpenCode/grammar/foreign-structure/SleepDisabled/uninstall contracts are executable.
+1. Descriptor publication/removal restores a still-owned quarantine to an
+   absent active name and never overwrites an active replacement.
+2. The registry decoder requires exactly `version` and `targets` before typed
+   decoding.
+3. The app coordinator uses one selected recorded-or-configured target for
+   inspection, helper stdin, and post-check across all five agents.
+4. FD capture/publication has post-read evidence, bounded collisions,
+   identity checks, publish proof, durability sync, and deterministic races.
+5. Snapshot, production-closure, A/B, doctor, shell, OpenCode, and uninstall
+   safety matrices are executable, including exact foreign structural and
+   `SleepDisabled` preservation.
 
-The later FD audit is also closed: `DirectoryAnchor`, `ExactFileTarget`,
-`CapturedExactFile`, `CommandFilesystem`, descriptor registry/install/remove/
-doctor/prepare paths, final-link resolver, publication race hooks, route
-revalidation, and the source transport gate are all present and tested.
+## Final slice files
 
-## Commits
+- `Sources/letitbrew/InstallCommand.swift`: test-home-only command fault seams
+  used to exercise registry/vendor/remove/clear order and active replacement.
+- `scripts/test-agent-hook-contracts.sh`: all-five real CLI fault matrix,
+  recorded-A/foreign-B lifecycle, malformed four-JSON refusal, source and
+  power-baseline gates.
+- `scripts/test-uninstall-safety.sh`: Cursor/Copilot structural preservation,
+  clear/retry no-rewrite, and active replacement survival.
 
-The full chain from `8e22b5b` is recorded in `task-8-report.md`; the final
-descriptor migration commits are `7704659`, `a4dc538`, `cd7793f`, `9579c78`,
-`e8a0cab`, `eff0efd`, `372dc86`, `afaed86`, and `086b2d6`.
+## Commit
+
+Final matrix commit: `177a5e5 test: complete hook transaction safety contracts`.
+The complete chain from `8e22b5b` is recorded in `task-8-report.md`.
 
 ## Attended UAT only
 
-The remaining work is attended real-vendor and signed/notarized-app UAT. No
-code or automated-test gap remains in the Task 8 scope.
+No automated or source gap remains in Task 8. Still attended: a signed/
+notarized app pass against real Claude, Codex, Cursor, OpenCode, and Copilot
+installations. No live vendor configuration was touched.
 
 DONE
