@@ -17,9 +17,21 @@ public enum AtomicFile {
     public enum Permissions { case preserveExisting(defaultMode: mode_t), exact(mode_t) }
     public struct RaceHooks {
         public var beforeQuarantine: (() throws -> Void)?
+        public var afterQuarantineMoveBeforeValidation: ((String) throws -> Void)?
         public var afterQuarantineValidationBeforePublish: (() throws -> Void)?
         public var beforeAbsentPublish: (() throws -> Void)?
-        public init(beforeQuarantine: (() throws -> Void)? = nil, afterQuarantineValidationBeforePublish: (() throws -> Void)? = nil, beforeAbsentPublish: (() throws -> Void)? = nil) { self.beforeQuarantine = beforeQuarantine; self.afterQuarantineValidationBeforePublish = afterQuarantineValidationBeforePublish; self.beforeAbsentPublish = beforeAbsentPublish }
+        public var beforePublish: ((String) throws -> Void)?
+        public var beforeQuarantineCleanup: ((String) throws -> Void)?
+        public var beforeTempCleanup: ((String) throws -> Void)?
+        public init(beforeQuarantine: (() throws -> Void)? = nil, afterQuarantineMoveBeforeValidation: ((String) throws -> Void)? = nil, afterQuarantineValidationBeforePublish: (() throws -> Void)? = nil, beforeAbsentPublish: (() throws -> Void)? = nil, beforePublish: ((String) throws -> Void)? = nil, beforeQuarantineCleanup: ((String) throws -> Void)? = nil, beforeTempCleanup: ((String) throws -> Void)? = nil) {
+            self.beforeQuarantine = beforeQuarantine
+            self.afterQuarantineMoveBeforeValidation = afterQuarantineMoveBeforeValidation
+            self.afterQuarantineValidationBeforePublish = afterQuarantineValidationBeforePublish
+            self.beforeAbsentPublish = beforeAbsentPublish
+            self.beforePublish = beforePublish
+            self.beforeQuarantineCleanup = beforeQuarantineCleanup
+            self.beforeTempCleanup = beforeTempCleanup
+        }
     }
 
     /// Descriptor-native publication for an anchored target.  The retained
@@ -31,12 +43,25 @@ public enum AtomicFile {
         let tempFD = temp.withCString { openat(parent.rawValue, $0, O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, mode) }
         guard tempFD >= 0 else { throw ConcurrentModification(path: captured.snapshot.path) }
         defer { close(tempFD) }
+        var temporaryInfo = stat()
+        guard fstat(tempFD, &temporaryInfo) == 0, (temporaryInfo.st_mode & S_IFMT) == S_IFREG else { throw ConcurrentModification(path: captured.snapshot.path) }
         guard fchmod(tempFD, mode) == 0 else { throw ConcurrentModification(path: captured.snapshot.path) }
         try data.withUnsafeBytes { raw in var offset = 0; while offset < raw.count { let n = Darwin.write(tempFD, raw.baseAddress!.advanced(by: offset), raw.count - offset); guard n > 0 else { throw ConcurrentModification(path: captured.snapshot.path) }; offset += n } }
         guard fsync(tempFD) == 0 else { throw ConcurrentModification(path: captured.snapshot.path) }
-        func cleanup() { temp.withCString { _ = unlinkat(parent.rawValue, $0, 0) } }
+        func stillNames(_ fileName: String, _ expected: stat) -> Bool {
+            var current = stat()
+            return fileName.withCString { fstatat(parent.rawValue, $0, &current, AT_SYMLINK_NOFOLLOW) == 0 &&
+                current.st_dev == expected.st_dev && current.st_ino == expected.st_ino && (current.st_mode & S_IFMT) == S_IFREG }
+        }
+        func cleanup() {
+            try? hooks.beforeTempCleanup?(temp)
+            guard stillNames(temp, temporaryInfo) else { return }
+            temp.withCString { _ = unlinkat(parent.rawValue, $0, 0) }
+        }
         if !captured.snapshot.exists {
             try hooks.beforeAbsentPublish?()
+            try hooks.beforePublish?(temp)
+            guard stillNames(temp, temporaryInfo) else { cleanup(); throw ConcurrentModification(path: "\(captured.snapshot.path) (foreign temporary preserved)") }
             let result = temp.withCString { from in name.withCString { to in renameatx_np(parent.rawValue, from, parent.rawValue, to, UInt32(RENAME_EXCL)) } }
             guard result == 0 else { cleanup(); throw ConcurrentModification(path: captured.snapshot.path) }
             return try captured.target.capture()
@@ -45,13 +70,18 @@ public enum AtomicFile {
         var info = stat(); guard name.withCString({ fstatat(parent.rawValue, $0, &info, AT_SYMLINK_NOFOLLOW) }) == 0, UInt64(info.st_ino) == captured.snapshot.inode else { cleanup(); throw ConcurrentModification(path: captured.snapshot.path) }
         let quarantine = ".\(name).\(UUID().uuidString).quarantine"
         guard name.withCString({ from in quarantine.withCString { to in renameatx_np(parent.rawValue, from, parent.rawValue, to, UInt32(RENAME_EXCL)) } }) == 0 else { cleanup(); throw ConcurrentModification(path: captured.snapshot.path) }
+        try hooks.afterQuarantineMoveBeforeValidation?(quarantine)
         let quarantined = try CapturedExactFile.captureFromParent(target: captured.target, parent: parent, name: quarantine, displayPath: captured.snapshot.path)
         guard quarantined.capture == captured.capture else { cleanup(); throw ConcurrentModification(path: "\(captured.snapshot.path) (quarantine recovery preserved)") }
         try hooks.afterQuarantineValidationBeforePublish?()
+        try hooks.beforePublish?(temp)
+        guard stillNames(temp, temporaryInfo) else { cleanup(); throw ConcurrentModification(path: "\(captured.snapshot.path) (foreign temporary preserved)") }
         let published = temp.withCString { from in name.withCString { to in renameatx_np(parent.rawValue, from, parent.rawValue, to, UInt32(RENAME_EXCL)) } }
         guard published == 0 else { cleanup(); throw ConcurrentModification(path: "\(captured.snapshot.path) (recovery preserved)") }
+        try hooks.beforeQuarantineCleanup?(quarantine)
         var quarantineInfo = stat()
         guard quarantine.withCString({ fstatat(parent.rawValue, $0, &quarantineInfo, AT_SYMLINK_NOFOLLOW) }) == 0,
+              Int64(quarantineInfo.st_dev) == quarantined.snapshot.deviceID,
               UInt64(quarantineInfo.st_ino) == quarantined.snapshot.inode else { throw ConcurrentModification(path: "\(captured.snapshot.path) (quarantine recovery preserved)") }
         guard quarantine.withCString({ unlinkat(parent.rawValue, $0, 0) }) == 0 else { throw ConcurrentModification(path: captured.snapshot.path) }
         return try captured.target.capture()
@@ -62,11 +92,15 @@ public enum AtomicFile {
         try hooks.beforeQuarantine?()
         let quarantine = ".\(name).\(UUID().uuidString).remove-quarantine"
         guard name.withCString({ from in quarantine.withCString { to in renameatx_np(parent.rawValue, from, parent.rawValue, to, UInt32(RENAME_EXCL)) } }) == 0 else { throw ConcurrentModification(path: captured.snapshot.path) }
+        try hooks.afterQuarantineMoveBeforeValidation?(quarantine)
         let observed = try CapturedExactFile.captureFromParent(target: captured.target, parent: parent, name: quarantine, displayPath: captured.snapshot.path)
         guard observed.capture == captured.capture else { throw ConcurrentModification(path: "\(captured.snapshot.path) (quarantine recovery preserved)") }
         try hooks.afterQuarantineValidationBeforePublish?()
+        try hooks.beforeQuarantineCleanup?(quarantine)
         var info = stat()
-        guard quarantine.withCString({ fstatat(parent.rawValue, $0, &info, AT_SYMLINK_NOFOLLOW) }) == 0, UInt64(info.st_ino) == observed.snapshot.inode else { throw ConcurrentModification(path: "\(captured.snapshot.path) (quarantine recovery preserved)") }
+        guard quarantine.withCString({ fstatat(parent.rawValue, $0, &info, AT_SYMLINK_NOFOLLOW) }) == 0,
+              Int64(info.st_dev) == observed.snapshot.deviceID,
+              UInt64(info.st_ino) == observed.snapshot.inode else { throw ConcurrentModification(path: "\(captured.snapshot.path) (quarantine recovery preserved)") }
         guard quarantine.withCString({ unlinkat(parent.rawValue, $0, 0) }) == 0 else { throw ConcurrentModification(path: captured.snapshot.path) }
     }
     /// The modification date of `url`, or `nil` if it does not exist (or any
