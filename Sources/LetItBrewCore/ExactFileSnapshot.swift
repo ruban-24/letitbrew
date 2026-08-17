@@ -2,6 +2,24 @@ import CryptoKit
 import Darwin
 import Foundation
 
+/// Reads one already-open regular descriptor without silently accepting an
+/// interrupted syscall or a short read. Callers pair it with pre/post `fstat`
+/// evidence so the bytes, identity, and metadata are one coherent capture.
+func readExactFileBytes(from fd: Int32, expectedSize: off_t, path: String) throws -> Data {
+    guard expectedSize >= 0 else { throw ExactFileSnapshotError.changed(path) }
+    var bytes = Data()
+    var buffer = [UInt8](repeating: 0, count: 8192)
+    while true {
+        let count = Darwin.read(fd, &buffer, buffer.count)
+        if count < 0 && errno == EINTR { continue }
+        guard count >= 0 else { throw ExactFileSnapshotError.unreadable(path) }
+        if count == 0 { break }
+        bytes.append(buffer, count: Int(count))
+    }
+    guard bytes.count == Int(expectedSize) else { throw ExactFileSnapshotError.changed(path) }
+    return bytes
+}
+
 /// Immutable evidence for one exact filesystem name.  This is intentionally
 /// stronger than a modification date: a same-size edit with a restored mtime,
 /// or an inode replacement containing identical bytes, is still refused.
@@ -61,8 +79,11 @@ public struct ExactFileSnapshot: Codable, Equatable, Sendable {
         defer { close(fd) }
         var info = stat()
         guard fstat(fd, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG else { throw ExactFileSnapshotError.notRegular(path) }
-        var bytes = Data(); var buffer = [UInt8](repeating: 0, count: 8192)
-        while true { let n = read(fd, &buffer, buffer.count); if n < 0 { throw ExactFileSnapshotError.unreadable(path) }; if n == 0 { break }; bytes.append(buffer, count: Int(n)) }
+        let bytes = try readExactFileBytes(from: fd, expectedSize: info.st_size, path: path)
+        var after = stat()
+        guard fstat(fd, &after) == 0, info.st_dev == after.st_dev, info.st_ino == after.st_ino,
+              info.st_size == after.st_size, info.st_mtimespec.tv_sec == after.st_mtimespec.tv_sec,
+              info.st_mtimespec.tv_nsec == after.st_mtimespec.tv_nsec else { throw ExactFileSnapshotError.changed(path) }
         return try ExactFileSnapshot(path: path, exists: true, deviceID: Int64(info.st_dev), inode: UInt64(info.st_ino), byteCount: Int64(info.st_size), modificationSeconds: Int64(info.st_mtimespec.tv_sec), modificationNanoseconds: Int64(info.st_mtimespec.tv_nsec), sha256: SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined())
     }
 
@@ -92,8 +113,7 @@ public struct ExactFileCapture: Equatable, Sendable {
         defer { close(fd) }
         var before = stat()
         guard fstat(fd, &before) == 0, (before.st_mode & S_IFMT) == S_IFREG else { throw ExactFileSnapshotError.notRegular(path) }
-        var bytes = Data(); var buffer = [UInt8](repeating: 0, count: 8192)
-        while true { let n = read(fd, &buffer, buffer.count); if n < 0 { throw ExactFileSnapshotError.unreadable(path) }; if n == 0 { break }; bytes.append(buffer, count: Int(n)) }
+        let bytes = try readExactFileBytes(from: fd, expectedSize: before.st_size, path: path)
         var after = stat()
         guard fstat(fd, &after) == 0, before.st_dev == after.st_dev, before.st_ino == after.st_ino,
               before.st_size == after.st_size, before.st_mtimespec.tv_sec == after.st_mtimespec.tv_sec,

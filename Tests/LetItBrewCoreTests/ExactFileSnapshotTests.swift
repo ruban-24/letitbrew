@@ -24,3 +24,39 @@ private func snapshotFile(_ data: String) throws -> URL {
     #expect(throws: ExactFileSnapshotError.self) { try ExactFileSnapshot.capture(at: link) }
     try snapshot.verify()
 }
+
+@Test func snapshotRejectsDisappearanceAndSameSizeEditWithRestoredMTime() throws {
+    let missing = try snapshotFile("one")
+    let missingSnapshot = try ExactFileSnapshot.capture(at: missing)
+    try FileManager.default.removeItem(at: missing)
+    #expect(throws: ExactFileSnapshotError.self) { try missingSnapshot.verify() }
+
+    let edited = try snapshotFile("one")
+    defer { try? FileManager.default.removeItem(at: edited) }
+    let original = try ExactFileSnapshot.capture(at: edited)
+    var prior = stat(); guard lstat(edited.path, &prior) == 0 else { throw POSIXError(.EIO) }
+    let fd = open(edited.path, O_WRONLY | O_NOFOLLOW | O_CLOEXEC); guard fd >= 0 else { throw POSIXError(.EIO) }
+    defer { close(fd) }
+    _ = "two".withCString { Darwin.write(fd, $0, 3) }
+    guard fsync(fd) == 0 else { throw POSIXError(.EIO) }
+    var timestamps = [prior.st_atimespec, prior.st_mtimespec]
+    guard utimensat(AT_FDCWD, edited.path, &timestamps, 0) == 0 else { throw POSIXError(.EIO) }
+    #expect(throws: ExactFileSnapshotError.self) { try original.verify() }
+}
+
+@Test func snapshotVerificationRejectsEveryMetadataField() throws {
+    let url = try snapshotFile("one"); defer { try? FileManager.default.removeItem(at: url) }
+    let snapshot = try ExactFileSnapshot.capture(at: url)
+    typealias Change = (ExactFileSnapshot) throws -> ExactFileSnapshot
+    let changes: [Change] = [
+        { try ExactFileSnapshot(path: $0.path, exists: true, deviceID: $0.deviceID! + 1, inode: $0.inode, byteCount: $0.byteCount, modificationSeconds: $0.modificationSeconds, modificationNanoseconds: $0.modificationNanoseconds, sha256: $0.sha256) },
+        { try ExactFileSnapshot(path: $0.path, exists: true, deviceID: $0.deviceID, inode: $0.inode! + 1, byteCount: $0.byteCount, modificationSeconds: $0.modificationSeconds, modificationNanoseconds: $0.modificationNanoseconds, sha256: $0.sha256) },
+        { try ExactFileSnapshot(path: $0.path, exists: true, deviceID: $0.deviceID, inode: $0.inode, byteCount: $0.byteCount! + 1, modificationSeconds: $0.modificationSeconds, modificationNanoseconds: $0.modificationNanoseconds, sha256: $0.sha256) },
+        { try ExactFileSnapshot(path: $0.path, exists: true, deviceID: $0.deviceID, inode: $0.inode, byteCount: $0.byteCount, modificationSeconds: $0.modificationSeconds! + 1, modificationNanoseconds: $0.modificationNanoseconds, sha256: $0.sha256) },
+        { try ExactFileSnapshot(path: $0.path, exists: true, deviceID: $0.deviceID, inode: $0.inode, byteCount: $0.byteCount, modificationSeconds: $0.modificationSeconds, modificationNanoseconds: ($0.modificationNanoseconds! + 1) % 1_000_000_000, sha256: $0.sha256) },
+        { try ExactFileSnapshot(path: $0.path, exists: true, deviceID: $0.deviceID, inode: $0.inode, byteCount: $0.byteCount, modificationSeconds: $0.modificationSeconds, modificationNanoseconds: $0.modificationNanoseconds, sha256: String(repeating: "0", count: 64)) }
+    ]
+    for change in changes {
+        #expect(throws: ExactFileSnapshotError.self) { try change(snapshot).verify() }
+    }
+}

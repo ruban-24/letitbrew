@@ -23,7 +23,17 @@ public enum AtomicFile {
         public var beforePublish: ((String) throws -> Void)?
         public var beforeQuarantineCleanup: ((String) throws -> Void)?
         public var beforeTempCleanup: ((String) throws -> Void)?
-        public init(beforeQuarantine: (() throws -> Void)? = nil, afterQuarantineMoveBeforeValidation: ((String) throws -> Void)? = nil, afterQuarantineValidationBeforePublish: (() throws -> Void)? = nil, beforeAbsentPublish: (() throws -> Void)? = nil, beforePublish: ((String) throws -> Void)? = nil, beforeQuarantineCleanup: ((String) throws -> Void)? = nil, beforeTempCleanup: ((String) throws -> Void)? = nil) {
+        /// Runs after the exclusive rename but before the final active-name
+        /// identity proof.  It makes the otherwise tiny rename-to-proof race
+        /// deterministic without weakening the production protocol.
+        public var afterPublish: (() throws -> Void)?
+        /// Test-only deterministic name sources. Production keeps UUID names;
+        /// retries make a hostile/colliding directory entry harmless.
+        public var temporaryName: ((Int) -> String)?
+        public var quarantineName: ((Int) -> String)?
+        /// A narrow failure seam for the required directory durability sync.
+        public var beforeParentSync: (() throws -> Void)?
+        public init(beforeQuarantine: (() throws -> Void)? = nil, afterQuarantineMoveBeforeValidation: ((String) throws -> Void)? = nil, afterQuarantineValidationBeforePublish: (() throws -> Void)? = nil, beforeAbsentPublish: (() throws -> Void)? = nil, beforePublish: ((String) throws -> Void)? = nil, beforeQuarantineCleanup: ((String) throws -> Void)? = nil, beforeTempCleanup: ((String) throws -> Void)? = nil, afterPublish: (() throws -> Void)? = nil, temporaryName: ((Int) -> String)? = nil, quarantineName: ((Int) -> String)? = nil, beforeParentSync: (() throws -> Void)? = nil) {
             self.beforeQuarantine = beforeQuarantine
             self.afterQuarantineMoveBeforeValidation = afterQuarantineMoveBeforeValidation
             self.afterQuarantineValidationBeforePublish = afterQuarantineValidationBeforePublish
@@ -31,6 +41,10 @@ public enum AtomicFile {
             self.beforePublish = beforePublish
             self.beforeQuarantineCleanup = beforeQuarantineCleanup
             self.beforeTempCleanup = beforeTempCleanup
+            self.afterPublish = afterPublish
+            self.temporaryName = temporaryName
+            self.quarantineName = quarantineName
+            self.beforeParentSync = beforeParentSync
         }
     }
 
@@ -53,20 +67,66 @@ public enum AtomicFile {
             case .preserveExisting(let defaultMode): return captured.permissions ?? defaultMode
             }
         }()
-        let temp = ".\(name).\(UUID().uuidString).exact"
-        let tempFD = temp.withCString { openat(parent.descriptor.rawValue, $0, O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, mode) }
-        guard tempFD >= 0 else { throw ConcurrentModification(path: captured.snapshot.path) }
-        defer { close(tempFD) }
-        var temporaryInfo = stat()
-        guard fstat(tempFD, &temporaryInfo) == 0, (temporaryInfo.st_mode & S_IFMT) == S_IFREG else { throw ConcurrentModification(path: captured.snapshot.path) }
-        guard fchmod(tempFD, mode) == 0 else { throw ConcurrentModification(path: captured.snapshot.path) }
-        try data.withUnsafeBytes { raw in var offset = 0; while offset < raw.count { let n = Darwin.write(tempFD, raw.baseAddress!.advanced(by: offset), raw.count - offset); guard n > 0 else { throw ConcurrentModification(path: captured.snapshot.path) }; offset += n } }
-        guard fsync(tempFD) == 0 else { throw ConcurrentModification(path: captured.snapshot.path) }
+        func namedPath(_ entry: String) -> String {
+            URL(fileURLWithPath: captured.snapshot.path).deletingLastPathComponent().appendingPathComponent(entry).path
+        }
         func stillNames(_ fileName: String, _ expected: stat) -> Bool {
             var current = stat()
             return fileName.withCString { fstatat(parent.descriptor.rawValue, $0, &current, AT_SYMLINK_NOFOLLOW) == 0 &&
                 current.st_dev == expected.st_dev && current.st_ino == expected.st_ino && (current.st_mode & S_IFMT) == S_IFREG }
         }
+        func sameSnapshotIdentity(_ fileName: String, _ snapshot: ExactFileSnapshot) -> Bool {
+            guard snapshot.exists, let device = snapshot.deviceID, let inode = snapshot.inode else { return false }
+            var current = stat()
+            return fileName.withCString { fstatat(parent.descriptor.rawValue, $0, &current, AT_SYMLINK_NOFOLLOW) == 0 &&
+                Int64(current.st_dev) == device && UInt64(current.st_ino) == inode && (current.st_mode & S_IFMT) == S_IFREG }
+        }
+        func synchronizeParent() throws {
+            try hooks.beforeParentSync?()
+            guard fsync(parent.descriptor.rawValue) == 0 else { throw ConcurrentModification(path: captured.snapshot.path) }
+        }
+        func makeTemp() throws -> (String, Int32, stat) {
+            for attempt in 0..<16 {
+                let candidate = hooks.temporaryName?(attempt) ?? ".\(name).\(UUID().uuidString).exact"
+                let opened = candidate.withCString { openat(parent.descriptor.rawValue, $0, O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, mode) }
+                if opened < 0 && errno == EEXIST { continue }
+                guard opened >= 0 else { throw ConcurrentModification(path: captured.snapshot.path) }
+                var info = stat()
+                guard fstat(opened, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG else { close(opened); throw ConcurrentModification(path: captured.snapshot.path) }
+                return (candidate, opened, info)
+            }
+            throw ConcurrentModification(path: captured.snapshot.path)
+        }
+        func restore(_ quarantine: String, opened: CapturedExactFile) -> ConcurrentModification {
+            guard sameSnapshotIdentity(quarantine, opened.snapshot) else {
+                return ConcurrentModification(path: "\(captured.snapshot.path) (recovery preserved at \(namedPath(quarantine)))")
+            }
+            let restored = quarantine.withCString { from in
+                name.withCString { to in renameatx_np(parent.descriptor.rawValue, from, parent.descriptor.rawValue, to, UInt32(RENAME_EXCL)) }
+            }
+            guard restored == 0 else {
+                return ConcurrentModification(path: "\(captured.snapshot.path) (recovery preserved at \(namedPath(quarantine)))")
+            }
+            // The caller still receives the conflict, but the configured name
+            // is no longer missing after a detected hand edit.
+            _ = fsync(parent.descriptor.rawValue)
+            return ConcurrentModification(path: captured.snapshot.path)
+        }
+        let (temp, tempFD, initialTempInfo) = try makeTemp()
+        defer { close(tempFD) }
+        guard fchmod(tempFD, mode) == 0 else { throw ConcurrentModification(path: captured.snapshot.path) }
+        try data.withUnsafeBytes { raw in
+            var offset = 0
+            while offset < raw.count {
+                let written = Darwin.write(tempFD, raw.baseAddress!.advanced(by: offset), raw.count - offset)
+                if written < 0 && errno == EINTR { continue }
+                guard written > 0 else { throw ConcurrentModification(path: captured.snapshot.path) }
+                offset += written
+            }
+        }
+        guard fsync(tempFD) == 0 else { throw ConcurrentModification(path: captured.snapshot.path) }
+        var temporaryInfo = stat()
+        guard fstat(tempFD, &temporaryInfo) == 0, temporaryInfo.st_dev == initialTempInfo.st_dev, temporaryInfo.st_ino == initialTempInfo.st_ino else { throw ConcurrentModification(path: captured.snapshot.path) }
         func cleanup() {
             try? hooks.beforeTempCleanup?(temp)
             guard stillNames(temp, temporaryInfo) else { return }
@@ -78,37 +138,77 @@ public enum AtomicFile {
             guard stillNames(temp, temporaryInfo) else { cleanup(); throw ConcurrentModification(path: "\(captured.snapshot.path) (foreign temporary preserved)") }
             let result = temp.withCString { from in name.withCString { to in renameatx_np(parent.descriptor.rawValue, from, parent.descriptor.rawValue, to, UInt32(RENAME_EXCL)) } }
             guard result == 0 else { cleanup(); throw ConcurrentModification(path: captured.snapshot.path) }
+            try hooks.afterPublish?()
+            guard stillNames(name, temporaryInfo) else { throw ConcurrentModification(path: "\(captured.snapshot.path) (published name replaced)") }
+            try synchronizeParent()
             return try CapturedExactFile.captureFromOpenFile(target: captured.target, parent: parent, name: name, displayPath: captured.snapshot.path, opened: tempFD)
         }
         try hooks.beforeQuarantine?()
-        var info = stat(); guard name.withCString({ fstatat(parent.descriptor.rawValue, $0, &info, AT_SYMLINK_NOFOLLOW) }) == 0, UInt64(info.st_ino) == captured.snapshot.inode else { cleanup(); throw ConcurrentModification(path: captured.snapshot.path) }
-        let quarantine = ".\(name).\(UUID().uuidString).quarantine"
-        guard name.withCString({ from in quarantine.withCString { to in renameatx_np(parent.descriptor.rawValue, from, parent.descriptor.rawValue, to, UInt32(RENAME_EXCL)) } }) == 0 else { cleanup(); throw ConcurrentModification(path: captured.snapshot.path) }
+        guard sameSnapshotIdentity(name, captured.snapshot) else { cleanup(); throw ConcurrentModification(path: captured.snapshot.path) }
+        var quarantine: String?
+        for attempt in 0..<16 {
+            let candidate = hooks.quarantineName?(attempt) ?? ".\(name).\(UUID().uuidString).quarantine"
+            let moved = name.withCString { from in candidate.withCString { to in renameatx_np(parent.descriptor.rawValue, from, parent.descriptor.rawValue, to, UInt32(RENAME_EXCL)) } }
+            if moved == 0 { quarantine = candidate; break }
+            if errno != EEXIST { break }
+        }
+        guard let quarantine else { cleanup(); throw ConcurrentModification(path: captured.snapshot.path) }
         try hooks.afterQuarantineMoveBeforeValidation?(quarantine)
         let quarantined = try CapturedExactFile.captureFromParent(target: captured.target, parent: parent, name: quarantine, displayPath: captured.snapshot.path)
-        guard quarantined.capture == captured.capture else { cleanup(); throw ConcurrentModification(path: "\(captured.snapshot.path) (quarantine recovery preserved)") }
+        guard quarantined.capture == captured.capture else { cleanup(); throw restore(quarantine, opened: quarantined) }
         try hooks.afterQuarantineValidationBeforePublish?()
         try hooks.beforePublish?(temp)
         guard stillNames(temp, temporaryInfo) else { cleanup(); throw ConcurrentModification(path: "\(captured.snapshot.path) (foreign temporary preserved)") }
         let published = temp.withCString { from in name.withCString { to in renameatx_np(parent.descriptor.rawValue, from, parent.descriptor.rawValue, to, UInt32(RENAME_EXCL)) } }
         guard published == 0 else { cleanup(); throw ConcurrentModification(path: "\(captured.snapshot.path) (recovery preserved)") }
+        try hooks.afterPublish?()
+        guard stillNames(name, temporaryInfo) else { throw ConcurrentModification(path: "\(captured.snapshot.path) (published name replaced; recovery preserved at \(namedPath(quarantine)))") }
+        try synchronizeParent()
         try hooks.beforeQuarantineCleanup?(quarantine)
         var quarantineInfo = stat()
         guard quarantine.withCString({ fstatat(parent.descriptor.rawValue, $0, &quarantineInfo, AT_SYMLINK_NOFOLLOW) }) == 0,
               Int64(quarantineInfo.st_dev) == quarantined.snapshot.deviceID,
               UInt64(quarantineInfo.st_ino) == quarantined.snapshot.inode else { throw ConcurrentModification(path: "\(captured.snapshot.path) (quarantine recovery preserved)") }
         guard quarantine.withCString({ unlinkat(parent.descriptor.rawValue, $0, 0) }) == 0 else { throw ConcurrentModification(path: captured.snapshot.path) }
+        try synchronizeParent()
         return try CapturedExactFile.captureFromOpenFile(target: captured.target, parent: parent, name: name, displayPath: captured.snapshot.path, opened: tempFD)
     }
 
     public static func remove(_ captured: CapturedExactFile, expectedData: Data, hooks: RaceHooks = RaceHooks()) throws {
         guard let parent = captured.parent, let name = captured.name, captured.data == expectedData, try captured.target.revalidates(parent) else { throw ConcurrentModification(path: captured.snapshot.path) }
+        func namedPath(_ entry: String) -> String {
+            URL(fileURLWithPath: captured.snapshot.path).deletingLastPathComponent().appendingPathComponent(entry).path
+        }
+        func matches(_ entry: String, _ snapshot: ExactFileSnapshot) -> Bool {
+            guard snapshot.exists, let device = snapshot.deviceID, let inode = snapshot.inode else { return false }
+            var info = stat()
+            return entry.withCString { fstatat(parent.descriptor.rawValue, $0, &info, AT_SYMLINK_NOFOLLOW) == 0 &&
+                Int64(info.st_dev) == device && UInt64(info.st_ino) == inode && (info.st_mode & S_IFMT) == S_IFREG }
+        }
+        func restore(_ quarantine: String, observed: CapturedExactFile) -> ConcurrentModification {
+            guard matches(quarantine, observed.snapshot) else {
+                return ConcurrentModification(path: "\(captured.snapshot.path) (recovery preserved at \(namedPath(quarantine)))")
+            }
+            let restored = quarantine.withCString { from in name.withCString { to in renameatx_np(parent.descriptor.rawValue, from, parent.descriptor.rawValue, to, UInt32(RENAME_EXCL)) } }
+            guard restored == 0 else {
+                return ConcurrentModification(path: "\(captured.snapshot.path) (recovery preserved at \(namedPath(quarantine)))")
+            }
+            _ = fsync(parent.descriptor.rawValue)
+            return ConcurrentModification(path: captured.snapshot.path)
+        }
         try hooks.beforeQuarantine?()
-        let quarantine = ".\(name).\(UUID().uuidString).remove-quarantine"
-        guard name.withCString({ from in quarantine.withCString { to in renameatx_np(parent.descriptor.rawValue, from, parent.descriptor.rawValue, to, UInt32(RENAME_EXCL)) } }) == 0 else { throw ConcurrentModification(path: captured.snapshot.path) }
+        guard matches(name, captured.snapshot) else { throw ConcurrentModification(path: captured.snapshot.path) }
+        var quarantine: String?
+        for attempt in 0..<16 {
+            let candidate = hooks.quarantineName?(attempt) ?? ".\(name).\(UUID().uuidString).remove-quarantine"
+            let moved = name.withCString { from in candidate.withCString { to in renameatx_np(parent.descriptor.rawValue, from, parent.descriptor.rawValue, to, UInt32(RENAME_EXCL)) } }
+            if moved == 0 { quarantine = candidate; break }
+            if errno != EEXIST { break }
+        }
+        guard let quarantine else { throw ConcurrentModification(path: captured.snapshot.path) }
         try hooks.afterQuarantineMoveBeforeValidation?(quarantine)
         let observed = try CapturedExactFile.captureFromParent(target: captured.target, parent: parent, name: quarantine, displayPath: captured.snapshot.path)
-        guard observed.capture == captured.capture else { throw ConcurrentModification(path: "\(captured.snapshot.path) (quarantine recovery preserved)") }
+        guard observed.capture == captured.capture, observed.data == expectedData else { throw restore(quarantine, observed: observed) }
         try hooks.afterQuarantineValidationBeforePublish?()
         try hooks.beforeQuarantineCleanup?(quarantine)
         var info = stat()
@@ -116,6 +216,8 @@ public enum AtomicFile {
               Int64(info.st_dev) == observed.snapshot.deviceID,
               UInt64(info.st_ino) == observed.snapshot.inode else { throw ConcurrentModification(path: "\(captured.snapshot.path) (quarantine recovery preserved)") }
         guard quarantine.withCString({ unlinkat(parent.descriptor.rawValue, $0, 0) }) == 0 else { throw ConcurrentModification(path: captured.snapshot.path) }
+        try hooks.beforeParentSync?()
+        guard fsync(parent.descriptor.rawValue) == 0 else { throw ConcurrentModification(path: captured.snapshot.path) }
     }
     /// The modification date of `url`, or `nil` if it does not exist (or any
     /// other stat failure — folded into `nil` the same way a missing file

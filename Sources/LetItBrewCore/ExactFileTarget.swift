@@ -186,8 +186,7 @@ public struct CapturedExactFile {
     static func captureFromOpenFile(target: ExactFileTarget, parent: BoundParent, name: String, displayPath: String, opened: Int32) throws -> CapturedExactFile {
         guard lseek(opened, 0, SEEK_SET) >= 0 else { throw ExactFileSnapshotError.unreadable(displayPath) }
         var before = stat(); guard fstat(opened, &before) == 0, (before.st_mode & S_IFMT) == S_IFREG else { throw ExactFileSnapshotError.notRegular(displayPath) }
-        var bytes = Data(); var buffer = [UInt8](repeating: 0, count: 8192)
-        while true { let count = read(opened, &buffer, buffer.count); if count < 0 { throw ExactFileSnapshotError.unreadable(displayPath) }; if count == 0 { break }; bytes.append(buffer, count: Int(count)) }
+        let bytes = try readExactFileBytes(from: opened, expectedSize: before.st_size, path: displayPath)
         var after = stat(); guard fstat(opened, &after) == 0, before.st_dev == after.st_dev, before.st_ino == after.st_ino, before.st_size == after.st_size, before.st_mtimespec.tv_sec == after.st_mtimespec.tv_sec, before.st_mtimespec.tv_nsec == after.st_mtimespec.tv_nsec else { throw ExactFileSnapshotError.changed(displayPath) }
         let digest = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
         let snapshot = try ExactFileSnapshot(path: displayPath, exists: true, deviceID: Int64(before.st_dev), inode: UInt64(before.st_ino), byteCount: Int64(before.st_size), modificationSeconds: Int64(before.st_mtimespec.tv_sec), modificationNanoseconds: Int64(before.st_mtimespec.tv_nsec), sha256: digest)

@@ -32,6 +32,12 @@ private func recoveryContents(in root: URL, marker: String) throws -> String? {
     return try String(contentsOf: root.appendingPathComponent(name), encoding: .utf8)
 }
 
+private func recoveryName(in root: URL, marker: String) throws -> URL {
+    let names = try FileManager.default.contentsOfDirectory(atPath: root.path)
+    guard let name = names.first(where: { $0.contains(marker) }) else { throw POSIXError(.ENOENT) }
+    return root.appendingPathComponent(name)
+}
+
 private func replaceNamedEntry(in root: URL, name: String, with contents: String) throws {
     let entry = root.appendingPathComponent(name)
     try FileManager.default.removeItem(at: entry)
@@ -46,6 +52,8 @@ private func changedExpectedCapture(_ captured: CapturedExactFile, snapshot: Exa
         name: captured.name,
         permissions: captured.permissions)
 }
+
+private enum DescriptorTestFailure: Error { case parentSync }
 
 @Test func anchorRejectsMissingNonDirectoryAndSymlinkRoots() throws {
     let root = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: root) }
@@ -95,6 +103,57 @@ private func changedExpectedCapture(_ captured: CapturedExactFile, snapshot: Exa
     _ = try AtomicFile.write(Data("new".utf8), replacing: freshCapture)
     var freshInfo = stat(); guard lstat(fresh.path, &freshInfo) == 0 else { throw POSIXError(.EIO) }
     #expect(freshInfo.st_mode & 0o7777 == 0o600)
+}
+
+@Test func descriptorWriteRetriesTemporaryAndQuarantineCollisionsWithoutTouchingForeignEntries() throws {
+    let root = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let file = root.appendingPathComponent("target"); try Data("original".utf8).write(to: file)
+    let tempCollision = ".target.temp-collision"; let quarantineCollision = ".target.quarantine-collision"
+    try Data("foreign temp".utf8).write(to: root.appendingPathComponent(tempCollision))
+    try Data("foreign quarantine".utf8).write(to: root.appendingPathComponent(quarantineCollision))
+    let observed = try DirectoryAnchor.openNoFollow(at: root).target(atAbsoluteURL: file).capture()
+    _ = try AtomicFile.write(Data("ours".utf8), replacing: observed, hooks: .init(
+        temporaryName: { attempt in attempt == 0 ? tempCollision : ".target.temp-success" },
+        quarantineName: { attempt in attempt == 0 ? quarantineCollision : ".target.quarantine-success" }))
+    #expect(try String(contentsOf: file, encoding: .utf8) == "ours")
+    #expect(try String(contentsOf: root.appendingPathComponent(tempCollision), encoding: .utf8) == "foreign temp")
+    #expect(try String(contentsOf: root.appendingPathComponent(quarantineCollision), encoding: .utf8) == "foreign quarantine")
+}
+
+@Test func descriptorRemoveRetriesQuarantineCollisionWithoutTouchingForeignEntry() throws {
+    let root = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let file = root.appendingPathComponent("target"); try Data("owned".utf8).write(to: file)
+    let collision = ".target.remove-collision"; try Data("foreign".utf8).write(to: root.appendingPathComponent(collision))
+    let observed = try DirectoryAnchor.openNoFollow(at: root).target(atAbsoluteURL: file).capture()
+    try AtomicFile.remove(observed, expectedData: Data("owned".utf8), hooks: .init(quarantineName: { attempt in
+        attempt == 0 ? collision : ".target.remove-success"
+    }))
+    #expect(!FileManager.default.fileExists(atPath: file.path))
+    #expect(try String(contentsOf: root.appendingPathComponent(collision), encoding: .utf8) == "foreign")
+}
+
+@Test func descriptorWriteRefusesPostPublishReplacementAndRetainsQuarantineRecovery() throws {
+    let root = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let file = root.appendingPathComponent("target"); try Data("original".utf8).write(to: file)
+    let observed = try DirectoryAnchor.openNoFollow(at: root).target(atAbsoluteURL: file).capture()
+    #expect(throws: ConcurrentModification.self) {
+        try AtomicFile.write(Data("ours".utf8), replacing: observed, hooks: .init(afterPublish: {
+            try replaceNamedEntry(in: root, name: "target", with: "foreign replacement")
+        }))
+    }
+    #expect(try String(contentsOf: file, encoding: .utf8) == "foreign replacement")
+    #expect(try recoveryContents(in: root, marker: "quarantine") == "original")
+}
+
+@Test func descriptorWriteSurfacesParentSyncFailureWithoutDeletingRecovery() throws {
+    let root = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let file = root.appendingPathComponent("target"); try Data("original".utf8).write(to: file)
+    let observed = try DirectoryAnchor.openNoFollow(at: root).target(atAbsoluteURL: file).capture()
+    #expect(throws: DescriptorTestFailure.self) {
+        try AtomicFile.write(Data("ours".utf8), replacing: observed, hooks: .init(beforeParentSync: { throw DescriptorTestFailure.parentSync }))
+    }
+    #expect(try String(contentsOf: file, encoding: .utf8) == "ours")
+    #expect(try recoveryContents(in: root, marker: "quarantine") == "original")
 }
 
 @Test func anchoredAbsentCaptureCreatesMissingParentsOnlyDuringDescriptorPublication() throws {
@@ -310,7 +369,8 @@ private func changedExpectedCapture(_ captured: CapturedExactFile, snapshot: Exa
             try Data("foreign".utf8).write(to: file)
         }))
     }
-    #expect(try recoveryContents(in: root, marker: "remove-quarantine") == "foreign")
+    #expect(try String(contentsOf: file, encoding: .utf8) == "foreign")
+    #expect(try recoveryContents(in: root, marker: "remove-quarantine") == nil)
 }
 
 @Test func descriptorRemoveAfterValidationRetainsActiveReplacement() throws {
@@ -333,8 +393,10 @@ private func changedExpectedCapture(_ captured: CapturedExactFile, snapshot: Exa
             try overwriteInPlacePreservingModificationTime(file, with: Data("foreign!".utf8))
         }))
     }
-    #expect(!FileManager.default.fileExists(atPath: file.path))
-    #expect(try recoveryContents(in: root, marker: "quarantine") == "foreign!")
+    // A late mismatch must put the user's edited bytes back under the
+    // configured name, not strand them under an opaque recovery name.
+    #expect(try String(contentsOf: file, encoding: .utf8) == "foreign!")
+    #expect(try recoveryContents(in: root, marker: "quarantine") == nil)
 }
 
 @Test func descriptorRemoveRejectsSameInodeSameSizeRestoredMTimeByBytesAndDigest() throws {
@@ -346,8 +408,52 @@ private func changedExpectedCapture(_ captured: CapturedExactFile, snapshot: Exa
             try overwriteInPlacePreservingModificationTime(file, with: Data("foreign!".utf8))
         }))
     }
-    #expect(!FileManager.default.fileExists(atPath: file.path))
-    #expect(try recoveryContents(in: root, marker: "remove-quarantine") == "foreign!")
+    #expect(try String(contentsOf: file, encoding: .utf8) == "foreign!")
+    #expect(try recoveryContents(in: root, marker: "remove-quarantine") == nil)
+}
+
+@Test func descriptorWriteMismatchPreservesActiveReplacementAndNamesRecovery() throws {
+    let root = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let file = root.appendingPathComponent("target"); try Data("original".utf8).write(to: file)
+    let observed = try DirectoryAnchor.openNoFollow(at: root).target(atAbsoluteURL: file).capture()
+    var errorPath = ""
+    #expect(throws: ConcurrentModification.self) {
+        do {
+            try AtomicFile.write(Data("ours".utf8), replacing: observed, hooks: .init(afterQuarantineMoveBeforeValidation: { _ in
+                try Data("active-replacement".utf8).write(to: file)
+                let quarantine = try recoveryName(in: root, marker: "quarantine")
+                try overwriteInPlacePreservingModificationTime(quarantine, with: Data("edited!!".utf8))
+            }))
+        } catch let error as ConcurrentModification {
+            errorPath = error.path
+            throw error
+        }
+    }
+    #expect(try String(contentsOf: file, encoding: .utf8) == "active-replacement")
+    #expect(try recoveryContents(in: root, marker: "quarantine") == "edited!!")
+    #expect(errorPath.contains("recovery preserved at"))
+}
+
+@Test func descriptorRemoveMismatchPreservesActiveReplacementAndNamesRecovery() throws {
+    let root = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let file = root.appendingPathComponent("target"); try Data("original".utf8).write(to: file)
+    let observed = try DirectoryAnchor.openNoFollow(at: root).target(atAbsoluteURL: file).capture()
+    var errorPath = ""
+    #expect(throws: ConcurrentModification.self) {
+        do {
+            try AtomicFile.remove(observed, expectedData: Data("original".utf8), hooks: .init(afterQuarantineMoveBeforeValidation: { _ in
+                try Data("active-replacement".utf8).write(to: file)
+                let quarantine = try recoveryName(in: root, marker: "remove-quarantine")
+                try overwriteInPlacePreservingModificationTime(quarantine, with: Data("edited!!".utf8))
+            }))
+        } catch let error as ConcurrentModification {
+            errorPath = error.path
+            throw error
+        }
+    }
+    #expect(try String(contentsOf: file, encoding: .utf8) == "active-replacement")
+    #expect(try recoveryContents(in: root, marker: "remove-quarantine") == "edited!!")
+    #expect(errorPath.contains("recovery preserved at"))
 }
 
 @Test func descriptorQuarantineSubstitutionBeforeValidationPreservesBothFiles() throws {
@@ -365,8 +471,8 @@ private func changedExpectedCapture(_ captured: CapturedExactFile, snapshot: Exa
         }))
     }
     #expect(try String(contentsOf: #require(saved), encoding: .utf8) == "original")
-    #expect(try recoveryContents(in: root, marker: "quarantine") == "foreign-quarantine")
-    #expect(!FileManager.default.fileExists(atPath: file.path))
+    #expect(try String(contentsOf: file, encoding: .utf8) == "foreign-quarantine")
+    #expect(try recoveryContents(in: root, marker: "quarantine") == nil)
 }
 
 @Test func descriptorRemoveQuarantineSubstitutionBeforeValidationPreservesBothFiles() throws {
@@ -384,7 +490,8 @@ private func changedExpectedCapture(_ captured: CapturedExactFile, snapshot: Exa
         }))
     }
     #expect(try String(contentsOf: #require(saved), encoding: .utf8) == "original")
-    #expect(try recoveryContents(in: root, marker: "remove-quarantine") == "foreign-quarantine")
+    #expect(try String(contentsOf: file, encoding: .utf8) == "foreign-quarantine")
+    #expect(try recoveryContents(in: root, marker: "remove-quarantine") == nil)
 }
 
 @Test func descriptorQuarantineSubstitutionBeforeCleanupIsNeverUnlinked() throws {
@@ -488,13 +595,15 @@ private func changedExpectedCapture(_ captured: CapturedExactFile, snapshot: Exa
         }))
     }
     #expect(try String(contentsOf: #require(originalRecovery), encoding: .utf8) == "original")
-    #expect(try recoveryContents(in: root, marker: "quarantine") == "original")
+    #expect(try String(contentsOf: file, encoding: .utf8) == "original")
+    #expect(try recoveryContents(in: root, marker: "quarantine") == nil)
 }
 
 @Test func descriptorQuarantineEvidenceRejectsEveryField() throws {
     typealias Change = (CapturedExactFile) throws -> CapturedExactFile
     let changes: [(String, Change)] = [
         ("device", { capture in try changedExpectedCapture(capture, snapshot: ExactFileSnapshot(path: capture.snapshot.path, exists: true, deviceID: capture.snapshot.deviceID! + 1, inode: capture.snapshot.inode, byteCount: capture.snapshot.byteCount, modificationSeconds: capture.snapshot.modificationSeconds, modificationNanoseconds: capture.snapshot.modificationNanoseconds, sha256: capture.snapshot.sha256)) }),
+        ("inode", { capture in try changedExpectedCapture(capture, snapshot: ExactFileSnapshot(path: capture.snapshot.path, exists: true, deviceID: capture.snapshot.deviceID, inode: capture.snapshot.inode! + 1, byteCount: capture.snapshot.byteCount, modificationSeconds: capture.snapshot.modificationSeconds, modificationNanoseconds: capture.snapshot.modificationNanoseconds, sha256: capture.snapshot.sha256)) }),
         ("size", { capture in try changedExpectedCapture(capture, snapshot: ExactFileSnapshot(path: capture.snapshot.path, exists: true, deviceID: capture.snapshot.deviceID, inode: capture.snapshot.inode, byteCount: capture.snapshot.byteCount! + 1, modificationSeconds: capture.snapshot.modificationSeconds, modificationNanoseconds: capture.snapshot.modificationNanoseconds, sha256: capture.snapshot.sha256)) }),
         ("seconds", { capture in try changedExpectedCapture(capture, snapshot: ExactFileSnapshot(path: capture.snapshot.path, exists: true, deviceID: capture.snapshot.deviceID, inode: capture.snapshot.inode, byteCount: capture.snapshot.byteCount, modificationSeconds: capture.snapshot.modificationSeconds! + 1, modificationNanoseconds: capture.snapshot.modificationNanoseconds, sha256: capture.snapshot.sha256)) }),
         ("nanoseconds", { capture in try changedExpectedCapture(capture, snapshot: ExactFileSnapshot(path: capture.snapshot.path, exists: true, deviceID: capture.snapshot.deviceID, inode: capture.snapshot.inode, byteCount: capture.snapshot.byteCount, modificationSeconds: capture.snapshot.modificationSeconds, modificationNanoseconds: (capture.snapshot.modificationNanoseconds! + 1) % 1_000_000_000, sha256: capture.snapshot.sha256)) }),
@@ -507,6 +616,7 @@ private func changedExpectedCapture(_ captured: CapturedExactFile, snapshot: Exa
         let actual = try DirectoryAnchor.openNoFollow(at: root).target(atAbsoluteURL: file).capture()
         let altered = try change(actual)
         #expect(throws: ConcurrentModification.self, "\(field) mismatch") { try AtomicFile.write(Data("ours".utf8), replacing: altered) }
-        #expect(try recoveryContents(in: root, marker: "quarantine") == "original", "\(field) recovery")
+        #expect(try String(contentsOf: file, encoding: .utf8) == "original", "\(field) restoration")
+        #expect(try recoveryContents(in: root, marker: "quarantine") == nil, "\(field) no stranded recovery")
     }
 }
