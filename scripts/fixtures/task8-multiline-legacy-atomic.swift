@@ -3,4 +3,3 @@ AtomicFile.write(
     to: url,
     ifUnchangedFrom: capture
 )
-open(path, O_RDONLY)

@@ -142,3 +142,21 @@ private func refreshSnapshot(_ path: String) throws -> ExactFileSnapshot {
         #expect(!helperFailure.isConnected); #expect(!helperFailure.shouldRestartSessions)
     }
 }
+
+@Test func presentationTableMakesFinalStateTheOnlyConnectionAuthority() {
+    let target = URL(fileURLWithPath: "/tmp/A")
+    for agent in AgentID.allCases {
+        for state in [AgentExactPreparation.Inspection.healthyOwned, .repairableOwned, .absent, .invalid] {
+            for helperSucceeded in [false, true] {
+                for changed in [false, true] {
+                    let presentation = AgentExactRefreshCoordinator.presentation(agent: agent, selectedTarget: target, helperSucceeded: helperSucceeded, finalInspection: state, changedVendorBytes: changed)
+                    let connected = helperSucceeded && state == .healthyOwned
+                    #expect(presentation.isConnected == connected)
+                    #expect(presentation.shouldRestartSessions == (connected && changed))
+                    #expect(presentation.changedVendorBytes == (connected && changed))
+                    #expect(agent == .codex ? presentation.trustTarget == target : presentation.trustTarget == nil)
+                }
+            }
+        }
+    }
+}
