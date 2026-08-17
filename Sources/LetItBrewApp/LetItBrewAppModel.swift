@@ -181,7 +181,10 @@ final class LetItBrewAppModel: ObservableObject {
     @Published private(set) var isPaused: Bool
     @Published private(set) var agentHooks = [
         AgentHookHealth(id: "claude", name: "Claude Code", state: .connecting, details: []),
-        AgentHookHealth(id: "codex", name: "Codex", state: .connecting, details: [])
+        AgentHookHealth(id: "codex", name: "Codex", state: .connecting, details: []),
+        AgentHookHealth(id: "cursor", name: "Cursor", state: .connecting, details: []),
+        AgentHookHealth(id: "opencode", name: "OpenCode", state: .connecting, details: []),
+        AgentHookHealth(id: "copilot", name: "GitHub Copilot CLI", state: .connecting, details: [])
     ]
     @Published private(set) var hookActionInProgress = false
     @Published private(set) var hookMessage: String?
@@ -696,7 +699,7 @@ final class LetItBrewAppModel: ObservableObject {
     }
 
     func refreshAgentHooks() {
-        refreshAgentHooks(agentIDs: ["claude", "codex"])
+        refreshAgentHooks(agentIDs: Set(AgentID.allCases.map(\.rawValue)))
     }
 
     func refreshCodexTrustIfNeeded() {
@@ -725,7 +728,7 @@ final class LetItBrewAppModel: ObservableObject {
         // Must not start once uninstall has: uninstall removes these same
         // hook entries, and a repair here would re-install them mid-teardown.
         guard !hookActionInProgress, !uninstallInProgress, !updateBlocksOtherActions else { return }
-        let requested = agentIDs.intersection(["claude", "codex"])
+        let requested = agentIDs.intersection(Set(AgentID.allCases.map(\.rawValue)))
         guard !requested.isEmpty else { return }
         let helperPath = helperURL.path
         let home = FileManager.default.homeDirectoryForCurrentUser
@@ -780,18 +783,18 @@ final class LetItBrewAppModel: ObservableObject {
     }
 
     func uninstallHooks() {
-        disconnectAgents(["claude", "codex"])
+        disconnectAgents(Set(AgentID.allCases.map(\.rawValue)))
     }
 
     /// Explicit API for the Agents overflow menu. Automatic setup respects
     /// this durable choice until `connectAgent` is called.
     func disconnectAgent(_ id: String) {
-        guard id == "claude" || id == "codex" else { return }
+        guard AgentID(rawValue: id) != nil else { return }
         disconnectAgents([id])
     }
 
     func connectAgent(_ id: String) {
-        guard id == "claude" || id == "codex" else { return }
+        guard AgentID(rawValue: id) != nil else { return }
         saveDisconnectedAgentIDs(AgentDisconnectPersistence.clearingIntent(
             for: id,
             from: disconnectedAgentIDs
@@ -803,7 +806,7 @@ final class LetItBrewAppModel: ObservableObject {
     /// Explicit per-agent model API for a UI "Check Again" action. This does
     /// not silently reverse a user's durable Disconnect choice.
     func retryAgentConnection(_ id: String) {
-        guard id == "claude" || id == "codex" else { return }
+        guard AgentID(rawValue: id) != nil else { return }
         refreshAgentHooks(agentIDs: [id])
     }
 
@@ -866,7 +869,7 @@ final class LetItBrewAppModel: ObservableObject {
         // Same mutual exclusion as refreshAgentHooks(): must not start once
         // uninstall has, since uninstall removes these same hook entries.
         guard !hookActionInProgress, !uninstallInProgress, !updateBlocksOtherActions else { return }
-        let requested = ids.intersection(["claude", "codex"])
+        let requested = ids.intersection(Set(AgentID.allCases.map(\.rawValue)))
         guard !requested.isEmpty else { return }
         let recordedIntent = AgentDisconnectPersistence.recordingIntent(
             for: requested,
@@ -957,7 +960,8 @@ final class LetItBrewAppModel: ObservableObject {
 
     private nonisolated static func runHelper(
         at path: String,
-        arguments: [String]
+        arguments: [String],
+        input: Data? = nil
     ) -> HelperRunResult {
         guard FileManager.default.isExecutableFile(atPath: path) else {
             return HelperRunResult(
@@ -969,6 +973,7 @@ final class LetItBrewAppModel: ObservableObject {
         let result = BoundedProcessRunner.run(
             executableURL: URL(fileURLWithPath: path),
             arguments: arguments,
+            input: input,
             timeout: 5
         )
         let output = result.timedOut
@@ -979,6 +984,43 @@ final class LetItBrewAppModel: ObservableObject {
             output: output,
             timedOut: result.timedOut
         )
+    }
+
+    /// Read-only app-side half of the exact handoff. The snapshot and the
+    /// expected ownership state are serialized to the helper, which verifies
+    /// them again before it changes either registry or vendor configuration.
+    private nonisolated static func prepareExact(
+        agent: AgentID, cliPath: String, home: URL, environment: [String: String]
+    ) -> HelperRunResult {
+        do {
+            let target: URL
+            switch agent {
+            case .claude: target = ClaudeHooks.settingsURL(home: home)
+            case .codex: target = CodexHooks.hooksURL(home: home, environment: environment)
+            case .cursor: target = CursorHooks.settingsURL(home: home)
+            case .opencode: target = OpenCodePlugin.pluginURL(home: home, environment: environment)
+            case .copilot: target = CopilotHooks.hooksURL(home: home, environment: environment)
+            }
+            let capture = try ExactFileCapture.capture(at: target)
+            let report: HookInstallReport
+            switch agent {
+            case .claude:
+                _ = try ClaudeHooks.install(into: capture.data, cliPath: cliPath); report = ClaudeHooks.report(for: capture.data, cliPath: cliPath)
+            case .codex:
+                _ = try CodexHooks.install(into: capture.data, cliPath: cliPath); report = CodexHooks.report(for: capture.data, cliPath: cliPath)
+            case .cursor:
+                _ = try CursorHooks.install(into: capture.data, cliPath: cliPath); report = CursorHooks.report(for: capture.data, cliPath: cliPath)
+            case .opencode:
+                _ = try OpenCodePlugin.install(into: capture.data, cliPath: cliPath); report = OpenCodePlugin.report(for: capture.data, cliPath: cliPath)
+            case .copilot:
+                _ = try CopilotHooks.install(into: capture.data, cliPath: cliPath); report = CopilotHooks.report(for: capture.data, cliPath: cliPath)
+            }
+            let state: ExactTargetExpectedState = !capture.snapshot.exists ? .absent : report.isHealthy ? .healthyOwned : report.isAbsent ? .absent : .repairableOwned
+            let preparation = try ExactTargetPreparation(agent: agent, snapshot: capture.snapshot, expectedState: state)
+            return runHelper(at: cliPath, arguments: ["prepare-exact", agent.rawValue], input: try JSONEncoder().encode(preparation))
+        } catch {
+            return HelperRunResult(status: 1, output: "Exact preparation refused: \(error)", timedOut: false)
+        }
     }
 
     private nonisolated static func inspectClaudeHooks(
@@ -1107,10 +1149,10 @@ final class LetItBrewAppModel: ObservableObject {
                 ))
             } else {
                 if case .absent = inspection {
-                    mutation = runHelper(at: cliPath, arguments: ["install", "claude"])
+                    mutation = prepareExact(agent: .claude, cliPath: cliPath, home: home, environment: environment)
                     inspection = inspectClaudeHooks(cliPath: cliPath, home: home)
                 } else if case .needsConnection = inspection {
-                    mutation = runHelper(at: cliPath, arguments: ["install", "claude"])
+                    mutation = prepareExact(agent: .claude, cliPath: cliPath, home: home, environment: environment)
                     inspection = inspectClaudeHooks(cliPath: cliPath, home: home)
                 }
 
@@ -1175,12 +1217,12 @@ final class LetItBrewAppModel: ObservableObject {
                 ))
             } else {
                 if case .absent = inspection {
-                    mutation = runHelper(at: cliPath, arguments: ["install", "codex"])
+                    mutation = prepareExact(agent: .codex, cliPath: cliPath, home: home, environment: environment)
                     inspection = inspectCodexHooks(
                         cliPath: cliPath, home: home, environment: environment
                     )
                 } else if case .needsConnection = inspection {
-                    mutation = runHelper(at: cliPath, arguments: ["install", "codex"])
+                    mutation = prepareExact(agent: .codex, cliPath: cliPath, home: home, environment: environment)
                     inspection = inspectCodexHooks(
                         cliPath: cliPath, home: home, environment: environment
                     )
@@ -1250,6 +1292,27 @@ final class LetItBrewAppModel: ObservableObject {
                         details: details
                     ))
                 }
+            }
+        }
+
+        // The remaining integrations share the exact helper protocol. They
+        // deliberately do not probe whether a vendor executable is installed:
+        // hook configuration is local and independent of that discovery.
+        for agent in [AgentID.cursor, .opencode, .copilot] where agentIDs.contains(agent.rawValue) {
+            if !AgentAutomaticConnectionPolicy.mayMutate(agentID: agent.rawValue, recordedDisconnectIntents: disconnected) {
+                health.append(AgentHookHealth(id: agent.rawValue, name: agent.displayName, state: .actionNeeded, details: ["Disconnected. Choose Connect to use this agent with Let It Brew."], disposition: .intentionallyDisconnected))
+                continue
+            }
+            if mutationGuidance != nil {
+                health.append(AgentHookHealth(id: agent.rawValue, name: agent.displayName, state: .actionNeeded, details: mutationGuidance!))
+                continue
+            }
+            let mutation = prepareExact(agent: agent, cliPath: cliPath, home: home, environment: environment)
+            if mutation.status == 0 {
+                changedAgents.append(agent.displayName)
+                health.append(AgentHookHealth(id: agent.rawValue, name: agent.displayName, state: .connected, details: ["Restart sessions that were already open."]))
+            } else {
+                health.append(AgentHookHealth(id: agent.rawValue, name: agent.displayName, state: .couldNotConnect, details: connectionFailureDetails(mutation, fallback: ["Let It Brew could not prepare its \(agent.displayName) connection."])))
             }
         }
 
