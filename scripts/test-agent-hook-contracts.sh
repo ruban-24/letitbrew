@@ -76,6 +76,16 @@ python3 -c 'import hashlib,json,os,sys; p=sys.argv[1]; s=os.stat(p); print(json.
 env LETITBREW_TEST_HOME="$PREP_HOME" "$CLI" prepare-exact claude < "$PREP_REPAIR" >/dev/null
 grep -q '__letitbrew_hook' "$PREP_CLAUDE"
 ! grep -qF '/private/tmp/letitbrew-stale' "$PREP_CLAUDE"
+# A later prepare cannot retarget a recorded agent, nor escape its explicit
+# test root even when the supplied snapshot is otherwise valid and absent.
+PREP_CONFLICT="$PREP_HOME/prepare-conflict.json"
+python3 -c 'import json,sys; print(json.dumps({"version":1,"agent":"claude","snapshot":{"path":sys.argv[1],"exists":False},"expectedState":"absent"}))' "$PREP_HOME/.claude/other.json" > "$PREP_CONFLICT"
+! env LETITBREW_TEST_HOME="$PREP_HOME" "$CLI" prepare-exact claude < "$PREP_CONFLICT" >/dev/null 2>&1
+PREP_OUTSIDE_DIR="$(mktemp -d /tmp/letitbrew-prepare-outside.XXXXXX)"
+PREP_OUTSIDE="$PREP_OUTSIDE_DIR/outside.json"
+python3 -c 'import json,sys; print(json.dumps({"version":1,"agent":"claude","snapshot":{"path":sys.argv[1],"exists":False},"expectedState":"absent"}))' "$PREP_OUTSIDE" > "$PREP_HOME/prepare-outside.json"
+! env LETITBREW_TEST_HOME="$PREP_HOME" "$CLI" prepare-exact claude < "$PREP_HOME/prepare-outside.json" >/dev/null 2>&1
+! test -e "$PREP_OUTSIDE"
 # Once recorded, both whole-file adapters keep using their exact A target even
 # if a caller supplies a different ambient B home.  Test-home mode purposely
 # ignores ambient variables, so this also proves they cannot redirect writes.
@@ -113,7 +123,7 @@ grep -q '^Lid-closed watchdog:' <<< "$DOCTOR_OUTPUT"
 # can escape through the parent.
 SYMLINK_HOME="$(mktemp -d /tmp/letitbrew-registry-link.XXXXXX)"
 OUTSIDE_HOME="$(mktemp -d /tmp/letitbrew-registry-outside.XXXXXX)"
-trap 'rm -rf "$TEST_HOME" "$SYMLINK_HOME" "$OUTSIDE_HOME" "$PREP_HOME" "$AB_HOME" "$DOCTOR_HOME"' EXIT
+trap 'rm -rf "$TEST_HOME" "$SYMLINK_HOME" "$OUTSIDE_HOME" "$PREP_HOME" "$PREP_OUTSIDE_DIR" "$AB_HOME" "$DOCTOR_HOME"' EXIT
 mkdir -p "$SYMLINK_HOME/Library/Application Support"
 ln -s "$OUTSIDE_HOME" "$SYMLINK_HOME/Library/Application Support/LetItBrew"
 ! env LETITBREW_TEST_HOME="$SYMLINK_HOME" "$CLI" install claude >/dev/null 2>&1
