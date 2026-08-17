@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import LetItBrewAppCore
 import LetItBrewCore
@@ -36,6 +37,61 @@ import Testing
 
     #expect(child.path.hasPrefix(root.path + "/"))
     #expect(child.path.contains("/records-records-"))
+}
+
+@Test func pressureRootRejectsWrongPrefix() throws {
+    let outside = URL(fileURLWithPath: "/private/tmp", isDirectory: true)
+        .appendingPathComponent("task12-pressure-outside-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: false)
+    defer { try? FileManager.default.removeItem(at: outside) }
+
+    #expect(throws: PressureFixtureError.self) {
+        try validatedPressureRoot(outside)
+    }
+}
+
+@Test func pressureRootRejectsFinalSymlinkEvenWhenDestinationIsAllowed() throws {
+    let root = try pressureTempDirectory(label: "final-link-target")
+    let link = URL(fileURLWithPath: "/private/tmp", isDirectory: true)
+        .appendingPathComponent("letitbrew-session-pressure.final-link-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: root)
+    defer {
+        try? FileManager.default.removeItem(at: link)
+        try? FileManager.default.removeItem(at: root)
+    }
+
+    #expect(throws: PressureFixtureError.self) {
+        try validatedPressureRoot(link)
+    }
+}
+
+@Test func pressureRootRejectsTmpAlias() throws {
+    let root = try pressureTempDirectory(label: "tmp-alias-target")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let tmpAlias = URL(fileURLWithPath: "/tmp", isDirectory: true)
+        .appendingPathComponent(root.lastPathComponent, isDirectory: true)
+
+    #expect(throws: PressureFixtureError.self) {
+        try validatedPressureRoot(tmpAlias)
+    }
+}
+
+@Test func pressureRootRejectsIntermediateSymlinkEscape() throws {
+    let outside = URL(fileURLWithPath: "/private/tmp", isDirectory: true)
+        .appendingPathComponent("task12-pressure-outside-\(UUID().uuidString)", isDirectory: true)
+    let outsideChild = outside.appendingPathComponent("child", isDirectory: true)
+    let link = URL(fileURLWithPath: "/private/tmp", isDirectory: true)
+        .appendingPathComponent("letitbrew-session-pressure.intermediate-link-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: outsideChild, withIntermediateDirectories: true)
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: outside)
+    defer {
+        try? FileManager.default.removeItem(at: link)
+        try? FileManager.default.removeItem(at: outside)
+    }
+
+    #expect(throws: PressureFixtureError.self) {
+        try validatedPressureRoot(link.appendingPathComponent("child", isDirectory: true))
+    }
 }
 
 @Test func hundredConcurrentSessionsRoundRobinEverySupportedAgentAndHoldTheSystem() async throws {
@@ -451,12 +507,38 @@ private func pressureTempDirectory(
 }
 
 private func validatedPressureRoot(_ candidate: URL) throws -> URL {
-    guard candidate.path.hasPrefix("/private/tmp/letitbrew-session-pressure.") else {
+    guard let lexical = lexicallyStandardizedAbsolutePath(candidate.path),
+          let resolved = realpath(lexical, nil) else {
         throw PressureFixtureError.invalidRoot(candidate.path)
     }
-    let values = try candidate.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+    defer { free(resolved) }
+    let canonical = URL(fileURLWithPath: String(cString: resolved), isDirectory: true)
+    let allowedPrefix = "/private/tmp/letitbrew-session-pressure."
+
+    guard lexical == canonical.path,
+          canonical.path.hasPrefix(allowedPrefix) else {
+        throw PressureFixtureError.invalidRoot(candidate.path)
+    }
+    let values = try canonical.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
     guard values.isDirectory == true, values.isSymbolicLink != true else {
         throw PressureFixtureError.invalidRoot(candidate.path)
     }
-    return candidate
+    return canonical
+}
+
+private func lexicallyStandardizedAbsolutePath(_ path: String) -> String? {
+    guard path.hasPrefix("/") else { return nil }
+    var components: [Substring] = []
+    for component in path.split(separator: "/", omittingEmptySubsequences: true) {
+        switch component {
+        case ".":
+            continue
+        case "..":
+            guard !components.isEmpty else { return nil }
+            components.removeLast()
+        default:
+            components.append(component)
+        }
+    }
+    return "/" + components.joined(separator: "/")
 }
