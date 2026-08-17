@@ -20,7 +20,7 @@ private func generatedBytes(_ agent: AgentID) -> Data {
 @Test(arguments: AgentID.allCases)
 func diskInspectionClassifiesHealthyGeneratedBytes(agent: AgentID) {
     let target = URL(fileURLWithPath: "/a/\(agent.rawValue)")
-    let result = AgentDiskInspection.inspect(agent: agent, registry: .valid(nil), defaultTarget: target, helperPath: "/letitbrew") { _ in
+    let result = AgentDiskInspection.inspect(agent: agent, registry: .valid(nil), defaultTarget: target, helperPath: "/letitbrew") { _, _ in
         .regular(diskSnapshot(target.path), generatedBytes(agent))
     }
     #expect(result.state == .healthyOwned)
@@ -30,14 +30,32 @@ func diskInspectionClassifiesHealthyGeneratedBytes(agent: AgentID) {
 @Test(arguments: AgentID.allCases)
 func diskInspectionClassifiesAbsentAndUnreadableForEveryAdapter(agent: AgentID) {
     let target = URL(fileURLWithPath: "/a/\(agent.rawValue)")
-    let absent = AgentDiskInspection.inspect(agent: agent, registry: .valid(nil), defaultTarget: target, helperPath: "/letitbrew") { _ in
+    let absent = AgentDiskInspection.inspect(agent: agent, registry: .valid(nil), defaultTarget: target, helperPath: "/letitbrew") { _, _ in
         .absent(diskSnapshot(target.path, exists: false))
     }
-    let unreadable = AgentDiskInspection.inspect(agent: agent, registry: .valid(nil), defaultTarget: target, helperPath: "/letitbrew") { _ in
+    let unreadable = AgentDiskInspection.inspect(agent: agent, registry: .valid(nil), defaultTarget: target, helperPath: "/letitbrew") { _, _ in
         .invalid(resolvedURL: target, reason: "unreadable")
     }
     #expect(absent.state == .absent)
     #expect(unreadable.state == .invalid)
+}
+
+@Test(arguments: AgentID.allCases)
+func diskInspectionClassifiesRepairableOwnedBytesForEveryAdapter(agent: AgentID) {
+    let target = URL(fileURLWithPath: "/repair/\(agent.rawValue)")
+    let result = AgentDiskInspection.inspect(agent: agent, registry: .valid(nil), defaultTarget: target, helperPath: "/other-letitbrew") { _, _ in
+        .regular(diskSnapshot(target.path), generatedBytes(agent))
+    }
+    #expect(result.state == .repairableOwned)
+}
+
+@Test(arguments: [AgentID.claude, .codex, .cursor, .copilot])
+func diskInspectionRejectsMalformedJSONForEveryJSONAdapter(agent: AgentID) {
+    let target = URL(fileURLWithPath: "/invalid/\(agent.rawValue)")
+    let result = AgentDiskInspection.inspect(agent: agent, registry: .valid(nil), defaultTarget: target, helperPath: "/letitbrew") { _, _ in
+        .regular(diskSnapshot(target.path), Data("not json".utf8))
+    }
+    #expect(result.state == .invalid)
 }
 
 @Test func diskInspectionUsesRecordedTargetOnceBeforeAmbientDefault() throws {
@@ -45,7 +63,7 @@ func diskInspectionClassifiesAbsentAndUnreadableForEveryAdapter(agent: AgentID) 
     let b = URL(fileURLWithPath: "/ambient/b")
     let registry = try AgentInstallRegistry(targets: [.copilot: a.path])
     var reads: [URL] = []
-    let result = AgentDiskInspection.inspect(agent: .copilot, registry: .valid(registry), defaultTarget: b, helperPath: "/letitbrew") { target in
+    let result = AgentDiskInspection.inspect(agent: .copilot, registry: .valid(registry), defaultTarget: b, helperPath: "/letitbrew") { target, _ in
         reads.append(target)
         return .absent(diskSnapshot(target.path, exists: false))
     }
@@ -56,7 +74,7 @@ func diskInspectionClassifiesAbsentAndUnreadableForEveryAdapter(agent: AgentID) 
 
 @Test func invalidRegistryNeverReadsATarget() {
     var reads = 0
-    let result = AgentDiskInspection.inspect(agent: .claude, registry: .invalid("bad JSON"), defaultTarget: URL(fileURLWithPath: "/ambient"), helperPath: "/letitbrew") { _ in
+    let result = AgentDiskInspection.inspect(agent: .claude, registry: .invalid("bad JSON"), defaultTarget: URL(fileURLWithPath: "/ambient"), helperPath: "/letitbrew") { _, _ in
         reads += 1; return .absent(diskSnapshot("/ambient", exists: false))
     }
     #expect(result.state == .invalid)
@@ -64,7 +82,7 @@ func diskInspectionClassifiesAbsentAndUnreadableForEveryAdapter(agent: AgentID) 
 }
 
 @Test func unownedOpenCodeFileIsInvalid() {
-    let result = AgentDiskInspection.inspect(agent: .opencode, registry: .valid(nil), defaultTarget: URL(fileURLWithPath: "/plugin"), helperPath: "/letitbrew") { target in
+    let result = AgentDiskInspection.inspect(agent: .opencode, registry: .valid(nil), defaultTarget: URL(fileURLWithPath: "/plugin"), helperPath: "/letitbrew") { target, _ in
         .regular(diskSnapshot(target.path), Data("console.log('foreign')".utf8))
     }
     #expect(result.state == .invalid)

@@ -340,13 +340,13 @@ final class LetItBrewAppModel: ObservableObject {
         )
         connectedAgentIDs = launchDecision.selectedAgentIDs
         launchPreparations = launchDecision.preparations
+        presentUnselectedAgents()
 
         if startsPolling {
             startPolling()
             startPendingUpdateResultPolling()
             runDaemonRecovery(trigger: .automaticLaunch)
             runLaunchPreparations()
-            refreshAgentHooks(agentIDs: connectedAgentIDs)
         }
     }
 
@@ -815,6 +815,12 @@ final class LetItBrewAppModel: ObservableObject {
     }
 
     func uninstallHooks() {
+        // This user action means “remove every connection”, not merely run a
+        // best-effort helper.  Persist the empty positive selection and hide
+        // sessions before a helper can fail, so a later refresh cannot undo
+        // the user's explicit removal intent.
+        persistConnectedAgentIDs([])
+        reapplyLatestSnapshot(connectedAgentIDs: [])
         disconnectAgents(Set(AgentID.allCases.map(\.rawValue)))
     }
 
@@ -909,6 +915,19 @@ final class LetItBrewAppModel: ObservableObject {
         defaults.set(next.sorted(), forKey: Keys.connectedAgentIDsV2)
     }
 
+    private func presentUnselectedAgents() {
+        agentHooks = agentHooks.map { health in
+            guard !connectedAgentIDs.contains(health.id) else { return health }
+            return AgentHookHealth(
+                id: health.id,
+                name: health.name,
+                state: .actionNeeded,
+                details: ["Disconnected. Choose Connect to use this agent with Let It Brew."],
+                disposition: .intentionallyDisconnected
+            )
+        }
+    }
+
     private func disconnectAgents(_ ids: Set<String>) {
         // Same mutual exclusion as refreshAgentHooks(): must not start once
         // uninstall has, since uninstall removes these same hook entries.
@@ -973,7 +992,7 @@ final class LetItBrewAppModel: ObservableObject {
                         state: .couldNotConnect,
                         details: [
                             Self.disconnectFailureMessage([result]),
-                            "The connection remains selected; choose Disconnect again to retry.",
+                            "The connection is deselected. Choose Disconnect again to retry removal.",
                         ],
                         disposition: .disconnectFailed
                     )
@@ -1032,37 +1051,22 @@ final class LetItBrewAppModel: ObservableObject {
         home: URL,
         environment: [String: String]
     ) -> AgentLaunchConnectionDecision {
-        let persisted = defaults.object(forKey: Keys.connectedAgentIDsV2) == nil
-            ? nil : defaults.stringArray(forKey: Keys.connectedAgentIDsV2)
-        let registryURL = home.appendingPathComponent("Library/Application Support/LetItBrew/agent-hook-targets.json")
-        let registry: AgentDiskRegistry
-        do {
-            registry = FileManager.default.fileExists(atPath: registryURL.path)
-                ? .valid(try JSONDecoder().decode(AgentInstallRegistry.self, from: Data(contentsOf: registryURL)))
-                : .valid(nil)
-        } catch {
-            registry = .invalid("the target registry is not valid JSON")
+        let persisted: AgentPersistedSelection
+        if defaults.object(forKey: Keys.connectedAgentIDsV2) == nil {
+            persisted = .missing
+        } else if let values = defaults.stringArray(forKey: Keys.connectedAgentIDsV2) {
+            persisted = .values(values)
+        } else {
+            persisted = .malformed
         }
+        let registryURL = home.appendingPathComponent("Library/Application Support/LetItBrew/agent-hook-targets.json")
+        let registry = AgentLiveDiskReader.readRegistry(at: registryURL)
         let inspections = AgentID.allCases.map { agent -> AgentConnectionInspection in
-            let inspected = AgentDiskInspection.inspect(
+            let inspected = AgentLiveDiskReader.inspect(
                 agent: agent,
                 registry: registry,
                 defaultTarget: configuredTarget(agent: agent, home: home, environment: environment),
-                helperPath: helperPath,
-                readExactTarget: { requested in
-                    let target = agent == .opencode
-                        ? requested
-                        : requested.resolvingSymlinksInPath().standardizedFileURL
-                    do {
-                        let capture = try ExactFileCapture.capture(at: target)
-                        if let data = capture.data {
-                            return .regular(capture.snapshot, data)
-                        }
-                        return .absent(capture.snapshot)
-                    } catch {
-                        return .invalid(resolvedURL: target, reason: "Let It Brew could not safely read this target.")
-                    }
-                }
+                helperPath: helperPath
             )
             return AgentConnectionInspection(
                 agentID: agent.rawValue,
@@ -1071,16 +1075,18 @@ final class LetItBrewAppModel: ObservableObject {
                 exactTargetSnapshot: inspected.snapshot
             )
         }
-        let decision = AgentLaunchConnectionPolicy.decision(
-            persistedSelection: persisted,
+        let migration = AgentConnectionMigration.migrate(
+            persisted: persisted,
             legacyDisconnected: Set(defaults.stringArray(forKey: Keys.disconnectedAgents) ?? []),
             inspections: inspections,
             legacyMigratableAgentIDs: [AgentID.claude.rawValue, AgentID.codex.rawValue]
         )
+        let decision = migration.decision
         defaults.set(decision.selectedAgentIDs.sorted(), forKey: Keys.connectedAgentIDsV2)
-        if persisted == nil {
-            defaults.removeObject(forKey: Keys.disconnectedAgents)
-        }
+        // V2 is authoritative whether it was migrated, empty, populated, or
+        // malformed.  Persist a canonical V2 value before clearing stale
+        // negative intent so a crash can never fall back to legacy inference.
+        defaults.removeObject(forKey: Keys.disconnectedAgents)
         return decision
     }
 
@@ -1506,7 +1512,7 @@ final class LetItBrewAppModel: ObservableObject {
         _ results: [AgentHelperOperationResult]
     ) -> String {
         let names = results.map {
-            $0.agentID == "claude" ? "Claude Code" : "Codex"
+            AgentID(rawValue: $0.agentID)?.displayName ?? $0.agentID
         }.joined(separator: " and ")
         let firstDetail = results.lazy.map {
             $0.output.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1666,6 +1672,17 @@ final class LetItBrewAppModel: ObservableObject {
 
     private func apply(_ snapshot: LetItBrewSnapshot) {
         latestSnapshot = snapshot
+        applySnapshot(snapshot, connectedAgentIDs: connectedAgentIDs)
+        hasLoadedSessionSnapshot = true
+    }
+
+    /// Both normal polls and synchronous connection actions flow through the
+    /// same visibility-and-suppression pipeline.  Passing the exact next
+    /// selection never allows a Stop Tracking suppression to reappear.
+    private func applySnapshot(
+        _ snapshot: LetItBrewSnapshot,
+        connectedAgentIDs: Set<String>
+    ) {
         let connectedSessions = AgentSessionVisibilityPolicy.visibleSessions(
             from: snapshot.sessions,
             connectedAgentIDs: connectedAgentIDs
@@ -1685,7 +1702,6 @@ final class LetItBrewAppModel: ObservableObject {
             displays: snapshot.displays,
             now: snapshot.now
         ))
-        hasLoadedSessionSnapshot = true
     }
 
     private func reapplyLatestSnapshot(connectedAgentIDs: Set<String>) {
@@ -1693,17 +1709,7 @@ final class LetItBrewAppModel: ObservableObject {
             refreshNow()
             return
         }
-        let visible = AgentSessionVisibilityPolicy.visibleSessions(
-            from: latestSnapshot.sessions,
-            connectedAgentIDs: connectedAgentIDs
-        )
-        applyVisibleSnapshot(LetItBrewSnapshot(
-            sessions: visible,
-            power: latestSnapshot.power,
-            clamshell: latestSnapshot.clamshell,
-            displays: latestSnapshot.displays,
-            now: latestSnapshot.now
-        ))
+        applySnapshot(latestSnapshot, connectedAgentIDs: connectedAgentIDs)
     }
 
     private func reapplyLatestSnapshot() {

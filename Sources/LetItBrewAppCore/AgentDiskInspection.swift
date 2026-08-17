@@ -51,7 +51,7 @@ public enum AgentDiskInspection {
         registry: AgentDiskRegistry,
         defaultTarget: URL,
         helperPath: String,
-        readExactTarget: (URL) -> AgentExactTargetRead
+        readExactTarget: (URL, Bool) -> AgentExactTargetRead
     ) -> AgentDiskInspectionResult {
         let recorded: String?
         switch registry {
@@ -65,23 +65,24 @@ public enum AgentDiskInspection {
 
         let target = recorded.map(URL.init(fileURLWithPath:)) ?? defaultTarget
         let usedRecordedTarget = recorded != nil
-        switch readExactTarget(target) {
+        switch readExactTarget(target, usedRecordedTarget) {
         case .absent(let snapshot):
-            return .init(target: target, snapshot: snapshot, state: .absent,
+            return .init(target: URL(fileURLWithPath: snapshot.path), snapshot: snapshot, state: .absent,
                          diagnostic: "No Let It Brew connection is installed.",
                          usedRecordedTarget: usedRecordedTarget)
         case .invalid(let resolvedURL, let reason):
             return .init(target: resolvedURL, snapshot: nil, state: .invalid,
                          diagnostic: reason, usedRecordedTarget: usedRecordedTarget)
         case .regular(let snapshot, let data):
+            let resolvedTarget = URL(fileURLWithPath: snapshot.path)
             do {
                 let report = try report(agent: agent, data: data, helperPath: helperPath)
                 let state: AgentConfigurationInspectionState = report.isAbsent
                     ? .absent : report.isHealthy ? .healthyOwned : .repairableOwned
-                return .init(target: target, snapshot: snapshot, state: state,
+                return .init(target: resolvedTarget, snapshot: snapshot, state: state,
                              diagnostic: details(report), usedRecordedTarget: usedRecordedTarget)
             } catch {
-                return .init(target: target, snapshot: snapshot, state: .invalid,
+                return .init(target: resolvedTarget, snapshot: snapshot, state: .invalid,
                              diagnostic: "Let It Brew will not change this unreadable or unowned configuration: \(error)",
                              usedRecordedTarget: usedRecordedTarget)
             }
@@ -91,19 +92,19 @@ public enum AgentDiskInspection {
     private static func report(agent: AgentID, data: Data, helperPath: String) throws -> HookInstallReport {
         switch agent {
         case .claude:
-            _ = try ClaudeHooks.remove(from: data)
+            _ = try ClaudeHooks.install(into: data, cliPath: helperPath)
             return ClaudeHooks.report(for: data, cliPath: helperPath)
         case .codex:
-            _ = try CodexHooks.remove(from: data)
+            _ = try CodexHooks.install(into: data, cliPath: helperPath)
             return CodexHooks.report(for: data, cliPath: helperPath)
         case .cursor:
-            _ = try CursorHooks.remove(from: data)
+            _ = try CursorHooks.install(into: data, cliPath: helperPath)
             return CursorHooks.report(for: data, cliPath: helperPath)
         case .opencode:
-            _ = try OpenCodePlugin.remove(from: data)
+            _ = try OpenCodePlugin.install(into: data, cliPath: helperPath)
             return OpenCodePlugin.report(for: data, cliPath: helperPath)
         case .copilot:
-            _ = try CopilotHooks.remove(from: data)
+            _ = try CopilotHooks.install(into: data, cliPath: helperPath)
             return CopilotHooks.report(for: data, cliPath: helperPath)
         }
     }
