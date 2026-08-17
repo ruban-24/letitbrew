@@ -18,7 +18,8 @@ public enum AtomicFile {
     public struct RaceHooks {
         public var beforeQuarantine: (() throws -> Void)?
         public var afterQuarantineValidationBeforePublish: (() throws -> Void)?
-        public init(beforeQuarantine: (() throws -> Void)? = nil, afterQuarantineValidationBeforePublish: (() throws -> Void)? = nil) { self.beforeQuarantine = beforeQuarantine; self.afterQuarantineValidationBeforePublish = afterQuarantineValidationBeforePublish }
+        public var beforeAbsentPublish: (() throws -> Void)?
+        public init(beforeQuarantine: (() throws -> Void)? = nil, afterQuarantineValidationBeforePublish: (() throws -> Void)? = nil, beforeAbsentPublish: (() throws -> Void)? = nil) { self.beforeQuarantine = beforeQuarantine; self.afterQuarantineValidationBeforePublish = afterQuarantineValidationBeforePublish; self.beforeAbsentPublish = beforeAbsentPublish }
     }
 
     /// Descriptor-native publication for an anchored target.  The retained
@@ -35,6 +36,7 @@ public enum AtomicFile {
         guard fsync(tempFD) == 0 else { throw ConcurrentModification(path: captured.snapshot.path) }
         func cleanup() { temp.withCString { _ = unlinkat(parent.rawValue, $0, 0) } }
         if !captured.snapshot.exists {
+            try hooks.beforeAbsentPublish?()
             let result = temp.withCString { from in name.withCString { to in renameatx_np(parent.rawValue, from, parent.rawValue, to, UInt32(RENAME_EXCL)) } }
             guard result == 0 else { cleanup(); throw ConcurrentModification(path: captured.snapshot.path) }
             return try captured.target.capture()
