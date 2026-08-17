@@ -53,10 +53,18 @@ or read Claude/Codex/Cursor/OpenCode/Copilot prompt and response content.
 - Sources: https://cursor.com/docs/hooks,
   https://cursor.com/docs/reference/third-party-hooks, and
   https://cursor.com/changelog/cli-jan-16-2026
-- Mapping: `sessionStart`→SessionStart,
+- Desktop mapping: `sessionStart`→SessionStart,
   `beforeSubmitPrompt`→UserPromptSubmit, `preToolUse`→PreToolUse,
   `postToolUse`→PostToolUse, `subagentStart`→SubagentStart,
   `subagentStop`→SubagentStop, `stop`→Stop, `sessionEnd`→SessionEnd.
+- Cursor CLI documents hooks for session start/end, prompt submission, and
+  stop. The tool and subagent mappings above are documented desktop inputs,
+  not supported CLI observations until UAT establishes them.
+- Cursor desktop and Cursor CLI are separate validation surfaces. Desktop
+  documentation does not prove CLI event parity. Release UAT must exercise and
+  record every selected event independently on both surfaces, including the
+  tested Cursor versions. Connection or configuration ownership does not prove
+  that either surface emitted every mapped event.
 - `conversation_id` is the stable session ID for ordinary events;
   `session_id` is accepted for session lifecycle events.
 - `parent_conversation_id` plus `subagent_id` identifies an independent
@@ -79,7 +87,8 @@ or read Claude/Codex/Cursor/OpenCode/Copilot prompt and response content.
   `session.deleted`→SessionEnd.
 - Stable v1.18.3 emits `permission.updated` and `permission.replied`; current
   docs also define `permission.asked`. All three preserve prior state, and
-  the contract documents which spellings were exercised in UAT.
+  UAT must record which spellings were actually observed for the tested
+  OpenCode version; no runtime-emission claim is made until then.
 - OpenCode v2 beta is not claimed by this release.
 
 ## GitHub Copilot CLI
@@ -91,8 +100,8 @@ or read Claude/Codex/Cursor/OpenCode/Copilot prompt and response content.
   SessionStart, UserPromptSubmit, PostToolUse, Stop, SessionEnd.
 - Do not install `PreToolUse`: command failures on that control hook are
   fail-closed. The selected observational events are sufficient for
-  Working/Idle only because the generated command is silent and pins exit
-  zero; execution tests prove this behavior.
+  Working/Idle only if the generated command is silent and unconditionally
+  exits zero; execution tests must prove both properties before release.
 - `ErrorOccurred` is not installed in v0.6.0; an error path without
   `SessionEnd` relies on the stale-record backstop or Stop Tracking.
 - Copilot cloud agent is out of scope.
