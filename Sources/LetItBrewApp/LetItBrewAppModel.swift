@@ -65,6 +65,11 @@ private struct HelperRunResult: Sendable {
     let timedOut: Bool
 }
 
+private struct ExactPreparationResult: Sendable {
+    let helper: HelperRunResult
+    let changedVendorBytes: Bool
+}
+
 private enum DiskHookInspection: Sendable {
     case absent
     case healthy
@@ -991,7 +996,7 @@ final class LetItBrewAppModel: ObservableObject {
     /// them again before it changes either registry or vendor configuration.
     private nonisolated static func prepareExact(
         agent: AgentID, cliPath: String, home: URL, environment: [String: String]
-    ) -> HelperRunResult {
+    ) -> ExactPreparationResult {
         do {
             let registryURL = home.appendingPathComponent("Library/Application Support/LetItBrew/agent-hook-targets.json")
             let registry: AgentInstallRegistry?
@@ -1029,9 +1034,9 @@ final class LetItBrewAppModel: ObservableObject {
             }
             let state: ExactTargetExpectedState = !capture.snapshot.exists ? .absent : report.isHealthy ? .healthyOwned : report.isAbsent ? .absent : .repairableOwned
             let preparation = try ExactTargetPreparation(agent: agent, snapshot: capture.snapshot, expectedState: state)
-            return runHelper(at: cliPath, arguments: ["prepare-exact", agent.rawValue], input: try JSONEncoder().encode(preparation))
+            return ExactPreparationResult(helper: runHelper(at: cliPath, arguments: ["prepare-exact", agent.rawValue], input: try JSONEncoder().encode(preparation)), changedVendorBytes: state != .healthyOwned)
         } catch {
-            return HelperRunResult(status: 1, output: "Exact preparation refused: \(error)", timedOut: false)
+            return ExactPreparationResult(helper: HelperRunResult(status: 1, output: "Exact preparation refused: \(error)", timedOut: false), changedVendorBytes: false)
         }
     }
 
@@ -1161,10 +1166,10 @@ final class LetItBrewAppModel: ObservableObject {
                 ))
             } else {
                 if case .absent = inspection {
-                    mutation = prepareExact(agent: .claude, cliPath: cliPath, home: home, environment: environment)
+                    mutation = prepareExact(agent: .claude, cliPath: cliPath, home: home, environment: environment).helper
                     inspection = inspectClaudeHooks(cliPath: cliPath, home: home)
                 } else if case .needsConnection = inspection {
-                    mutation = prepareExact(agent: .claude, cliPath: cliPath, home: home, environment: environment)
+                    mutation = prepareExact(agent: .claude, cliPath: cliPath, home: home, environment: environment).helper
                     inspection = inspectClaudeHooks(cliPath: cliPath, home: home)
                 }
 
@@ -1229,12 +1234,12 @@ final class LetItBrewAppModel: ObservableObject {
                 ))
             } else {
                 if case .absent = inspection {
-                    mutation = prepareExact(agent: .codex, cliPath: cliPath, home: home, environment: environment)
+                    mutation = prepareExact(agent: .codex, cliPath: cliPath, home: home, environment: environment).helper
                     inspection = inspectCodexHooks(
                         cliPath: cliPath, home: home, environment: environment
                     )
                 } else if case .needsConnection = inspection {
-                    mutation = prepareExact(agent: .codex, cliPath: cliPath, home: home, environment: environment)
+                    mutation = prepareExact(agent: .codex, cliPath: cliPath, home: home, environment: environment).helper
                     inspection = inspectCodexHooks(
                         cliPath: cliPath, home: home, environment: environment
                     )
@@ -1319,10 +1324,11 @@ final class LetItBrewAppModel: ObservableObject {
                 health.append(AgentHookHealth(id: agent.rawValue, name: agent.displayName, state: .actionNeeded, details: mutationGuidance!))
                 continue
             }
-            let mutation = prepareExact(agent: agent, cliPath: cliPath, home: home, environment: environment)
+            let preparation = prepareExact(agent: agent, cliPath: cliPath, home: home, environment: environment)
+            let mutation = preparation.helper
             if mutation.status == 0 {
-                changedAgents.append(agent.displayName)
-                health.append(AgentHookHealth(id: agent.rawValue, name: agent.displayName, state: .connected, details: ["Restart sessions that were already open."]))
+                if preparation.changedVendorBytes { changedAgents.append(agent.displayName) }
+                health.append(AgentHookHealth(id: agent.rawValue, name: agent.displayName, state: .connected, details: preparation.changedVendorBytes ? ["Restart sessions that were already open."] : []))
             } else {
                 health.append(AgentHookHealth(id: agent.rawValue, name: agent.displayName, state: .couldNotConnect, details: connectionFailureDetails(mutation, fallback: ["Let It Brew could not prepare its \(agent.displayName) connection."])))
             }
