@@ -6,6 +6,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLI="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$CLI_INPUT")"
 [[ "$CLI" = /* && -x "$CLI" ]] || { echo "FATAL: CLI must be an executable absolute path" >&2; exit 1; }
 command -v node >/dev/null || { echo "FATAL: node is required for the OpenCode runtime contract" >&2; exit 1; }
+# Registry selection/persistence is deliberately descriptor-only.  Keep this
+# source gate beside the black-box contract so a future convenience reopen
+# cannot quietly reintroduce Foundation path I/O after target selection.
+INSTALL_SOURCE="$SCRIPT_DIR/../Sources/letitbrew/InstallCommand.swift"
+grep -Fq 'AtomicFile.write(data, replacing: capture, permissions: .exact(0o600))' "$INSTALL_SOURCE"
+! sed -n '/private func loadRegistry/,/private func resolveJSONTarget/p' "$INSTALL_SOURCE" | grep -Eq 'Data\(contentsOf:|FileManager\.(default\.)?(createDirectory|removeItem|moveItem|replaceItem)'
 TEST_HOME="$(mktemp -d /tmp/letitbrew-agent-hooks.XXXXXX)"
 trap 'rm -rf "$TEST_HOME"' EXIT
 export LETITBREW_TEST_HOME="$TEST_HOME"

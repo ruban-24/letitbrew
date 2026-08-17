@@ -97,6 +97,98 @@ private func changedExpectedCapture(_ captured: CapturedExactFile, snapshot: Exa
     #expect(freshInfo.st_mode & 0o7777 == 0o600)
 }
 
+@Test func anchoredAbsentCaptureCreatesMissingParentsOnlyDuringDescriptorPublication() throws {
+    let root = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let targetURL = root.appendingPathComponent("Library/Application Support/LetItBrew/registry.json")
+    let target = try DirectoryAnchor.openNoFollow(at: root).target(atAbsoluteURL: targetURL)
+    let absent = try target.capture()
+    #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("Library").path))
+    let published = try AtomicFile.write(Data("registry".utf8), replacing: absent, permissions: .exact(0o600))
+    #expect(published.snapshot.path == targetURL.standardizedFileURL.path)
+    #expect(published.data == Data("registry".utf8))
+    #expect(try String(contentsOf: targetURL, encoding: .utf8) == "registry")
+}
+
+@Test func anchoredMissingParentEEXISTAcceptsRealDirectoryAndRefusesSymlink() throws {
+    let root = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let targetURL = root.appendingPathComponent("a/b/registry.json")
+    let target = try DirectoryAnchor.openNoFollow(at: root).target(atAbsoluteURL: targetURL)
+    let real = try target.captureForWrite(hooks: .init(afterComponentReportedMissingBeforeMkdir: { index in
+        if index == 0 { try FileManager.default.createDirectory(at: root.appendingPathComponent("a"), withIntermediateDirectories: false) }
+    }))
+    #expect(!real.snapshot.exists)
+
+    let secondRoot = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: secondRoot) }
+    let outside = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: outside) }
+    let secondURL = secondRoot.appendingPathComponent("a/b/registry.json")
+    let second = try DirectoryAnchor.openNoFollow(at: secondRoot).target(atAbsoluteURL: secondURL)
+    #expect(throws: Error.self) {
+        _ = try second.captureForWrite(hooks: .init(afterComponentReportedMissingBeforeMkdir: { index in
+            if index == 0 { try FileManager.default.createSymbolicLink(at: secondRoot.appendingPathComponent("a"), withDestinationURL: outside) }
+        }))
+    }
+    #expect(!FileManager.default.fileExists(atPath: outside.appendingPathComponent("b/registry.json").path))
+}
+
+@Test func descriptorWriteRefusesComponentSwapAfterCaptureWithoutTouchingDestination() throws {
+    let root = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let parent = root.appendingPathComponent("a/b"); try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+    let file = parent.appendingPathComponent("registry.json"); try Data("old".utf8).write(to: file)
+    let target = try DirectoryAnchor.openNoFollow(at: root).target(atAbsoluteURL: file)
+    let observed = try target.capture()
+    let outside = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: outside) }
+    try FileManager.default.removeItem(at: root.appendingPathComponent("a"))
+    try FileManager.default.createSymbolicLink(at: root.appendingPathComponent("a"), withDestinationURL: outside)
+    #expect(throws: Error.self) { _ = try AtomicFile.write(Data("new".utf8), replacing: observed) }
+    #expect(!FileManager.default.fileExists(atPath: outside.appendingPathComponent("b/registry.json").path))
+}
+
+@Test func descriptorWriteKeepsOriginalAnchoredRootWhenDisplayPathIsReplaced() throws {
+    let container = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: container) }
+    let root = container.appendingPathComponent("root"); try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let file = root.appendingPathComponent("registry.json"); try Data("old".utf8).write(to: file)
+    let target = try DirectoryAnchor.openNoFollow(at: root).target(atAbsoluteURL: file)
+    let observed = try target.capture()
+    let retainedRoot = container.appendingPathComponent("retained-root")
+    let outside = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: outside) }
+    try FileManager.default.moveItem(at: root, to: retainedRoot)
+    try FileManager.default.createSymbolicLink(at: root, withDestinationURL: outside)
+    _ = try AtomicFile.write(Data("new".utf8), replacing: observed)
+    #expect(try String(contentsOf: retainedRoot.appendingPathComponent("registry.json"), encoding: .utf8) == "new")
+    #expect(!FileManager.default.fileExists(atPath: outside.appendingPathComponent("registry.json").path))
+}
+
+@Test func anchoredRegistryTargetRefusesSymlinkAtEveryParentPosition() throws {
+    for swapped in ["Library", "Application Support", "LetItBrew"] {
+        let root = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: root) }
+        let parent = root.appendingPathComponent("Library/Application Support/LetItBrew")
+        try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+        let registry = parent.appendingPathComponent("agent-hook-targets.json")
+        try Data("registry".utf8).write(to: registry)
+        let components = ["Library", "Application Support", "LetItBrew"]
+        let index = components.firstIndex(of: swapped)!
+        let componentURL = components.prefix(index + 1).reduce(root) { $0.appendingPathComponent($1) }
+        let outside = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: outside) }
+        try FileManager.default.removeItem(at: componentURL)
+        try FileManager.default.createSymbolicLink(at: componentURL, withDestinationURL: outside)
+        let target = try DirectoryAnchor.openNoFollow(at: root).target(atAbsoluteURL: registry)
+        #expect(throws: Error.self, "\(swapped)") { _ = try target.capture() }
+        #expect(!FileManager.default.fileExists(atPath: outside.appendingPathComponent("agent-hook-targets.json").path))
+    }
+}
+
+@Test func descriptorSuccessivePublicationsUseReturnedBoundBaselineAndDisplayPath() throws {
+    let root = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let url = root.appendingPathComponent("registry.json")
+    let target = try DirectoryAnchor.openNoFollow(at: root).target(atAbsoluteURL: url)
+    var baseline = try target.capture()
+    baseline = try AtomicFile.write(Data("one".utf8), replacing: baseline, permissions: .exact(0o600))
+    baseline = try AtomicFile.write(Data("two".utf8), replacing: baseline, permissions: .exact(0o600))
+    #expect(baseline.snapshot.path == url.standardizedFileURL.path)
+    #expect(!baseline.snapshot.path.contains("/dev/fd/"))
+    #expect(try String(contentsOf: url, encoding: .utf8) == "two")
+}
+
 @Test func descriptorAbsentAppearanceSurvivesExclusivePublish() throws {
     let root = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: root) }
     let file = root.appendingPathComponent("target"); let target = try DirectoryAnchor.openNoFollow(at: root).target(atAbsoluteURL: file)
