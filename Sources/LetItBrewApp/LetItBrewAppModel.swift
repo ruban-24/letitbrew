@@ -68,6 +68,7 @@ private struct HelperRunResult: Sendable {
 private struct ExactPreparationResult: Sendable {
     let helper: HelperRunResult
     let changedVendorBytes: Bool
+    let inspection: DiskHookInspection
 }
 
 private enum DiskHookInspection: Sendable {
@@ -75,6 +76,17 @@ private enum DiskHookInspection: Sendable {
     case healthy
     case needsConnection(details: [String])
     case invalid(details: [String])
+}
+
+private struct ExactTargetSelection {
+    let recordedTarget: String?
+    let configuredTarget: URL
+    let firstConnectResolvedTarget: URL
+}
+
+private struct ExactDiskObservation {
+    let core: AgentExactRefreshCoordinator.Observation
+    let disk: DiskHookInspection
 }
 
 private struct AgentConnectionRefresh: Sendable {
@@ -991,6 +1003,62 @@ final class LetItBrewAppModel: ObservableObject {
         )
     }
 
+    private nonisolated static func exactTargetSelection(
+        agent: AgentID, home: URL, environment: [String: String]
+    ) throws -> ExactTargetSelection {
+        let registryURL = home.appendingPathComponent("Library/Application Support/LetItBrew/agent-hook-targets.json")
+        let registry: AgentInstallRegistry?
+        if FileManager.default.fileExists(atPath: registryURL.path) {
+            registry = try JSONDecoder().decode(AgentInstallRegistry.self, from: Data(contentsOf: registryURL))
+        } else {
+            registry = nil
+        }
+        let configured: URL
+        switch agent {
+        case .claude: configured = ClaudeHooks.settingsURL(home: home)
+        case .codex: configured = CodexHooks.hooksURL(home: home, environment: environment)
+        case .cursor: configured = CursorHooks.settingsURL(home: home)
+        case .opencode: configured = OpenCodePlugin.pluginURL(home: home, environment: environment)
+        case .copilot: configured = CopilotHooks.hooksURL(home: home, environment: environment)
+        }
+        return ExactTargetSelection(
+            recordedTarget: registry?.targets[agent],
+            configuredTarget: configured,
+            firstConnectResolvedTarget: agent == .opencode
+                ? configured
+                : configured.resolvingSymlinksInPath().standardizedFileURL
+        )
+    }
+
+    private nonisolated static func exactDiskObservation(
+        agent: AgentID, target: URL, cliPath: String
+    ) -> ExactDiskObservation {
+        do {
+            let capture = try ExactFileCapture.capture(at: target)
+            let report: HookInstallReport
+            switch agent {
+            case .claude: _ = try ClaudeHooks.remove(from: capture.data); report = ClaudeHooks.report(for: capture.data, cliPath: cliPath)
+            case .codex: _ = try CodexHooks.remove(from: capture.data); report = CodexHooks.report(for: capture.data, cliPath: cliPath)
+            case .cursor: _ = try CursorHooks.remove(from: capture.data); report = CursorHooks.report(for: capture.data, cliPath: cliPath)
+            case .opencode: _ = try OpenCodePlugin.remove(from: capture.data); report = OpenCodePlugin.report(for: capture.data, cliPath: cliPath)
+            case .copilot: _ = try CopilotHooks.remove(from: capture.data); report = CopilotHooks.report(for: capture.data, cliPath: cliPath)
+            }
+            let disk: DiskHookInspection = !capture.snapshot.exists || report.isAbsent
+                ? .absent : report.isHealthy ? .healthy : .needsConnection(details: hookReportDetails(report))
+            let inspection: AgentExactPreparation.Inspection = switch disk {
+            case .absent: .absent
+            case .healthy: .healthyOwned
+            case .needsConnection: .repairableOwned
+            case .invalid: .invalid
+            }
+            return ExactDiskObservation(core: .init(snapshot: capture.snapshot, inspection: inspection), disk: disk)
+        } catch {
+            let snapshot = try! ExactFileSnapshot(path: target.standardizedFileURL.path, exists: false)
+            let details = AgentConfigRecoveryGuidance.details(agentName: agent.displayName, path: target.path)
+            return ExactDiskObservation(core: .init(snapshot: snapshot, inspection: .invalid), disk: .invalid(details: details))
+        }
+    }
+
     /// Read-only app-side half of the exact handoff. The snapshot and the
     /// expected ownership state are serialized to the helper, which verifies
     /// them again before it changes either registry or vendor configuration.
@@ -998,70 +1066,31 @@ final class LetItBrewAppModel: ObservableObject {
         agent: AgentID, cliPath: String, home: URL, environment: [String: String]
     ) -> ExactPreparationResult {
         do {
-            let registryURL = home.appendingPathComponent("Library/Application Support/LetItBrew/agent-hook-targets.json")
-            let registry: AgentInstallRegistry?
-            if let data = try? Data(contentsOf: registryURL) {
-                registry = try? JSONDecoder().decode(AgentInstallRegistry.self, from: data)
-            } else { registry = nil }
-            let configured: URL
-            switch agent {
-            case .claude: configured = ClaudeHooks.settingsURL(home: home)
-            case .codex: configured = CodexHooks.hooksURL(home: home, environment: environment)
-            case .cursor: configured = CursorHooks.settingsURL(home: home)
-            case .opencode: configured = OpenCodePlugin.pluginURL(home: home, environment: environment)
-            case .copilot: configured = CopilotHooks.hooksURL(home: home, environment: environment)
-            }
-            // A known target is authoritative even when vendor homes moved.
-            // JSON symlinks are followed only for the first handoff, matching
-            // the CLI's one-time final-target recording rule.
-            let target: URL
-            if let recorded = registry?.targets[agent] { target = URL(fileURLWithPath: recorded) }
-            else if agent != .opencode { target = configured.resolvingSymlinksInPath().standardizedFileURL }
-            else { target = configured }
-            let capture = try ExactFileCapture.capture(at: target)
-            let report: HookInstallReport
-            switch agent {
-            case .claude:
-                _ = try ClaudeHooks.install(into: capture.data, cliPath: cliPath); report = ClaudeHooks.report(for: capture.data, cliPath: cliPath)
-            case .codex:
-                _ = try CodexHooks.install(into: capture.data, cliPath: cliPath); report = CodexHooks.report(for: capture.data, cliPath: cliPath)
-            case .cursor:
-                _ = try CursorHooks.install(into: capture.data, cliPath: cliPath); report = CursorHooks.report(for: capture.data, cliPath: cliPath)
-            case .opencode:
-                _ = try OpenCodePlugin.install(into: capture.data, cliPath: cliPath); report = OpenCodePlugin.report(for: capture.data, cliPath: cliPath)
-            case .copilot:
-                _ = try CopilotHooks.install(into: capture.data, cliPath: cliPath); report = CopilotHooks.report(for: capture.data, cliPath: cliPath)
-            }
-            let inspection: AgentExactPreparation.Inspection = !capture.snapshot.exists || report.isAbsent
-                ? .absent
-                : report.isHealthy ? .healthyOwned : .repairableOwned
-            let firstConnectTarget = agent == .opencode
-                ? configured
-                : configured.resolvingSymlinksInPath().standardizedFileURL
-            // Keep policy (recorded target priority, one-time JSON resolution,
-            // invalid refusal, and healthy no-restart) pure and independently
-            // testable.  The model only supplies its read-only capture and runs
-            // the resulting hidden helper command.
-            let decision = try AgentExactPreparation.decide(
+            let selection = try exactTargetSelection(agent: agent, home: home, environment: environment)
+            var helper = HelperRunResult(status: 1, output: "Exact preparation refused: invalid inspection", timedOut: false)
+            var latest = DiskHookInspection.invalid(details: [])
+            let result = try AgentExactRefreshCoordinator.run(
                 agent: agent,
-                recordedTarget: registry?.targets[agent],
-                configuredTarget: configured,
-                firstConnectResolvedTarget: firstConnectTarget,
-                snapshot: capture.snapshot,
-                inspection: inspection
+                recordedTarget: selection.recordedTarget,
+                configuredTarget: selection.configuredTarget,
+                firstConnectResolvedTarget: selection.firstConnectResolvedTarget,
+                inspect: { target in
+                    let observation = exactDiskObservation(agent: agent, target: target, cliPath: cliPath)
+                    latest = observation.disk
+                    return observation.core
+                },
+                launch: { launchedAgent, input in
+                    helper = runHelper(at: cliPath, arguments: ["prepare-exact", launchedAgent.rawValue], input: input)
+                    return helper.status == 0
+                }
             )
-            guard let input = decision.input else {
-                return ExactPreparationResult(
-                    helper: HelperRunResult(status: 1, output: "Exact preparation refused: invalid inspection", timedOut: false),
-                    changedVendorBytes: false
-                )
-            }
-            return ExactPreparationResult(
-                helper: runHelper(at: cliPath, arguments: ["prepare-exact", agent.rawValue], input: input),
-                changedVendorBytes: decision.changesVendorBytes
-            )
+            return ExactPreparationResult(helper: helper, changedVendorBytes: result.completion.changedVendorBytes, inspection: latest)
         } catch {
-            return ExactPreparationResult(helper: HelperRunResult(status: 1, output: "Exact preparation refused: \(error)", timedOut: false), changedVendorBytes: false)
+            return ExactPreparationResult(
+                helper: HelperRunResult(status: 1, output: "Exact preparation refused: \(error)", timedOut: false),
+                changedVendorBytes: false,
+                inspection: .invalid(details: [])
+            )
         }
     }
 
@@ -1070,19 +1099,10 @@ final class LetItBrewAppModel: ObservableObject {
         home: URL
     ) -> DiskHookInspection {
         do {
-            let data = try ClaudeHooks.read(at: ClaudeHooks.settingsURL(home: home))
-            _ = try ClaudeHooks.remove(from: data)
-            let report = ClaudeHooks.report(for: data, cliPath: cliPath)
-            if report.isAbsent { return .absent }
-            return report.isHealthy ? .healthy : .needsConnection(details: hookReportDetails(report))
-        } catch {
-            let path = ClaudeHooks.settingsURL(home: home).path
-            return .invalid(
-                details: AgentConfigRecoveryGuidance.details(
-                    agentName: "Claude", path: path
-                )
-            )
-        }
+            let selection = try exactTargetSelection(agent: .claude, home: home, environment: [:])
+            let target = selection.recordedTarget.map(URL.init(fileURLWithPath:)) ?? selection.firstConnectResolvedTarget
+            return exactDiskObservation(agent: .claude, target: target, cliPath: cliPath).disk
+        } catch { return .invalid(details: []) }
     }
 
     private nonisolated static func inspectCodexHooks(
@@ -1091,20 +1111,10 @@ final class LetItBrewAppModel: ObservableObject {
         environment: [String: String]
     ) -> DiskHookInspection {
         do {
-            let url = CodexHooks.hooksURL(home: home, environment: environment)
-            let data = try CodexHooks.read(at: url)
-            _ = try CodexHooks.remove(from: data)
-            let report = CodexHooks.report(for: data, cliPath: cliPath)
-            if report.isAbsent { return .absent }
-            return report.isHealthy ? .healthy : .needsConnection(details: hookReportDetails(report))
-        } catch {
-            let path = CodexHooks.hooksURL(home: home, environment: environment).path
-            return .invalid(
-                details: AgentConfigRecoveryGuidance.details(
-                    agentName: "Codex", path: path
-                )
-            )
-        }
+            let selection = try exactTargetSelection(agent: .codex, home: home, environment: environment)
+            let target = selection.recordedTarget.map(URL.init(fileURLWithPath:)) ?? selection.firstConnectResolvedTarget
+            return exactDiskObservation(agent: .codex, target: target, cliPath: cliPath).disk
+        } catch { return .invalid(details: []) }
     }
 
     private nonisolated static func disconnectedHealth(
@@ -1190,13 +1200,11 @@ final class LetItBrewAppModel: ObservableObject {
                     details: details
                 ))
             } else {
-                if case .absent = inspection {
-                    mutation = prepareExact(agent: .claude, cliPath: cliPath, home: home, environment: environment).helper
-                    inspection = inspectClaudeHooks(cliPath: cliPath, home: home)
-                } else if case .needsConnection = inspection {
-                    mutation = prepareExact(agent: .claude, cliPath: cliPath, home: home, environment: environment).helper
-                    inspection = inspectClaudeHooks(cliPath: cliPath, home: home)
-                }
+                // Healthy legacy files also take the hidden handoff: it records
+                // their exact path without rewriting bytes or prompting a restart.
+                let preparation = prepareExact(agent: .claude, cliPath: cliPath, home: home, environment: environment)
+                mutation = preparation.helper
+                inspection = preparation.inspection
 
                 switch inspection {
                 case .absent:
@@ -1208,14 +1216,18 @@ final class LetItBrewAppModel: ObservableObject {
                         )
                     ))
                 case .healthy:
-                    let changed = mutation?.status == 0
-                    if changed { changedAgents.append("Claude Code") }
-                    var details = ["Local CLI and Desktop Code sessions"]
-                    if changed { details.append("Restart sessions that were already open.") }
-                    health.append(AgentHookHealth(
-                        id: "claude", name: "Claude Code", state: .connected,
-                        details: details
-                    ))
+                    if mutation?.status != 0 {
+                        health.append(AgentHookHealth(
+                            id: "claude", name: "Claude Code", state: .couldNotConnect,
+                            details: connectionFailureDetails(mutation, fallback: ["Let It Brew could not prepare its Claude Code connection."])
+                        ))
+                    } else {
+                        let completion = AgentExactPreparation.completion(changesVendorBytes: preparation.changedVendorBytes, helperSucceeded: true)
+                        if completion.changedVendorBytes { changedAgents.append("Claude Code") }
+                        var details = ["Local CLI and Desktop Code sessions"]
+                        if completion.shouldRestartSessions { details.append("Restart sessions that were already open.") }
+                        health.append(AgentHookHealth(id: "claude", name: "Claude Code", state: .connected, details: details))
+                    }
                 case .needsConnection(let details):
                     health.append(AgentHookHealth(
                         id: "claude", name: "Claude Code", state: .couldNotConnect,
@@ -1258,17 +1270,9 @@ final class LetItBrewAppModel: ObservableObject {
                     details: details
                 ))
             } else {
-                if case .absent = inspection {
-                    mutation = prepareExact(agent: .codex, cliPath: cliPath, home: home, environment: environment).helper
-                    inspection = inspectCodexHooks(
-                        cliPath: cliPath, home: home, environment: environment
-                    )
-                } else if case .needsConnection = inspection {
-                    mutation = prepareExact(agent: .codex, cliPath: cliPath, home: home, environment: environment).helper
-                    inspection = inspectCodexHooks(
-                        cliPath: cliPath, home: home, environment: environment
-                    )
-                }
+                let preparation = prepareExact(agent: .codex, cliPath: cliPath, home: home, environment: environment)
+                mutation = preparation.helper
+                inspection = preparation.inspection
 
                 switch inspection {
                 case .absent:
@@ -1280,7 +1284,17 @@ final class LetItBrewAppModel: ObservableObject {
                         )
                     ))
                 case .healthy:
-                    let changed = mutation?.status == 0
+                    if mutation?.status != 0 {
+                        health.append(AgentHookHealth(
+                            id: "codex", name: "Codex", state: .couldNotConnect,
+                            details: connectionFailureDetails(mutation, fallback: ["Let It Brew could not prepare its Codex connection."])
+                        ))
+                    } else {
+                    let completion = AgentExactPreparation.completion(
+                        changesVendorBytes: preparation.changedVendorBytes,
+                        helperSucceeded: mutation?.status == 0
+                    )
+                    let changed = completion.changedVendorBytes
                     if changed { changedAgents.append("Codex") }
                     let hooksURL = CodexHooks.hooksURL(home: home, environment: environment)
                     let trust = LiveCodexHookTrustInspection.inspect(
@@ -1296,7 +1310,7 @@ final class LetItBrewAppModel: ObservableObject {
                     switch policy {
                     case .connected:
                         var details = ["Local CLI and Codex app sessions"]
-                        if changed { details.append("Restart sessions that were already open.") }
+                        if completion.shouldRestartSessions { details.append("Restart sessions that were already open.") }
                         health.append(AgentHookHealth(
                             id: "codex", name: "Codex", state: .connected,
                             details: details
@@ -1322,6 +1336,7 @@ final class LetItBrewAppModel: ObservableObject {
                             id: "codex", name: "Codex", state: .connecting,
                             details: []
                         ))
+                    }
                     }
                 case .needsConnection(let details):
                     health.append(AgentHookHealth(
