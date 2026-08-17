@@ -24,12 +24,11 @@
 
 - Focused Task 10 suite: PASS, 44 selected/parameterized tests.
 - `swift test --filter AgentLiveDiskReaderTests`: PASS.
+- Full `swift test`: PASS, 654 tests.
+- `swift build`: PASS.
 - `xcodegen generate`: PASS.
 - Unsigned Debug `xcodebuild`: `** BUILD SUCCEEDED **`.
 
-### Remaining gates
-
-Run full `swift test`, `swift build`, final focused matrix, and diff check
-after this coherent review-fix commit.
+`git diff --check` passes. The only attended follow-up is real-vendor app UAT.
 
 DONE

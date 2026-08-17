@@ -27,7 +27,7 @@ private func methodBody(_ source: String, named name: String) -> String {
     #expect(source.contains("AgentID.allCases.map"))
     #expect(source.contains("AgentConnectionMigration.migrate"))
     #expect(source.contains("AgentConnectionActionCoordinator.perform"))
-    #expect(source.contains("AgentDiskInspection.inspect"))
+    #expect(source.contains("AgentLiveDiskReader.inspect"))
     #expect(source.contains("AgentLaunchPreparationRunner.run"))
     #expect(source.contains("persistConnectedAgentIDs(next)"))
     #expect(source.contains("reapplyLatestSnapshot(connectedAgentIDs: next)"))
