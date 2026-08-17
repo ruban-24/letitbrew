@@ -134,7 +134,7 @@ import Testing
     #expect(AgentLiveDiskReader.inspect(agent: .opencode, registryURL: registry, defaultTarget: unreadable, helperPath: "/letitbrew").state == .invalid)
 }
 
-@Test func liveReaderRouteReplacementBeforeCaptureIsInvalidForRecordedAndConfiguredTargets() throws {
+@Test func liveReaderClassifiesPinnedACaptureAfterRecordedAndConfiguredComponentReplacement() throws {
     for recorded in [true, false] {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let component = root.appendingPathComponent("component")
@@ -142,7 +142,7 @@ import Testing
         let ambientB = root.appendingPathComponent("ambient-B.json")
         try FileManager.default.createDirectory(at: component, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
-        try Data("{}".utf8).write(to: selected)
+        try ClaudeHooks.install(into: nil, cliPath: "/letitbrew").write(to: selected)
         try Data("foreign B".utf8).write(to: ambientB)
         let bBefore = try Data(contentsOf: ambientB)
         let bAttributes = try FileManager.default.attributesOfItem(atPath: ambientB.path)
@@ -155,16 +155,17 @@ import Testing
             registry: registry,
             defaultTarget: selected,
             helperPath: "/letitbrew",
-            hooks: .init(beforeExactCapture: { target, usedRecorded, agent in
+            hooks: .init(afterExactCapture: { target, usedRecorded, agent, capture in
                 captures.append((target, usedRecorded, agent))
+                #expect(capture.snapshot.path == selected.path)
+                #expect(capture.data != nil)
                 let retired = root.appendingPathComponent("retired")
                 try FileManager.default.moveItem(at: component, to: retired)
                 try FileManager.default.createDirectory(at: component, withIntermediateDirectories: true)
                 try Data("replacement not A".utf8).write(to: selected)
-                throw ExactFileSnapshotError.changed(target.path)
             })
         )
-        #expect(result.state == .invalid)
+        #expect(result.state == .healthyOwned)
         #expect(captures.count == 1)
         #expect(captures.first?.0 == selected)
         #expect(captures.first?.1 == recorded)

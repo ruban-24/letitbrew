@@ -29,6 +29,23 @@ public struct AgentUninstallCompletion: Equatable, Sendable {
     }
 }
 
+/// Retry state belongs to one explicit empty-selection uninstall cycle. A new
+/// positive intent or fresh uninstall clears stale failures, so a prior
+/// partial removal cannot suppress agents in a later all-five uninstall.
+public struct AgentUninstallCycle: Equatable, Sendable {
+    public private(set) var failedAgentIDs: Set<String> = []
+    public init() {}
+
+    public mutating func beginFresh() -> Set<String> {
+        failedAgentIDs = []
+        return Set(AgentID.allCases.map(\.rawValue))
+    }
+
+    public func beginRetry() -> Set<String> { failedAgentIDs }
+    public mutating func record(_ completion: AgentUninstallCompletion) { failedAgentIDs = completion.retryAgentIDs }
+    public mutating func beginPositiveIntent() { failedAgentIDs = [] }
+}
+
 /// Positive selection is cleared before any best-effort helper removal.  A
 /// failed removal therefore cannot authorize a later install/repair pass.
 public enum AgentUninstallHooksCoordinator {
@@ -63,10 +80,6 @@ public enum AgentUninstallHooksCoordinator {
                 launchRemoval(ids) { results in handleCompletion(complete(results)) }
             }
         )
-    }
-
-    public static func removalIDs(retrying failedAgentIDs: Set<String>) -> Set<String> {
-        failedAgentIDs.isEmpty ? Set(AgentID.allCases.map(\.rawValue)) : failedAgentIDs
     }
 
     public static func complete(_ results: [AgentHelperOperationResult]) -> AgentUninstallCompletion {

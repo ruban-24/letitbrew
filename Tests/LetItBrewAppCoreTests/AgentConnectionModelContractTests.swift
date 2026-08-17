@@ -44,6 +44,9 @@ private func methodBody(_ source: String, named name: String) -> String {
     #expect(disconnect.contains("persistConnectedAgentIDs(next)"))
     #expect(disconnect.contains("reapplyLatestSnapshot(connectedAgentIDs: next)"))
     let uninstall = methodBody(source, named: "uninstallHooks")
-    #expect(uninstall.contains("removalIDs(retrying: failedUninstallAgentIDs)"))
-    #expect(uninstall.contains("failedUninstallAgentIDs = completion.retryAgentIDs"))
+    #expect(uninstall.contains("uninstallCycle.beginFresh()"))
+    let retryUninstall = methodBody(source, named: "retryUninstallHooks")
+    #expect(retryUninstall.contains("uninstallCycle.beginRetry()"))
+    let persist = methodBody(source, named: "persistConnectedAgentIDs")
+    #expect(persist.contains("uninstallCycle.beginPositiveIntent()"))
 }

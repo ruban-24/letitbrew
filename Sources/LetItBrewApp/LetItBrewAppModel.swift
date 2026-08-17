@@ -213,7 +213,7 @@ final class LetItBrewAppModel: ObservableObject {
     }
     @Published private(set) var hookActionInProgress = false
     @Published private(set) var hookMessage: String?
-    private var failedUninstallAgentIDs: Set<String> = []
+    private var uninstallCycle = AgentUninstallCycle()
     @Published private(set) var launchAtLogin = false
     @Published private(set) var launchAtLoginChoiceWasSaved = false
     @Published private(set) var showLaunchAtLoginOnboarding = false
@@ -823,19 +823,25 @@ final class LetItBrewAppModel: ObservableObject {
     }
 
     func uninstallHooks() {
+        beginUninstallHooks(removalIDs: uninstallCycle.beginFresh())
+    }
+
+    func retryUninstallHooks() {
+        let retryIDs = uninstallCycle.beginRetry()
+        guard !retryIDs.isEmpty else { return }
+        beginUninstallHooks(removalIDs: retryIDs)
+    }
+
+    private func beginUninstallHooks(removalIDs: Set<String>) {
         AgentUninstallHooksCoordinator.performAsync(
             selected: connectedAgentIDs,
             persist: { next in persistConnectedAgentIDs(next) },
             refreshVisibility: { next in reapplyLatestSnapshot(connectedAgentIDs: next) },
-            launchRemoval: { allIDs, completion in
-                let ids = AgentUninstallHooksCoordinator.removalIDs(retrying: failedUninstallAgentIDs)
-                // The first attempt receives all five; a later explicit retry
-                // is restricted to the failures retained by the completion.
-                _ = allIDs
-                disconnectAgents(ids, uninstallingAll: true, completion: completion)
+            launchRemoval: { _, completion in
+                disconnectAgents(removalIDs, uninstallingAll: true, completion: completion)
             },
             handleCompletion: { [weak self] completion in
-                self?.failedUninstallAgentIDs = completion.retryAgentIDs
+                self?.uninstallCycle.record(completion)
             }
         )
     }
@@ -928,6 +934,7 @@ final class LetItBrewAppModel: ObservableObject {
         let supported = Set(AgentID.allCases.map(\.rawValue))
         let next = ids.intersection(supported)
         connectedAgentIDs = next
+        if !next.isEmpty { uninstallCycle.beginPositiveIntent() }
         defaults.set(next.sorted(), forKey: Keys.connectedAgentIDsV2)
     }
 

@@ -118,4 +118,26 @@
 - `xcodegen generate` and unsigned Debug `xcodebuild`: PASS.
 - `git diff --check`: PASS.
 
+## Fourth rereview completion
+
+- `AgentLiveDiskReader` now opens and captures the selected target before its
+  deterministic route hook. Recorded and configured parent replacement tests
+  return normally after swapping the lexical name; adapter classification uses
+  pinned owned A bytes/snapshot, with one selected capture and no ambient B
+  fallback. The independent captured-registry-byte replacement proof remains.
+- `AgentUninstallCycle` scopes failed retry IDs to one empty-selection removal
+  cycle. A fresh uninstall clears stale failures and sends all five adapters;
+  `retryUninstallHooks()` sends only current failures; any new positive intent
+  clears retry state before a later fresh uninstall. The retained async cycle
+  test executes all-five partial failure, failed-only retry, actual empty
+  refresh, and positive-intent reset to all five.
+
+### Fourth rereview evidence
+
+- Expanded focused Task 10 suite: PASS, 21 selected/parameterized tests.
+- Full `swift test`: PASS, 673 tests.
+- `swift build`: PASS.
+- `xcodegen generate` and unsigned Debug `xcodebuild`: PASS.
+- `git diff --check`: PASS.
+
 DONE

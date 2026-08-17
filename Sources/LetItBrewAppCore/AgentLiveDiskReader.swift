@@ -11,13 +11,13 @@ public enum AgentLiveDiskReader {
             self.afterExactCapture = afterExactCapture
         }
     }
-    /// A deterministic seam immediately before the production exact capture.
-    /// It exists only to prove that a route replacement is terminal: callers
-    /// cannot use it to substitute an alternate target or trigger a fallback.
+    /// A deterministic seam after the production exact capture.  The hook is
+    /// handed immutable descriptor evidence, so a normal-returning component
+    /// swap cannot redirect classification to a lexical replacement.
     public struct CaptureHooks {
-        public var beforeExactCapture: ((URL, Bool, AgentID) throws -> Void)?
-        public init(beforeExactCapture: ((URL, Bool, AgentID) throws -> Void)? = nil) {
-            self.beforeExactCapture = beforeExactCapture
+        public var afterExactCapture: ((URL, Bool, AgentID, ExactFileCapture) throws -> Void)?
+        public init(afterExactCapture: ((URL, Bool, AgentID, ExactFileCapture) throws -> Void)? = nil) {
+            self.afterExactCapture = afterExactCapture
         }
     }
     public static func readRegistry(at registryURL: URL, hooks: RegistryHooks = .init()) -> AgentDiskRegistry {
@@ -80,8 +80,8 @@ public enum AgentLiveDiskReader {
                     ? requested
                     : requested.resolvingSymlinksInPath().standardizedFileURL
                 do {
-                    try hooks.beforeExactCapture?(target, recorded, agent)
                     let capture = try ExactFileCapture.capture(at: target)
+                    try hooks.afterExactCapture?(target, recorded, agent, capture)
                     return if let data = capture.data {
                         .regular(capture.snapshot, data)
                     } else {
