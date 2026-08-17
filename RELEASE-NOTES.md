@@ -4,9 +4,8 @@ Let It Brew is a menu-bar macOS app that keeps a Mac awake while selected local
 agent hooks report Working, then releases its hold when no managed session is
 Working.
 
-v0.6.0 and later are open source under the [Apache License 2.0](LICENSE);
-v0.5.1 and earlier remain under the
-[MIT License](LICENSES/MIT-v0.5.1-and-earlier.txt). Releases are distributed as a
+v0.6.0 and later are open source under the [Apache License 2.0](LICENSE).
+Releases are distributed as a
 signed, notarized, and stapled DMG from
 [GitHub Releases](https://github.com/ruban-24/letitbrew/releases). Verify the DMG
 against the SHA-256 published with the release.

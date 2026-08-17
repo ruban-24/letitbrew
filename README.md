@@ -404,8 +404,7 @@ owners.
 ## License
 
 Let It Brew v0.6.0 and later is licensed under the
-[Apache License 2.0](LICENSE) (`Apache-2.0`). v0.5.1 and earlier remain under the
-[MIT License](LICENSES/MIT-v0.5.1-and-earlier.txt).
+[Apache License 2.0](LICENSE) (`Apache-2.0`).
 
 Apache 2.0 permits commercial use and redistribution of the code. It does not
 grant rights to present a fork or modified build as the official Let It Brew
