@@ -133,17 +133,17 @@ normal_verifier_runs_legal_then_full_gates() {
         /usr/bin/grep -Fq -- '-- strict signatures and live-image identity --' "$transcript"
 }
 
-direct_distribution_suite_runs_without_git_or_cwd() {
+frozen_v051_contract_runs_without_git_or_cwd() {
     local no_git="$TEST_ROOT/no-git-bin" transcript="$TEST_ROOT/no-git-transcript"
     /bin/mkdir -p "$no_git"
     printf '#!/bin/bash\nexit 127\n' >"$no_git/git"
     /bin/chmod 755 "$no_git/git"
     (
         cd /private/tmp || exit 1
-        PATH="$no_git:$PATH" LETITBREW_DIRECT_DISTRIBUTION_HERMETIC_CHILD=1 \
-            /bin/bash "$SCRIPT_DIR/tests/direct-distribution-tests.sh"
+        PATH="$no_git:$PATH" /bin/bash \
+            "$SCRIPT_DIR/tests/frozen-v0.5.1-update-support-contract-tests.sh"
     ) >"$transcript" 2>&1 &&
-        /usr/bin/grep -Fq 'PASS: 105 isolated direct-distribution assertions' "$transcript"
+        /usr/bin/grep -Fq 'PASS: 5 frozen v0.5.1 UpdateSupport assertions' "$transcript"
 }
 
 echo "-- shared path and manifest contracts --"
@@ -224,10 +224,8 @@ printf '#!/bin/bash\n' >"$v051_five_file_app/Contents/Resources/UpdateSupport/ve
 expect_true "frozen v0.5.1 exact-four predicate rejects a fifth update support entry" \
     frozen_v051_inventory_rejects_fifth_entry "$v051_five_file_app"
 
-if [ "${LETITBREW_DIRECT_DISTRIBUTION_HERMETIC_CHILD:-}" != 1 ]; then
-    expect_true "direct-distribution suite is independent of git tags and caller cwd" \
-        direct_distribution_suite_runs_without_git_or_cwd
-fi
+expect_true "frozen v0.5.1 predicate works without Git from an unrelated caller cwd" \
+    frozen_v051_contract_runs_without_git_or_cwd
 
 echo
 echo "-- Developer ID identity refusal and selection --"
