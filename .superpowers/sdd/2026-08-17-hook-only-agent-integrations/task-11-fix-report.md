@@ -60,6 +60,17 @@ and `## Uninstalling` before asserting the relevant facts. It now proves:
 - uninstall names all five agents, the Scope FAQ positively supports Cursor,
   OpenCode, and GitHub Copilot CLI, and the MIT badge remains unchanged.
 
+## Rereview 2 correction
+
+The path table already had the correct fixed Claude Code and Cursor targets,
+but the positive contract checked only the three environment-derived targets.
+For RED evidence, the Cursor assertion temporarily expected
+`~/.cursor/incorrect.json`; `swift test --filter ProductTerminologyContractTests`
+failed at the bounded privacy-table assertion. The final assertion uses the
+source-derived `~/.cursor/hooks.json` and adds the exact
+`~/.claude/settings.json` row. The same `requiredPathFact` table now covers all
+five adapter targets.
+
 Commands and results:
 
 ```text

@@ -138,8 +138,10 @@ import LetItBrewCore
     }
 
     for requiredPathFact in [
+        "`~/.claude/settings.json` | Claude Code user settings; only Let It Brew-owned hook entries are changed after Connect.",
         "`~/.codex/hooks.json` | Default Codex hook file when `CODEX_HOME` is unset.",
         "When `CODEX_HOME` is present, Let It Brew uses `<CODEX_HOME>/hooks.json`.",
+        "`~/.cursor/hooks.json` | Cursor's user-scoped hook file; project, team, and enterprise scopes are not touched.",
         "`~/.config/opencode/plugins/letitbrew.js` | Default OpenCode plugin path when `OPENCODE_CONFIG_DIR` is unset.",
         "When `OPENCODE_CONFIG_DIR` is present, Let It Brew uses `<OPENCODE_CONFIG_DIR>/plugins/letitbrew.js`.",
         "`~/.copilot/hooks/letitbrew.json` | Default GitHub Copilot CLI hook file when `COPILOT_HOME` is unset.",
