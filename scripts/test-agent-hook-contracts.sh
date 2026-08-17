@@ -93,12 +93,27 @@ grep -q '__letitbrew_copilot_hook' "$AB_COPILOT"
 grep -q '^// __letitbrew_opencode_plugin$' "$AB_OPENCODE"
 ! test -e "$AB_HOME/ambient-copilot/hooks/letitbrew.json"
 ! test -e "$AB_HOME/ambient-opencode/plugins/letitbrew.js"
+# Doctor always prints each requested configuration state and still performs
+# its independent watchdog check when another adapter is invalid.
+DOCTOR_HOME="$(mktemp -d /tmp/letitbrew-doctor.XXXXXX)"
+mkdir -p "$DOCTOR_HOME/.claude" "$DOCTOR_HOME/.codex" "$DOCTOR_HOME/.cursor"
+printf '{ malformed' > "$DOCTOR_HOME/.claude/settings.json"
+env LETITBREW_TEST_HOME="$DOCTOR_HOME" "$CLI" install codex >/dev/null
+env LETITBREW_TEST_HOME="$DOCTOR_HOME" "$CLI" install cursor >/dev/null
+python3 -c 'import json,sys; p,old=sys.argv[1:]; d=json.load(open(p)); walk=lambda x: {k:walk(v) for k,v in x.items()} if isinstance(x,dict) else [walk(v) for v in x] if isinstance(x,list) else x.replace(old,"/private/tmp/letitbrew-stale") if isinstance(x,str) else x; json.dump(walk(d),open(p,"w"))' "$DOCTOR_HOME/.cursor/hooks.json" "$CLI"
+DOCTOR_OUTPUT="$(env LETITBREW_TEST_HOME="$DOCTOR_HOME" "$CLI" doctor || true)"
+grep -q '^Claude Code: configuration invalid$' <<< "$DOCTOR_OUTPUT"
+grep -q '^Codex: healthy$' <<< "$DOCTOR_OUTPUT"
+grep -q '^Cursor: needs repair$' <<< "$DOCTOR_OUTPUT"
+grep -q '^OpenCode: not installed$' <<< "$DOCTOR_OUTPUT"
+grep -q '^GitHub Copilot CLI: not installed$' <<< "$DOCTOR_OUTPUT"
+grep -q '^Lid-closed watchdog:' <<< "$DOCTOR_OUTPUT"
 # Registry parent symlinks are unsafe even with a non-symlink final name: a
 # test-home operation must fail before either vendor config or registry bytes
 # can escape through the parent.
 SYMLINK_HOME="$(mktemp -d /tmp/letitbrew-registry-link.XXXXXX)"
 OUTSIDE_HOME="$(mktemp -d /tmp/letitbrew-registry-outside.XXXXXX)"
-trap 'rm -rf "$TEST_HOME" "$SYMLINK_HOME" "$OUTSIDE_HOME" "$PREP_HOME" "$AB_HOME"' EXIT
+trap 'rm -rf "$TEST_HOME" "$SYMLINK_HOME" "$OUTSIDE_HOME" "$PREP_HOME" "$AB_HOME" "$DOCTOR_HOME"' EXIT
 mkdir -p "$SYMLINK_HOME/Library/Application Support"
 ln -s "$OUTSIDE_HOME" "$SYMLINK_HOME/Library/Application Support/LetItBrew"
 ! env LETITBREW_TEST_HOME="$SYMLINK_HOME" "$CLI" install claude >/dev/null 2>&1
