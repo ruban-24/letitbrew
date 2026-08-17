@@ -60,7 +60,7 @@ public struct ExactFileTarget {
     fileprivate init(displayPath: String, root: DirectoryAnchor?, relative: [String]?) { self.displayPath = displayPath; self.root = root; self.relative = relative }
     public func capture(hooks: TraversalRaceHooks = TraversalRaceHooks()) throws -> CapturedExactFile {
         if let root, let relative { let (parent, name) = try root.parent(for: relative, hooks: hooks); return try CapturedExactFile.captureFromParent(target: self, parent: parent, name: name, displayPath: displayPath) }
-        return CapturedExactFile(target: self, capture: try ExactFileCapture.capture(at: URL(fileURLWithPath: displayPath)), parent: nil, name: nil)
+        return CapturedExactFile(target: self, capture: try ExactFileCapture.capture(at: URL(fileURLWithPath: displayPath)), parent: nil, name: nil, permissions: nil)
     }
 }
 
@@ -69,11 +69,12 @@ public struct CapturedExactFile {
     public let capture: ExactFileCapture
     let parent: OwnedFD?
     let name: String?
+    let permissions: mode_t?
     public var data: Data? { capture.data }
     public var snapshot: ExactFileSnapshot { capture.snapshot }
     static func captureFromParent(target: ExactFileTarget, parent: OwnedFD, name: String, displayPath: String) throws -> CapturedExactFile {
         let opened = name.withCString { openat(parent.rawValue, $0, O_RDONLY | O_NOFOLLOW | O_CLOEXEC) }
-        if opened < 0 { if errno == ENOENT { return CapturedExactFile(target: target, capture: try ExactFileCapture(snapshot: ExactFileSnapshot(path: displayPath, exists: false), data: nil), parent: parent, name: name) }; throw ExactFileSnapshotError.unreadable(displayPath) }
+        if opened < 0 { if errno == ENOENT { return CapturedExactFile(target: target, capture: try ExactFileCapture(snapshot: ExactFileSnapshot(path: displayPath, exists: false), data: nil), parent: parent, name: name, permissions: nil) }; throw ExactFileSnapshotError.unreadable(displayPath) }
         defer { close(opened) }
         var before = stat(); guard fstat(opened, &before) == 0, (before.st_mode & S_IFMT) == S_IFREG else { throw ExactFileSnapshotError.notRegular(displayPath) }
         var bytes = Data(); var buffer = [UInt8](repeating: 0, count: 8192)
@@ -81,6 +82,6 @@ public struct CapturedExactFile {
         var after = stat(); guard fstat(opened, &after) == 0, before.st_dev == after.st_dev, before.st_ino == after.st_ino, before.st_size == after.st_size, before.st_mtimespec.tv_sec == after.st_mtimespec.tv_sec, before.st_mtimespec.tv_nsec == after.st_mtimespec.tv_nsec else { throw ExactFileSnapshotError.changed(displayPath) }
         let digest = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
         let snapshot = try ExactFileSnapshot(path: displayPath, exists: true, deviceID: Int64(before.st_dev), inode: UInt64(before.st_ino), byteCount: Int64(before.st_size), modificationSeconds: Int64(before.st_mtimespec.tv_sec), modificationNanoseconds: Int64(before.st_mtimespec.tv_nsec), sha256: digest)
-        return CapturedExactFile(target: target, capture: ExactFileCapture(snapshot: snapshot, data: bytes), parent: parent, name: name)
+        return CapturedExactFile(target: target, capture: ExactFileCapture(snapshot: snapshot, data: bytes), parent: parent, name: name, permissions: before.st_mode & 0o7777)
     }
 }

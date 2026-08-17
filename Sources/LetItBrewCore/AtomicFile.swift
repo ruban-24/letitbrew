@@ -38,7 +38,12 @@ public enum AtomicFile {
     /// parent descriptor is the only namespace used for temp/quarantine names.
     @discardableResult public static func write(_ data: Data, replacing captured: CapturedExactFile, permissions: Permissions = .preserveExisting(defaultMode: 0o600), hooks: RaceHooks = RaceHooks()) throws -> CapturedExactFile {
         guard let parent = captured.parent, let name = captured.name else { throw ConcurrentModification(path: captured.snapshot.path) }
-        let mode: mode_t = { if case .exact(let value) = permissions { return value }; return captured.snapshot.exists ? 0o600 : 0o600 }()
+        let mode: mode_t = {
+            switch permissions {
+            case .exact(let value): return value
+            case .preserveExisting(let defaultMode): return captured.permissions ?? defaultMode
+            }
+        }()
         let temp = ".\(name).\(UUID().uuidString).exact"
         let tempFD = temp.withCString { openat(parent.rawValue, $0, O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, mode) }
         guard tempFD >= 0 else { throw ConcurrentModification(path: captured.snapshot.path) }

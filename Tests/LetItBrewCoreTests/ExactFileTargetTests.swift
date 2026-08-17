@@ -43,7 +43,8 @@ private func changedExpectedCapture(_ captured: CapturedExactFile, snapshot: Exa
         target: captured.target,
         capture: ExactFileCapture(snapshot: snapshot ?? captured.snapshot, data: data ?? captured.data),
         parent: captured.parent,
-        name: captured.name)
+        name: captured.name,
+        permissions: captured.permissions)
 }
 
 @Test func anchorRejectsMissingNonDirectoryAndSymlinkRoots() throws {
@@ -78,6 +79,22 @@ private func changedExpectedCapture(_ captured: CapturedExactFile, snapshot: Exa
     #expect(published.data == Data("new".utf8))
     try AtomicFile.remove(published, expectedData: Data("new".utf8))
     #expect(!FileManager.default.fileExists(atPath: file.path))
+}
+
+@Test func descriptorWritePreservesCapturedModeAndDefaultsNewFilesToPrivate() throws {
+    let root = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let existing = root.appendingPathComponent("existing"); try Data("old".utf8).write(to: existing)
+    guard chmod(existing.path, 0o640) == 0 else { throw POSIXError(.EIO) }
+    let existingCapture = try DirectoryAnchor.openNoFollow(at: root).target(atAbsoluteURL: existing).capture()
+    _ = try AtomicFile.write(Data("new".utf8), replacing: existingCapture)
+    var existingInfo = stat(); guard lstat(existing.path, &existingInfo) == 0 else { throw POSIXError(.EIO) }
+    #expect(existingInfo.st_mode & 0o7777 == 0o640)
+
+    let fresh = root.appendingPathComponent("fresh")
+    let freshCapture = try DirectoryAnchor.openNoFollow(at: root).target(atAbsoluteURL: fresh).capture()
+    _ = try AtomicFile.write(Data("new".utf8), replacing: freshCapture)
+    var freshInfo = stat(); guard lstat(fresh.path, &freshInfo) == 0 else { throw POSIXError(.EIO) }
+    #expect(freshInfo.st_mode & 0o7777 == 0o600)
 }
 
 @Test func descriptorAbsentAppearanceSurvivesExclusivePublish() throws {
