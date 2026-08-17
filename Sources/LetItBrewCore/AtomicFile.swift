@@ -70,16 +70,42 @@ public enum AtomicFile {
     /// Descriptor-capture aware variant used by agent configuration and the
     /// registry.  It compares bytes, identity, size and nanosecond mtime
     /// immediately before publication instead of accepting a later mtime.
-    public static func write(_ data: Data, to url: URL, ifUnchangedFrom capture: ExactFileCapture) throws {
+    public static func write(
+        _ data: Data, to url: URL, ifUnchangedFrom capture: ExactFileCapture,
+        afterFinalValidation: () throws -> Void = {}, privateMode: Bool = false
+    ) throws {
         guard capture.snapshot.path == url.standardizedFileURL.path else { throw ConcurrentModification(path: url.path) }
-        try capture.snapshot.verify()
-        let directory = url.deletingLastPathComponent()
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let tempURL = directory.appendingPathComponent(".\(url.lastPathComponent).\(UUID().uuidString).tmp")
-        try data.write(to: tempURL, options: .atomic)
-        guard (try ExactFileCapture.capture(at: url)).snapshot == capture.snapshot else { try? FileManager.default.removeItem(at: tempURL); throw ConcurrentModification(path: url.path) }
-        if capture.snapshot.exists { _ = try FileManager.default.replaceItemAt(url, withItemAt: tempURL) }
-        else { try FileManager.default.moveItem(at: tempURL, to: url) }
+        let parent = url.deletingLastPathComponent(); let name = url.lastPathComponent
+        try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+        let parentFD = open(parent.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+        guard parentFD >= 0 else { throw ConcurrentModification(path: url.path) }
+        defer { close(parentFD) }
+        let temporaryName = ".\(name).\(UUID().uuidString).letitbrew-write"
+        let temporary = parent.appendingPathComponent(temporaryName)
+        try data.write(to: temporary, options: .atomic)
+        if privateMode { guard chmod(temporary.path, S_IRUSR | S_IWUSR) == 0 else { try? FileManager.default.removeItem(at: temporary); throw ConcurrentModification(path: temporary.path) } }
+        func cleanupTemp() { try? FileManager.default.removeItem(at: temporary) }
+        func matches(_ fileName: String) -> Bool {
+            var info = stat()
+            return fileName.withCString { fstatat(parentFD, $0, &info, AT_SYMLINK_NOFOLLOW) == 0 &&
+                capture.snapshot.exists && Int64(info.st_dev) == capture.snapshot.deviceID && UInt64(info.st_ino) == capture.snapshot.inode &&
+                Int64(info.st_size) == capture.snapshot.byteCount && Int64(info.st_mtimespec.tv_sec) == capture.snapshot.modificationSeconds && Int64(info.st_mtimespec.tv_nsec) == capture.snapshot.modificationNanoseconds }
+        }
+        if !capture.snapshot.exists {
+            let published = temporaryName.withCString { from in name.withCString { to in renameatx_np(parentFD, from, parentFD, to, UInt32(RENAME_EXCL)) } }
+            guard published == 0 else { cleanupTemp(); throw ConcurrentModification(path: url.path) }
+            return
+        }
+        guard matches(name) else { cleanupTemp(); throw ConcurrentModification(path: url.path) }
+        let quarantineName = ".\(name).\(UUID().uuidString).letitbrew-write-quarantine"
+        let moved = name.withCString { from in quarantineName.withCString { to in renameatx_np(parentFD, from, parentFD, to, UInt32(RENAME_EXCL)) } }
+        guard moved == 0, matches(quarantineName) else {
+            cleanupTemp(); throw ConcurrentModification(path: url.path)
+        }
+        do { try afterFinalValidation() } catch { cleanupTemp(); throw error }
+        let published = temporaryName.withCString { from in name.withCString { to in renameatx_np(parentFD, from, parentFD, to, UInt32(RENAME_EXCL)) } }
+        guard published == 0 else { cleanupTemp(); throw ConcurrentModification(path: "\(url.path) (recovery preserved at \(parent.appendingPathComponent(quarantineName).path))") }
+        guard quarantineName.withCString({ unlinkat(parentFD, $0, 0) }) == 0 else { throw ConcurrentModification(path: parent.appendingPathComponent(quarantineName).path) }
     }
 
     /// Removes an owned regular file without ever unlinking the active name.

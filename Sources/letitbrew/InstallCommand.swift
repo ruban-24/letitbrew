@@ -58,8 +58,7 @@ private func loadRegistry() throws -> LoadedRegistry {
 private func saveRegistry(_ registry: AgentInstallRegistry, basedOn capture: ExactFileCapture) throws -> ExactFileCapture {
     let url = try registryURL(); try rejectSymlink(url)
     let data = try JSONEncoder().encode(registry)
-    try AtomicFile.write(data, to: url, ifUnchangedFrom: capture)
-    guard chmod(url.path, S_IRUSR | S_IWUSR) == 0 else { throw UnsafeTarget(path: url.path) }
+    try AtomicFile.write(data, to: url, ifUnchangedFrom: capture, privateMode: true)
     return try ExactFileCapture.capture(at: url)
 }
 

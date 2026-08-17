@@ -120,3 +120,14 @@ private func ownedTemporaryFile(_ contents: String) throws -> URL {
     #expect(try String(contentsOf: #require(recoveryURL), encoding: .utf8) == "owned")
     #expect(try String(contentsOf: #require(replacementURL), encoding: .utf8) == "foreign quarantine replacement")
 }
+
+@Test func exactWriteNeverOverwritesReplacementAfterFinalValidation() throws {
+    let url = try ownedTemporaryFile("owned"); defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+    let capture = try ExactFileCapture.capture(at: url)
+    #expect(throws: ConcurrentModification.self) {
+        try AtomicFile.write(Data("ours".utf8), to: url, ifUnchangedFrom: capture, afterFinalValidation: {
+            try Data("foreign replacement".utf8).write(to: url)
+        })
+    }
+    #expect(try String(contentsOf: url, encoding: .utf8) == "foreign replacement")
+}
