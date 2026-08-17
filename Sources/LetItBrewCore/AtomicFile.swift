@@ -43,11 +43,29 @@ public enum AtomicFile {
         var info = stat(); guard name.withCString({ fstatat(parent.rawValue, $0, &info, AT_SYMLINK_NOFOLLOW) }) == 0, UInt64(info.st_ino) == captured.snapshot.inode else { cleanup(); throw ConcurrentModification(path: captured.snapshot.path) }
         let quarantine = ".\(name).\(UUID().uuidString).quarantine"
         guard name.withCString({ from in quarantine.withCString { to in renameatx_np(parent.rawValue, from, parent.rawValue, to, UInt32(RENAME_EXCL)) } }) == 0 else { cleanup(); throw ConcurrentModification(path: captured.snapshot.path) }
+        let quarantined = try CapturedExactFile.captureFromParent(target: captured.target, parent: parent, name: quarantine, displayPath: captured.snapshot.path)
+        guard quarantined.capture == captured.capture else { cleanup(); throw ConcurrentModification(path: "\(captured.snapshot.path) (quarantine recovery preserved)") }
         try hooks.afterQuarantineValidationBeforePublish?()
         let published = temp.withCString { from in name.withCString { to in renameatx_np(parent.rawValue, from, parent.rawValue, to, UInt32(RENAME_EXCL)) } }
         guard published == 0 else { cleanup(); throw ConcurrentModification(path: "\(captured.snapshot.path) (recovery preserved)") }
-        _ = quarantine.withCString { unlinkat(parent.rawValue, $0, 0) }
+        var quarantineInfo = stat()
+        guard quarantine.withCString({ fstatat(parent.rawValue, $0, &quarantineInfo, AT_SYMLINK_NOFOLLOW) }) == 0,
+              UInt64(quarantineInfo.st_ino) == quarantined.snapshot.inode else { throw ConcurrentModification(path: "\(captured.snapshot.path) (quarantine recovery preserved)") }
+        guard quarantine.withCString({ unlinkat(parent.rawValue, $0, 0) }) == 0 else { throw ConcurrentModification(path: captured.snapshot.path) }
         return try captured.target.capture()
+    }
+
+    public static func remove(_ captured: CapturedExactFile, expectedData: Data, hooks: RaceHooks = RaceHooks()) throws {
+        guard let parent = captured.parent, let name = captured.name, captured.data == expectedData else { throw ConcurrentModification(path: captured.snapshot.path) }
+        try hooks.beforeQuarantine?()
+        let quarantine = ".\(name).\(UUID().uuidString).remove-quarantine"
+        guard name.withCString({ from in quarantine.withCString { to in renameatx_np(parent.rawValue, from, parent.rawValue, to, UInt32(RENAME_EXCL)) } }) == 0 else { throw ConcurrentModification(path: captured.snapshot.path) }
+        let observed = try CapturedExactFile.captureFromParent(target: captured.target, parent: parent, name: quarantine, displayPath: captured.snapshot.path)
+        guard observed.capture == captured.capture else { throw ConcurrentModification(path: "\(captured.snapshot.path) (quarantine recovery preserved)") }
+        try hooks.afterQuarantineValidationBeforePublish?()
+        var info = stat()
+        guard quarantine.withCString({ fstatat(parent.rawValue, $0, &info, AT_SYMLINK_NOFOLLOW) }) == 0, UInt64(info.st_ino) == observed.snapshot.inode else { throw ConcurrentModification(path: "\(captured.snapshot.path) (quarantine recovery preserved)") }
+        guard quarantine.withCString({ unlinkat(parent.rawValue, $0, 0) }) == 0 else { throw ConcurrentModification(path: captured.snapshot.path) }
     }
     /// The modification date of `url`, or `nil` if it does not exist (or any
     /// other stat failure — folded into `nil` the same way a missing file

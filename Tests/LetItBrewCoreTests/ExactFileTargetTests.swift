@@ -26,3 +26,14 @@ private func anchoredRoot() throws -> URL { let u = FileManager.default.temporar
     #expect(throws: Error.self) { try anchor.target(atAbsoluteURL: file).capture() }
     #expect(!FileManager.default.fileExists(atPath: outside.appendingPathComponent("config.json").path))
 }
+
+@Test func descriptorWriteAndRemoveUseTheCapturedParent() throws {
+    let root = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let file = root.appendingPathComponent("target"); try Data("old".utf8).write(to: file)
+    let target = try DirectoryAnchor.openNoFollow(at: root).target(atAbsoluteURL: file)
+    let observed = try target.capture()
+    let published = try AtomicFile.write(Data("new".utf8), replacing: observed)
+    #expect(published.data == Data("new".utf8))
+    try AtomicFile.remove(published, expectedData: Data("new".utf8))
+    #expect(!FileManager.default.fileExists(atPath: file.path))
+}

@@ -59,7 +59,7 @@ public struct ExactFileTarget {
     public static func ordinary(_ url: URL) -> ExactFileTarget { ExactFileTarget(displayPath: url.standardizedFileURL.path, root: nil, relative: nil) }
     fileprivate init(displayPath: String, root: DirectoryAnchor?, relative: [String]?) { self.displayPath = displayPath; self.root = root; self.relative = relative }
     public func capture(hooks: TraversalRaceHooks = TraversalRaceHooks()) throws -> CapturedExactFile {
-        if let root, let relative { let (parent, name) = try root.parent(for: relative, hooks: hooks); return try CapturedExactFile.capture(target: self, parent: parent, name: name, displayPath: displayPath) }
+        if let root, let relative { let (parent, name) = try root.parent(for: relative, hooks: hooks); return try CapturedExactFile.captureFromParent(target: self, parent: parent, name: name, displayPath: displayPath) }
         return CapturedExactFile(target: self, capture: try ExactFileCapture.capture(at: URL(fileURLWithPath: displayPath)), parent: nil, name: nil)
     }
 }
@@ -71,7 +71,7 @@ public struct CapturedExactFile {
     let name: String?
     public var data: Data? { capture.data }
     public var snapshot: ExactFileSnapshot { capture.snapshot }
-    fileprivate static func capture(target: ExactFileTarget, parent: OwnedFD, name: String, displayPath: String) throws -> CapturedExactFile {
+    static func captureFromParent(target: ExactFileTarget, parent: OwnedFD, name: String, displayPath: String) throws -> CapturedExactFile {
         let opened = name.withCString { openat(parent.rawValue, $0, O_RDONLY | O_NOFOLLOW | O_CLOEXEC) }
         if opened < 0 { if errno == ENOENT { return CapturedExactFile(target: target, capture: try ExactFileCapture(snapshot: ExactFileSnapshot(path: displayPath, exists: false), data: nil), parent: parent, name: name) }; throw ExactFileSnapshotError.unreadable(displayPath) }
         defer { close(opened) }
