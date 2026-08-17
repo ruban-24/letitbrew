@@ -23,3 +23,16 @@ import Testing
     )
     #expect(events == ["persist:[\"claude\"]", "refresh:[\"claude\"]", "helper-failed:codex"])
 }
+
+@Test func unresolvedHelperAndLaterFailureCannotRollbackPersistedSelection() {
+    var selected: Set<String> = ["claude"]
+    var completion: (() -> Void)?
+    AgentConnectionActionCoordinator.perform(
+        .connect, id: "cursor", selected: selected,
+        persist: { selected = $0 }, refreshVisibility: { _ in },
+        launchHelper: { _, _ in completion = {} }
+    )
+    #expect(selected == ["claude", "cursor"])
+    completion?() // a later helper failure has no selection rollback hook.
+    #expect(selected == ["claude", "cursor"])
+}

@@ -26,3 +26,19 @@ private func migrationSnapshot() -> ExactFileSnapshot {
     #expect(!result.consultedLegacy)
     #expect(result.decision.selectedAgentIDs == ["cursor"])
 }
+
+@Test(arguments: [
+    AgentPersistedSelection.missing,
+    .values([]),
+    .values(["cursor"]),
+    .values(["unknown"]),
+    .malformed,
+])
+func migrationAlwaysWritesV2BeforeRemovingLegacy(persisted: AgentPersistedSelection) {
+    var events: [String] = []
+    let result = AgentConnectionMigration.migrate(persisted: persisted, legacyDisconnected: ["codex"], inspections: [], legacyMigratableAgentIDs: ["claude", "codex"])
+    AgentConnectionMigration.persist(result.decision.selectedAgentIDs, writeV2: { events.append("write:\($0)") }, removeLegacy: { events.append("removeLegacy") })
+    #expect(events.count == 2)
+    #expect(events[0].hasPrefix("write:"))
+    #expect(events[1] == "removeLegacy")
+}

@@ -39,6 +39,11 @@ public enum AgentLiveDiskReader {
             defaultTarget: defaultTarget,
             helperPath: helperPath,
             readExactTarget: { requested, recorded in
+                if !recorded, agent != .opencode,
+                   (try? FileManager.default.destinationOfSymbolicLink(atPath: requested.path)) != nil,
+                   !FileManager.default.fileExists(atPath: requested.resolvingSymlinksInPath().path) {
+                    return .invalid(resolvedURL: requested, reason: "Let It Brew will not follow a dangling configuration symlink.")
+                }
                 let target = recorded || agent == .opencode
                     ? requested
                     : requested.resolvingSymlinksInPath().standardizedFileURL

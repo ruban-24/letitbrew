@@ -23,4 +23,21 @@ import Testing
     try JSONEncoder().encode(cleanRegistry).write(to: registry)
     let configuredResult = AgentLiveDiskReader.inspect(agent: .claude, registryURL: registry, defaultTarget: configured, helperPath: "/letitbrew")
     #expect(configuredResult.target == final)
+
+    let recordedLink = root.appendingPathComponent("recorded-link.json")
+    try FileManager.default.createSymbolicLink(at: recordedLink, withDestinationURL: final)
+    let recordedRegistry = try AgentInstallRegistry(targets: [.claude: recordedLink.path])
+    try JSONEncoder().encode(recordedRegistry).write(to: registry)
+    let recorded = AgentLiveDiskReader.inspect(agent: .claude, registryURL: registry, defaultTarget: configured, helperPath: "/letitbrew")
+    #expect(recorded.state == .invalid)
+
+    let openCode = root.appendingPathComponent("letitbrew.js")
+    try FileManager.default.createSymbolicLink(at: openCode, withDestinationURL: final)
+    let openCodeResult = AgentLiveDiskReader.inspect(agent: .opencode, registryURL: root.appendingPathComponent("absent-registry"), defaultTarget: openCode, helperPath: "/letitbrew")
+    #expect(openCodeResult.state == .invalid)
+
+    let dangling = root.appendingPathComponent("dangling.json")
+    try FileManager.default.createSymbolicLink(at: dangling, withDestinationURL: root.appendingPathComponent("missing.json"))
+    let danglingResult = AgentLiveDiskReader.inspect(agent: .claude, registryURL: root.appendingPathComponent("absent-registry"), defaultTarget: dangling, helperPath: "/letitbrew")
+    #expect(danglingResult.state == .invalid)
 }

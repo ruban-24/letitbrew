@@ -41,4 +41,16 @@ public enum AgentConnectionMigration {
             consultedLegacy: missing
         )
     }
+
+    /// The persistence ordering is intentional: a crash after the write
+    /// leaves authoritative V2 selection; legacy intent is never the only
+    /// remaining source after this boundary starts.
+    public static func persist(
+        _ selectedAgentIDs: Set<String>,
+        writeV2: ([String]) -> Void,
+        removeLegacy: () -> Void
+    ) {
+        writeV2(selectedAgentIDs.sorted())
+        removeLegacy()
+    }
 }

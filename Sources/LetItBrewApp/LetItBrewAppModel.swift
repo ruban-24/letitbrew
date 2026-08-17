@@ -96,6 +96,11 @@ private struct AgentConnectionRefresh: Sendable {
     let changedAgents: [String]
 }
 
+private struct InitialAgentLaunch: Sendable {
+    let decision: AgentLaunchConnectionDecision
+    let inspections: [AgentConnectionInspection]
+}
+
 private struct UserDefaultsLaunchAtLoginChoicePersistence: LaunchAtLoginChoicePersisting, @unchecked Sendable {
     let defaults: UserDefaults
 
@@ -279,6 +284,7 @@ final class LetItBrewAppModel: ObservableObject {
     /// migration below, then removed after this key has been persisted.
     private var connectedAgentIDs: Set<String> = []
     private var launchPreparations: [AgentLaunchPreparation] = []
+    private var launchInspections: [AgentConnectionInspection] = []
 
     init(
         defaults: UserDefaults = .standard,
@@ -332,14 +338,15 @@ final class LetItBrewAppModel: ObservableObject {
         launchAtLogin = defaults.bool(forKey: Keys.launchAtLogin)
         showLaunchAtLoginOnboarding = !launchAtLoginChoiceWasSaved
             && !defaults.bool(forKey: Keys.launchAtLoginOnboardingDismissed)
-        let launchDecision = Self.initialLaunchDecision(
+        let initialLaunch = Self.initialLaunchDecision(
             defaults: defaults,
             helperPath: Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/letitbrew").path,
             home: FileManager.default.homeDirectoryForCurrentUser,
             environment: ProcessInfo.processInfo.environment
         )
-        connectedAgentIDs = launchDecision.selectedAgentIDs
-        launchPreparations = launchDecision.preparations
+        connectedAgentIDs = initialLaunch.decision.selectedAgentIDs
+        launchPreparations = initialLaunch.decision.preparations
+        launchInspections = initialLaunch.inspections
         presentUnselectedAgents()
 
         if startsPolling {
@@ -815,13 +822,12 @@ final class LetItBrewAppModel: ObservableObject {
     }
 
     func uninstallHooks() {
-        // This user action means “remove every connection”, not merely run a
-        // best-effort helper.  Persist the empty positive selection and hide
-        // sessions before a helper can fail, so a later refresh cannot undo
-        // the user's explicit removal intent.
-        persistConnectedAgentIDs([])
-        reapplyLatestSnapshot(connectedAgentIDs: [])
-        disconnectAgents(Set(AgentID.allCases.map(\.rawValue)))
+        AgentUninstallHooksCoordinator.perform(
+            selected: connectedAgentIDs,
+            persist: { next in persistConnectedAgentIDs(next) },
+            refreshVisibility: { next in reapplyLatestSnapshot(connectedAgentIDs: next) },
+            launchRemoval: { ids in disconnectAgents(ids) }
+        )
     }
 
     /// Explicit API for the Agents overflow menu. Automatic setup respects
@@ -1050,7 +1056,7 @@ final class LetItBrewAppModel: ObservableObject {
         helperPath: String,
         home: URL,
         environment: [String: String]
-    ) -> AgentLaunchConnectionDecision {
+    ) -> InitialAgentLaunch {
         let persisted: AgentPersistedSelection
         if defaults.object(forKey: Keys.connectedAgentIDsV2) == nil {
             persisted = .missing
@@ -1082,12 +1088,12 @@ final class LetItBrewAppModel: ObservableObject {
             legacyMigratableAgentIDs: [AgentID.claude.rawValue, AgentID.codex.rawValue]
         )
         let decision = migration.decision
-        defaults.set(decision.selectedAgentIDs.sorted(), forKey: Keys.connectedAgentIDsV2)
-        // V2 is authoritative whether it was migrated, empty, populated, or
-        // malformed.  Persist a canonical V2 value before clearing stale
-        // negative intent so a crash can never fall back to legacy inference.
-        defaults.removeObject(forKey: Keys.disconnectedAgents)
-        return decision
+        AgentConnectionMigration.persist(
+            decision.selectedAgentIDs,
+            writeV2: { defaults.set($0, forKey: Keys.connectedAgentIDsV2) },
+            removeLegacy: { defaults.removeObject(forKey: Keys.disconnectedAgents) }
+        )
+        return InitialAgentLaunch(decision: decision, inspections: inspections)
     }
 
     private nonisolated static func configuredTarget(
@@ -1109,22 +1115,42 @@ final class LetItBrewAppModel: ObservableObject {
     /// encoded unchanged for the internal command.
     private func runLaunchPreparations() {
         let preparations = launchPreparations
+        let inspections = launchInspections
         launchPreparations = []
         let executable = helperURL.path
-        AgentLaunchPreparationRunner.run(
+        let outcomes = AgentLaunchOutcomeCoordinator.execute(
             preparations,
             runRecorded: { agentID in
-                _ = Self.runHelper(at: executable, arguments: ["install", agentID])
+                let result = Self.runHelper(at: executable, arguments: ["install", agentID])
+                return result.status == 0
+                    ? .succeeded(changedVendorBytes: true)
+                    : .failed(result.output)
             },
             runExact: { preparation in
                 let input = try? JSONEncoder().encode(preparation)
-                _ = Self.runHelper(
+                let result = Self.runHelper(
                     at: executable,
                     arguments: ["prepare-exact", preparation.agent.rawValue],
                     input: input
                 )
+                return result.status == 0
+                    ? .succeeded(changedVendorBytes: true)
+                    : .failed(result.output)
             }
         )
+        let rows = AgentLaunchOutcomeCoordinator.present(
+            inspections: inspections,
+            selectedAgentIDs: connectedAgentIDs,
+            outcomes: outcomes
+        )
+        let byID = Dictionary(uniqueKeysWithValues: rows.map { ($0.agentID, $0) })
+        agentHooks = agentHooks.map { health in
+            guard let row = byID[health.id] else { return health }
+            return AgentHookHealth(
+                id: health.id, name: health.name, state: row.state,
+                details: row.details, disposition: row.disposition
+            )
+        }
     }
 
     private nonisolated static func exactTargetSelection(
@@ -1683,13 +1709,10 @@ final class LetItBrewAppModel: ObservableObject {
         _ snapshot: LetItBrewSnapshot,
         connectedAgentIDs: Set<String>
     ) {
-        let connectedSessions = AgentSessionVisibilityPolicy.visibleSessions(
-            from: snapshot.sessions,
-            connectedAgentIDs: connectedAgentIDs
-        )
-        let tracking = SessionTrackingPolicy.applying(
-            sessionTrackingSuppressions,
-            to: connectedSessions
+        let tracking = AgentSessionVisibilityPipeline.apply(
+            sessions: snapshot.sessions,
+            connectedAgentIDs: connectedAgentIDs,
+            suppressions: sessionTrackingSuppressions
         )
         if tracking.suppressions != sessionTrackingSuppressions {
             sessionTrackingSuppressions = tracking.suppressions
