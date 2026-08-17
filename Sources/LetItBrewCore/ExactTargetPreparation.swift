@@ -12,10 +12,14 @@ public struct ExactTargetPreparation: Codable, Equatable, Sendable {
         guard version == Self.schemaVersion else { throw ExactTargetPreparationError.unsupportedVersion }
         self.version = version; self.agent = agent; self.snapshot = snapshot; self.expectedState = expectedState
     }
-    enum CodingKeys: String, CodingKey { case version, agent, snapshot, expectedState }
+    enum CodingKeys: String, CodingKey, CaseIterable { case version, agent, snapshot, expectedState }
     public init(from decoder: Decoder) throws {
+        let raw = try decoder.container(keyedBy: AnyExactCodingKey.self)
+        guard Set(raw.allKeys.map(\.stringValue)).isSubset(of: Set(CodingKeys.allCases.map(\.rawValue))) else {
+            throw ExactTargetPreparationError.invalidSchema
+        }
         let c = try decoder.container(keyedBy: CodingKeys.self)
         try self.init(agent: try c.decode(AgentID.self, forKey: .agent), snapshot: try c.decode(ExactFileSnapshot.self, forKey: .snapshot), expectedState: try c.decode(ExactTargetExpectedState.self, forKey: .expectedState), version: try c.decode(Int.self, forKey: .version))
     }
 }
-public enum ExactTargetPreparationError: Error { case unsupportedVersion }
+public enum ExactTargetPreparationError: Error { case unsupportedVersion, invalidSchema }

@@ -13,6 +13,13 @@ public enum AgentExactPreparation {
         public init(target: URL, input: Data?, changesVendorBytes: Bool) { self.target = target; self.input = input; self.changesVendorBytes = changesVendorBytes }
     }
 
+    /// Presentation is derived from both the request's pure state and the
+    /// helper result.  A failed helper must never cause a restart prompt.
+    public struct Completion: Sendable, Equatable {
+        public let changedVendorBytes: Bool
+        public var shouldRestartSessions: Bool { changedVendorBytes }
+    }
+
     public static func decide(
         agent: AgentID, recordedTarget: String?, configuredTarget: URL,
         firstConnectResolvedTarget: URL, snapshot: ExactFileSnapshot,
@@ -27,6 +34,10 @@ public enum AgentExactPreparation {
             let preparation = try ExactTargetPreparation(agent: agent, snapshot: snapshot, expectedState: state)
             return Decision(target: target, input: try JSONEncoder().encode(preparation), changesVendorBytes: state != .healthyOwned)
         }
+    }
+
+    public static func completion(changesVendorBytes: Bool, helperSucceeded: Bool) -> Completion {
+        Completion(changedVendorBytes: changesVendorBytes && helperSucceeded)
     }
 }
 public enum AgentExactPreparationError: Error { case snapshotTargetMismatch }

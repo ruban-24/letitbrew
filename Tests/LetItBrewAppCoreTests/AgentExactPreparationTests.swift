@@ -4,12 +4,20 @@ import Testing
 import LetItBrewCore
 
 private func absentSnapshot(_ path: String = "/tmp/exact-target") throws -> ExactFileSnapshot { try ExactFileSnapshot(path: path, exists: false) }
-@Test func exactPreparationEncodesEveryAgent() throws {
+@Test func exactPreparationEncodesEveryAgentAndMutationState() throws {
     for agent in AgentID.allCases {
         let snapshot = try absentSnapshot("/tmp/\(agent.rawValue)")
-        let decision = try AgentExactPreparation.decide(agent: agent, recordedTarget: nil, configuredTarget: URL(fileURLWithPath: snapshot.path), firstConnectResolvedTarget: URL(fileURLWithPath: snapshot.path), snapshot: snapshot, inspection: .absent)
-        #expect(try JSONDecoder().decode(ExactTargetPreparation.self, from: #require(decision.input)).agent == agent)
-        #expect(decision.changesVendorBytes)
+        for (inspection, expectedState, changes) in [
+            (AgentExactPreparation.Inspection.absent, ExactTargetExpectedState.absent, true),
+            (.healthyOwned, .healthyOwned, false),
+            (.repairableOwned, .repairableOwned, true),
+        ] {
+            let decision = try AgentExactPreparation.decide(agent: agent, recordedTarget: nil, configuredTarget: URL(fileURLWithPath: snapshot.path), firstConnectResolvedTarget: URL(fileURLWithPath: snapshot.path), snapshot: snapshot, inspection: inspection)
+            let request = try JSONDecoder().decode(ExactTargetPreparation.self, from: #require(decision.input))
+            #expect(request.agent == agent)
+            #expect(request.expectedState == expectedState)
+            #expect(decision.changesVendorBytes == changes)
+        }
     }
 }
 @Test func invalidInspectionNeverCreatesAHelperRequest() throws {
@@ -23,4 +31,10 @@ private func absentSnapshot(_ path: String = "/tmp/exact-target") throws -> Exac
 @Test func firstConnectUsesResolvedJSONTarget() throws {
     let snapshot = try absentSnapshot("/tmp/final"); let d = try AgentExactPreparation.decide(agent: .cursor, recordedTarget: nil, configuredTarget: URL(fileURLWithPath: "/tmp/link"), firstConnectResolvedTarget: URL(fileURLWithPath: "/tmp/final"), snapshot: snapshot, inspection: .repairableOwned)
     #expect(d.target.path == "/tmp/final"); #expect(d.changesVendorBytes)
+}
+@Test func helperFailureNeverReportsAChangeOrRestart() {
+    #expect(!AgentExactPreparation.completion(changesVendorBytes: true, helperSucceeded: false).changedVendorBytes)
+    #expect(!AgentExactPreparation.completion(changesVendorBytes: true, helperSucceeded: false).shouldRestartSessions)
+    #expect(!AgentExactPreparation.completion(changesVendorBytes: false, helperSucceeded: true).shouldRestartSessions)
+    #expect(AgentExactPreparation.completion(changesVendorBytes: true, helperSucceeded: true).shouldRestartSessions)
 }

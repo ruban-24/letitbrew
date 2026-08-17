@@ -1352,8 +1352,12 @@ final class LetItBrewAppModel: ObservableObject {
             let preparation = prepareExact(agent: agent, cliPath: cliPath, home: home, environment: environment)
             let mutation = preparation.helper
             if mutation.status == 0 {
-                if preparation.changedVendorBytes { changedAgents.append(agent.displayName) }
-                health.append(AgentHookHealth(id: agent.rawValue, name: agent.displayName, state: .connected, details: preparation.changedVendorBytes ? ["Restart sessions that were already open."] : []))
+                let completion = AgentExactPreparation.completion(
+                    changesVendorBytes: preparation.changedVendorBytes,
+                    helperSucceeded: true
+                )
+                if completion.changedVendorBytes { changedAgents.append(agent.displayName) }
+                health.append(AgentHookHealth(id: agent.rawValue, name: agent.displayName, state: .connected, details: completion.shouldRestartSessions ? ["Restart sessions that were already open."] : []))
             } else {
                 health.append(AgentHookHealth(id: agent.rawValue, name: agent.displayName, state: .couldNotConnect, details: connectionFailureDetails(mutation, fallback: ["Let It Brew could not prepare its \(agent.displayName) connection."])))
             }

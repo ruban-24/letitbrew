@@ -116,6 +116,7 @@ public enum AtomicFile {
     public static func remove(
         _ url: URL,
         ifUnchangedFrom expectedData: Data,
+        beforeQuarantine: () throws -> Void = {},
         afterQuarantine: (URL) throws -> Void = { _ in },
         afterValidation: (URL) throws -> Void = { _ in }
     ) throws {
@@ -129,6 +130,10 @@ public enum AtomicFile {
         guard sourceResult == 0, (sourceStat.st_mode & S_IFMT) == S_IFREG else {
             throw ConcurrentModification(path: url.path)
         }
+        // Test seam for the otherwise tiny fstatat-to-rename window.  The
+        // quarantine descriptor is compared back to `sourceStat` below, so a
+        // replacement that wins this race is retained rather than unlinked.
+        try beforeQuarantine()
         let quarantineName = ".\(name).\(UUID().uuidString).letitbrew-quarantine"
         let renamed = name.withCString { oldName in
             quarantineName.withCString { newName in

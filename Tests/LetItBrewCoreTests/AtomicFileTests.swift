@@ -121,6 +121,22 @@ private func ownedTemporaryFile(_ contents: String) throws -> URL {
     #expect(try String(contentsOf: #require(replacementURL), encoding: .utf8) == "foreign quarantine replacement")
 }
 
+@Test func preQuarantineReplacementIsRetainedInsteadOfDeleted() throws {
+    let url = try ownedTemporaryFile("owned")
+    let directory = url.deletingLastPathComponent()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    #expect(throws: ConcurrentModification.self) {
+        try AtomicFile.remove(url, ifUnchangedFrom: Data("owned".utf8), beforeQuarantine: {
+            try FileManager.default.moveItem(at: url, to: url.appendingPathExtension("captured-source"))
+            try Data("foreign replacement".utf8).write(to: url)
+        })
+    }
+    let names = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+    let foreign = try #require(names.first { $0.contains("letitbrew-quarantine") })
+    #expect(try String(contentsOf: directory.appendingPathComponent(foreign), encoding: .utf8) == "foreign replacement")
+    #expect(try String(contentsOf: url.appendingPathExtension("captured-source"), encoding: .utf8) == "owned")
+}
+
 @Test func exactWriteNeverOverwritesReplacementAfterFinalValidation() throws {
     let url = try ownedTemporaryFile("owned"); defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
     let capture = try ExactFileCapture.capture(at: url)

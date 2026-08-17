@@ -13,6 +13,10 @@ private func snapshotFile(_ data: String) throws -> URL {
     let json = "{\"path\":\"/tmp/x\",\"exists\":true,\"deviceID\":1,\"inode\":1,\"byteCount\":0,\"modificationSeconds\":0,\"modificationNanoseconds\":1000000000,\"sha256\":\"not-a-digest\"}"
     #expect(throws: Error.self) { _ = try JSONDecoder().decode(ExactFileSnapshot.self, from: Data(json.utf8)) }
 }
+@Test func snapshotRejectsUnknownWireFields() throws {
+    let complete = "{\"path\":\"/tmp/x\",\"exists\":false,\"deviceID\":null,\"inode\":null,\"byteCount\":null,\"modificationSeconds\":null,\"modificationNanoseconds\":null,\"sha256\":null,\"extra\":1}"
+    #expect(throws: Error.self) { _ = try JSONDecoder().decode(ExactFileSnapshot.self, from: Data(complete.utf8)) }
+}
 @Test func snapshotRejectsSymlinkSubstitution() throws {
     let url = try snapshotFile("one"); defer { try? FileManager.default.removeItem(at: url); try? FileManager.default.removeItem(at: url.appendingPathExtension("link")) }
     let snapshot = try ExactFileSnapshot.capture(at: url); let link = url.appendingPathExtension("link")

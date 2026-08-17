@@ -33,8 +33,12 @@ public struct ExactFileSnapshot: Codable, Equatable, Sendable {
         self.modificationSeconds = modificationSeconds; self.modificationNanoseconds = modificationNanoseconds; self.sha256 = sha256
     }
 
-    enum CodingKeys: String, CodingKey { case path, exists, deviceID, inode, byteCount, modificationSeconds, modificationNanoseconds, sha256 }
+    enum CodingKeys: String, CodingKey, CaseIterable { case path, exists, deviceID, inode, byteCount, modificationSeconds, modificationNanoseconds, sha256 }
     public init(from decoder: Decoder) throws {
+        let raw = try decoder.container(keyedBy: AnyExactCodingKey.self)
+        guard Set(raw.allKeys.map(\.stringValue)).isSubset(of: Set(CodingKeys.allCases.map(\.rawValue))) else {
+            throw ExactFileSnapshotError.invalidEvidence
+        }
         let c = try decoder.container(keyedBy: CodingKeys.self)
         try self.init(path: try c.decode(String.self, forKey: .path),
                       exists: try c.decode(Bool.self, forKey: .exists),
@@ -65,6 +69,13 @@ public struct ExactFileSnapshot: Codable, Equatable, Sendable {
     public func verify() throws {
         guard try ExactFileSnapshot.capture(at: URL(fileURLWithPath: path)) == self else { throw ExactFileSnapshotError.changed(path) }
     }
+}
+
+struct AnyExactCodingKey: CodingKey {
+    let stringValue: String
+    let intValue: Int?
+    init?(stringValue: String) { self.stringValue = stringValue; intValue = nil }
+    init?(intValue: Int) { stringValue = String(intValue); self.intValue = intValue }
 }
 
 /// Bytes and identity captured from one `O_NOFOLLOW` descriptor.  Callers
