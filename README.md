@@ -235,10 +235,10 @@ confirmation, downloads the release DMG and checksum.
 | `/Library/Application Support/LetItBrew/` | Background-service recovery state for the system-wide sleep setting. |
 | macOS user defaults | Preferences: pause, safety thresholds, closed-lid, Launch at Login. |
 | `~/.claude/settings.json` | Claude Code user settings; only Let It Brew-owned hook entries are changed after Connect. |
-| `${CODEX_HOME:-~/.codex}/hooks.json` | Codex hook file; `CODEX_HOME` relocates the directory. |
+| `~/.codex/hooks.json` | Default Codex hook file when `CODEX_HOME` is unset. When `CODEX_HOME` is present, Let It Brew uses `<CODEX_HOME>/hooks.json`. |
 | `~/.cursor/hooks.json` | Cursor's user-scoped hook file; project, team, and enterprise scopes are not touched. |
-| `${OPENCODE_CONFIG_DIR:-~/.config/opencode}/plugins/letitbrew.js` | Let It Brew's one owned OpenCode plugin. `OPENCODE_CONFIG_DIR` selects one explicit alternate config directory; other plugin locations are not searched or changed. |
-| `${COPILOT_HOME:-~/.copilot}/hooks/letitbrew.json` | GitHub Copilot CLI user hook file; `COPILOT_HOME` relocates the directory, while project, team, and enterprise scopes are not touched. |
+| `~/.config/opencode/plugins/letitbrew.js` | Default OpenCode plugin path when `OPENCODE_CONFIG_DIR` is unset. When `OPENCODE_CONFIG_DIR` is present, Let It Brew uses `<OPENCODE_CONFIG_DIR>/plugins/letitbrew.js`. Its value selects one explicit config directory; other plugin locations are not searched or changed. |
+| `~/.copilot/hooks/letitbrew.json` | Default GitHub Copilot CLI hook file when `COPILOT_HOME` is unset. When `COPILOT_HOME` is present, Let It Brew uses `<COPILOT_HOME>/hooks/letitbrew.json`. Project, team, and enterprise scopes are not touched. |
 
 ## Uninstalling
 

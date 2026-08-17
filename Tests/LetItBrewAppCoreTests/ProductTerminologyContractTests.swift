@@ -107,11 +107,54 @@ import LetItBrewCore
         contentsOf: repository.appendingPathComponent("README.md"),
         encoding: .utf8
     )
+    let normalizedReadme = readme.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+
+    let supportedAgents = try #require(
+        readme.components(separatedBy: "## Supported agents").dropFirst().first?
+            .components(separatedBy: "## Safety").first
+    )
+    let privacyAndPaths = try #require(
+        readme.components(separatedBy: "## Privacy and local data").dropFirst().first?
+            .components(separatedBy: "## Uninstalling").first
+    )
+    let uninstall = try #require(
+        readme.components(separatedBy: "## Uninstalling").dropFirst().first?
+            .components(separatedBy: "## FAQ").first
+    )
+    let normalizedUninstall = uninstall.split(whereSeparator: \.isWhitespace).joined(separator: " ")
 
     for displayName in AgentID.allCases.map(\.displayName) {
-        #expect(readme.contains(displayName),
-                "The README must document the supported agent: \(displayName).")
+        #expect(supportedAgents.contains(displayName),
+                "The Supported agents section must document \(displayName).")
     }
+
+    for requiredFreshConnectFact in [
+        "all five agent rows are optional and disconnected.",
+        "choose **Connect** for each local agent you want Let It Brew to follow",
+        "no agent configuration is changed before that choice.",
+        "migrates only previously owned Claude Code and Codex connections.",
+    ] {
+        #expect(normalizedReadme.contains(requiredFreshConnectFact))
+    }
+
+    for requiredPathFact in [
+        "`~/.codex/hooks.json` | Default Codex hook file when `CODEX_HOME` is unset.",
+        "When `CODEX_HOME` is present, Let It Brew uses `<CODEX_HOME>/hooks.json`.",
+        "`~/.config/opencode/plugins/letitbrew.js` | Default OpenCode plugin path when `OPENCODE_CONFIG_DIR` is unset.",
+        "When `OPENCODE_CONFIG_DIR` is present, Let It Brew uses `<OPENCODE_CONFIG_DIR>/plugins/letitbrew.js`.",
+        "`~/.copilot/hooks/letitbrew.json` | Default GitHub Copilot CLI hook file when `COPILOT_HOME` is unset.",
+        "When `COPILOT_HOME` is present, Let It Brew uses `<COPILOT_HOME>/hooks/letitbrew.json`.",
+    ] {
+        #expect(privacyAndPaths.contains(requiredPathFact))
+    }
+
+    for displayName in AgentID.allCases.map(\.displayName) {
+        #expect(normalizedUninstall.contains(displayName),
+                "Uninstalling must name \(displayName).")
+    }
+
+    #expect(normalizedReadme.contains("Yes for local Cursor hooks."))
+    #expect(normalizedReadme.contains("Let It Brew also supports local OpenCode and GitHub Copilot CLI hooks."))
 
     for obsoleteClaim in [
         "connects Claude Code and Codex automatically",

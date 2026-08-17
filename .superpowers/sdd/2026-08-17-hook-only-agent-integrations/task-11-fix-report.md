@@ -1,6 +1,6 @@
 # Task 11 documentation fix report
 
-Base: `967d0d1`
+Base: `967d0d1`; first documentation correction: `e2e7ab9`
 
 ## RED evidence
 
@@ -25,14 +25,40 @@ pre-v0.6 owned Claude Code/Codex migration. The local-data table is derived
 from the adapters:
 
 - `~/.claude/settings.json`
-- `${CODEX_HOME:-~/.codex}/hooks.json`
+- default `~/.codex/hooks.json`; when `CODEX_HOME` is present,
+  `<CODEX_HOME>/hooks.json`
 - `~/.cursor/hooks.json`
-- `${OPENCODE_CONFIG_DIR:-~/.config/opencode}/plugins/letitbrew.js`
-- `${COPILOT_HOME:-~/.copilot}/hooks/letitbrew.json`
+- default `~/.config/opencode/plugins/letitbrew.js`; when
+  `OPENCODE_CONFIG_DIR` is present,
+  `<OPENCODE_CONFIG_DIR>/plugins/letitbrew.js`
+- default `~/.copilot/hooks/letitbrew.json`; when `COPILOT_HOME` is present,
+  `<COPILOT_HOME>/hooks/letitbrew.json`
 
 The terminology contract reads `README.md`, requires every `AgentID`
 display name, rejects the three obsolete claims, and pins the existing MIT
 badge unchanged.
+
+## Rereview correction
+
+The original README test was intentionally expanded after rereview showed that
+the five display names could be satisfied by the trademark footer alone and
+that shell-style `${VAR:-default}` shorthand incorrectly described empty
+environment values. The strengthened test first failed against that shorthand
+and the unguarded operational facts.
+
+The final test extracts `## Supported agents`, `## Privacy and local data`,
+and `## Uninstalling` before asserting the relevant facts. It now proves:
+
+- all five exact display names appear in `## Supported agents`, not merely the
+  footer;
+- a fresh install is optional, requires Connect, mutates nothing before that
+  choice, and limits pre-v0.6 migration to previously owned Claude Code and
+  Codex connections;
+- the default and present-variable paths match `CODEX_HOME`,
+  `OPENCODE_CONFIG_DIR`, and `COPILOT_HOME` adapter semantics without claiming
+  an empty variable selects a default;
+- uninstall names all five agents, the Scope FAQ positively supports Cursor,
+  OpenCode, and GitHub Copilot CLI, and the MIT badge remains unchanged.
 
 Commands and results:
 
