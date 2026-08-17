@@ -11,6 +11,8 @@ source "$SCRIPT_DIR/build-release-artifact.sh"
 source "$SCRIPT_DIR/create-release-dmg.sh"
 # shellcheck source=../notarize-release.sh
 source "$SCRIPT_DIR/notarize-release.sh"
+# shellcheck source=../lib-power-baseline.sh
+source "$SCRIPT_DIR/lib-power-baseline.sh"
 
 TEST_VERSION="$(release_project_value "$SCRIPT_DIR/../project.yml" MARKETING_VERSION)"
 TEST_BUILD="$(release_project_value "$SCRIPT_DIR/../project.yml" CURRENT_PROJECT_VERSION)"
@@ -91,7 +93,7 @@ make_fake_app() {
 }
 
 verify_legal_resources_only() {
-    "$SCRIPT_DIR/verify-legal-resources.sh" "$1"
+    baseline_verify_legal_resources "$1"
 }
 
 make_legal_only_app() {
@@ -101,6 +103,41 @@ make_legal_only_app() {
     /usr/bin/install -m 644 "$SCRIPT_DIR/../NOTICE" "$app/Contents/Resources/Legal/NOTICE"
     /usr/bin/install -m 644 "$SCRIPT_DIR/../TRADEMARKS.md" "$app/Contents/Resources/Legal/TRADEMARKS.md"
 }
+
+make_four_file_update_support() {
+    local app="$1" support_dir="$1/Contents/Resources/UpdateSupport" support
+    /bin/mkdir -p "$support_dir"
+    for support in run-update.sh upgrade-installed-app.sh verify-artifact.sh; do
+        printf '#!/bin/bash\n' >"$support_dir/$support"
+        /bin/chmod 755 "$support_dir/$support"
+    done
+    printf '# immutable support data\n' >"$support_dir/lib-power-baseline.sh"
+    /bin/chmod 644 "$support_dir/lib-power-baseline.sh"
+}
+
+frozen_v051_inventory_accepts_current_layout() {
+    local app="$1" transcript="$TEST_ROOT/v051-four-file-transcript"
+    "$TEST_ROOT/v051-verify-artifact.sh" "$app" --release >"$transcript" 2>&1 || true
+    /usr/bin/grep -Fq 'ok: exactly four update support entries' "$transcript" &&
+        ! /usr/bin/grep -Fq 'FAIL: exactly four update support entries' "$transcript"
+}
+
+frozen_v051_inventory_rejects_fifth_entry() {
+    local app="$1" transcript="$TEST_ROOT/v051-five-file-transcript"
+    "$TEST_ROOT/v051-verify-artifact.sh" "$app" --release >"$transcript" 2>&1 || true
+    /usr/bin/grep -Fq 'FAIL: exactly four update support entries' "$transcript"
+}
+
+normal_verifier_runs_legal_then_full_gates() {
+    local app="$1" transcript="$TEST_ROOT/normal-verifier-transcript"
+    LETITBREW_VERIFY_ARTIFACT_LEGAL_ONLY=1 "$SCRIPT_DIR/verify-artifact.sh" "$app" >"$transcript" 2>&1 || true
+    /usr/bin/grep -Fq 'PASS: embedded legal resource verification' "$transcript" &&
+        /usr/bin/grep -Fq -- '-- signed update support --' "$transcript" &&
+        /usr/bin/grep -Fq -- '-- strict signatures and live-image identity --' "$transcript"
+}
+
+git show v0.5.1:scripts/verify-artifact.sh >"$TEST_ROOT/v051-verify-artifact.sh"
+/bin/chmod 755 "$TEST_ROOT/v051-verify-artifact.sh"
 
 echo "-- shared path and manifest contracts --"
 new_path="$TEST_ROOT/new-release"
@@ -161,6 +198,24 @@ expect_false "old Legal-only environment cannot bypass normal verification" \
     env LETITBREW_VERIFY_ARTIFACT_LEGAL_ONLY=1 "$SCRIPT_DIR/verify-artifact.sh" "$minimal_legal_app"
 expect_false "old Legal-only environment cannot bypass release verification" \
     env LETITBREW_VERIFY_ARTIFACT_LEGAL_ONLY=1 "$SCRIPT_DIR/verify-artifact.sh" "$minimal_legal_app" --release
+expect_true "normal verifier calls Legal validation and continues through full gates despite the retired environment" \
+    normal_verifier_runs_legal_then_full_gates "$minimal_legal_app"
+
+echo
+echo "-- frozen v0.5.1 update support compatibility --"
+v051_four_file_app="$TEST_ROOT/v051-four-file/Let It Brew.app"
+make_fake_app "$v051_four_file_app"
+make_four_file_update_support "$v051_four_file_app"
+expect_true "frozen v0.5.1 verifier accepts the exact current four-file inventory despite unsigned fixture failures" \
+    frozen_v051_inventory_accepts_current_layout "$v051_four_file_app"
+
+v051_five_file_app="$TEST_ROOT/v051-five-file/Let It Brew.app"
+make_fake_app "$v051_five_file_app"
+make_four_file_update_support "$v051_five_file_app"
+printf '#!/bin/bash\n' >"$v051_five_file_app/Contents/Resources/UpdateSupport/verify-legal-resources.sh"
+/bin/chmod 755 "$v051_five_file_app/Contents/Resources/UpdateSupport/verify-legal-resources.sh"
+expect_true "frozen v0.5.1 verifier rejects a fifth update support entry separately from unsigned fixture failures" \
+    frozen_v051_inventory_rejects_fifth_entry "$v051_five_file_app"
 
 echo
 echo "-- Developer ID identity refusal and selection --"

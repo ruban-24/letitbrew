@@ -31,6 +31,9 @@ check() {
 }
 note() { printf '     %s\n' "$*"; }
 
+# shellcheck source=lib-power-baseline.sh
+source "$SCRIPT_DIR/lib-power-baseline.sh"
+
 plist_value() {
     /usr/libexec/PlistBuddy -c "Print :$2" "$1" 2>/dev/null
 }
@@ -93,11 +96,7 @@ done
 
 echo
 echo "-- embedded legal resources --"
-LEGAL_VERIFIER="$SCRIPT_DIR/verify-legal-resources.sh"
-check "legal resource verifier present" test -x "$LEGAL_VERIFIER"
-if [ -x "$LEGAL_VERIFIER" ]; then
-    "$LEGAL_VERIFIER" "$APP" || fail=1
-fi
+baseline_verify_legal_resources "$APP" || fail=1
 check "main executable bit set" test -x "$MAIN"
 check "daemon executable bit set" test -x "$DAEMON"
 check "helper executable bit set" test -x "$HELPER"
@@ -139,13 +138,13 @@ else
     check "update support directory is not a symlink" test ! -L "$UPDATE_SUPPORT"
     if [ -d "$UPDATE_SUPPORT" ] && [ ! -L "$UPDATE_SUPPORT" ]; then
         update_support_count="$(/usr/bin/find "$UPDATE_SUPPORT" -mindepth 1 -maxdepth 1 -print | /usr/bin/awk 'END { print NR + 0 }')"
-        check "exactly five update support entries" test "$update_support_count" -eq 5
-        for support in run-update.sh upgrade-installed-app.sh verify-artifact.sh verify-legal-resources.sh lib-power-baseline.sh; do
+        check "exactly four update support entries" test "$update_support_count" -eq 4
+        for support in run-update.sh upgrade-installed-app.sh verify-artifact.sh lib-power-baseline.sh; do
             support_path="$UPDATE_SUPPORT/$support"
             check "$support present as an ordinary file" test -f "$support_path"
             check "$support is not a symlink" test ! -L "$support_path"
         done
-        for support in run-update.sh upgrade-installed-app.sh verify-artifact.sh verify-legal-resources.sh; do
+        for support in run-update.sh upgrade-installed-app.sh verify-artifact.sh; do
             support_mode="$(/usr/bin/stat -f '%Lp' "$UPDATE_SUPPORT/$support" 2>/dev/null)"
             check "$support has mode 755" test "$support_mode" = 755
         done

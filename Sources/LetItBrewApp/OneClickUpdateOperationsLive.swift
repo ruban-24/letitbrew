@@ -41,7 +41,6 @@ final class LiveOneClickUpdateOperations:
         "run-update.sh": 0o755,
         "upgrade-installed-app.sh": 0o755,
         "verify-artifact.sh": 0o755,
-        "verify-legal-resources.sh": 0o755,
         "lib-power-baseline.sh": 0o644,
     ]
 

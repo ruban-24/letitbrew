@@ -29,14 +29,13 @@ expect_equal() {
 make_workspace() {
     local name="$1" root="$TEST_ROOT/$1"
     /bin/mkdir -p "$root/UpdateSupport" "$root/Candidate/Let It Brew.app"
-    for support in run-update.sh upgrade-installed-app.sh verify-artifact.sh verify-legal-resources.sh lib-power-baseline.sh; do
+    for support in run-update.sh upgrade-installed-app.sh verify-artifact.sh lib-power-baseline.sh; do
         /usr/bin/printf '#!/bin/bash\n' >"$root/UpdateSupport/$support"
     done
     /bin/chmod 755 \
         "$root/UpdateSupport/run-update.sh" \
         "$root/UpdateSupport/upgrade-installed-app.sh" \
-        "$root/UpdateSupport/verify-artifact.sh" \
-        "$root/UpdateSupport/verify-legal-resources.sh"
+        "$root/UpdateSupport/verify-artifact.sh"
     /bin/chmod 644 "$root/UpdateSupport/lib-power-baseline.sh"
     printf '%s\n' "$root"
 }
@@ -86,7 +85,6 @@ fixture_root="$(make_workspace full)"
 /usr/bin/install -m 755 "$SCRIPT_DIR/run-update.sh" "$fixture_root/UpdateSupport/run-update.sh" || exit 1
 /usr/bin/install -m 755 "$SCRIPT_DIR/upgrade-installed-app.sh" "$fixture_root/UpdateSupport/upgrade-installed-app.sh" || exit 1
 /usr/bin/install -m 755 "$SCRIPT_DIR/verify-artifact.sh" "$fixture_root/UpdateSupport/verify-artifact.sh" || exit 1
-/usr/bin/install -m 755 "$SCRIPT_DIR/verify-legal-resources.sh" "$fixture_root/UpdateSupport/verify-legal-resources.sh" || exit 1
 /usr/bin/install -m 644 "$SCRIPT_DIR/lib-power-baseline.sh" "$fixture_root/UpdateSupport/lib-power-baseline.sh" || exit 1
 expect_false "full runner refuses a non-Let It Brew PID before any transaction" \
     "$fixture_root/UpdateSupport/run-update.sh" \
