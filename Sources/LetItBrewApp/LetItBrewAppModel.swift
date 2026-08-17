@@ -993,14 +993,26 @@ final class LetItBrewAppModel: ObservableObject {
         agent: AgentID, cliPath: String, home: URL, environment: [String: String]
     ) -> HelperRunResult {
         do {
-            let target: URL
+            let registryURL = home.appendingPathComponent("Library/Application Support/LetItBrew/agent-hook-targets.json")
+            let registry: AgentInstallRegistry?
+            if let data = try? Data(contentsOf: registryURL) {
+                registry = try? JSONDecoder().decode(AgentInstallRegistry.self, from: data)
+            } else { registry = nil }
+            let configured: URL
             switch agent {
-            case .claude: target = ClaudeHooks.settingsURL(home: home)
-            case .codex: target = CodexHooks.hooksURL(home: home, environment: environment)
-            case .cursor: target = CursorHooks.settingsURL(home: home)
-            case .opencode: target = OpenCodePlugin.pluginURL(home: home, environment: environment)
-            case .copilot: target = CopilotHooks.hooksURL(home: home, environment: environment)
+            case .claude: configured = ClaudeHooks.settingsURL(home: home)
+            case .codex: configured = CodexHooks.hooksURL(home: home, environment: environment)
+            case .cursor: configured = CursorHooks.settingsURL(home: home)
+            case .opencode: configured = OpenCodePlugin.pluginURL(home: home, environment: environment)
+            case .copilot: configured = CopilotHooks.hooksURL(home: home, environment: environment)
             }
+            // A known target is authoritative even when vendor homes moved.
+            // JSON symlinks are followed only for the first handoff, matching
+            // the CLI's one-time final-target recording rule.
+            let target: URL
+            if let recorded = registry?.targets[agent] { target = URL(fileURLWithPath: recorded) }
+            else if agent != .opencode { target = configured.resolvingSymlinksInPath().standardizedFileURL }
+            else { target = configured }
             let capture = try ExactFileCapture.capture(at: target)
             let report: HookInstallReport
             switch agent {
