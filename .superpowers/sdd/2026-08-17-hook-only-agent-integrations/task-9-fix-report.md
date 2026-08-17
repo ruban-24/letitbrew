@@ -8,6 +8,14 @@ inspection. Temporary negative compatibility shims/visibility overloads keep
 the shipping app compiling without pulling Task 10 model integration forward.
 Their deletion is explicitly deferred to Task 10.
 
-Focused policy suites and unsigned app build were rerun after the fix.
+```text
+AgentConnectionSelectionPolicyTests  PASS (7 tests)
+AgentHelperBatchRunnerTests          PASS (3 tests)
+AgentSessionVisibilityPolicyTests    PASS (7 tests)
+unsigned Debug app build             PASS
+```
+
+The batch test intentionally proves only pure selection helpers; executable
+selection-before-helper effect ordering is deferred to the Task 10 coordinator.
 
 DONE

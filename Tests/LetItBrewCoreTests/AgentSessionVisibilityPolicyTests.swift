@@ -142,3 +142,13 @@ private func visibilitySession(
 
     #expect(visible.map(\.id) == ["claude-work"])
 }
+
+@Test func everySupportedAgentReconnectsAndUnknownNeedsExplicitSelection() {
+    let all = ["claude", "codex", "cursor", "opencode", "copilot"]
+    let raw = all.map { visibilitySession(id: "\($0)-work", tool: $0) } + [visibilitySession(id: "unknown", tool: "custom")]
+    for id in all {
+        #expect(AgentSessionVisibilityPolicy.visibleSessions(from: raw, connectedAgentIDs: [id]).map(\.tool) == [id])
+    }
+    #expect(AgentSessionVisibilityPolicy.visibleSessions(from: raw, connectedAgentIDs: []).isEmpty)
+    #expect(AgentSessionVisibilityPolicy.visibleSessions(from: raw, connectedAgentIDs: ["custom"]).map(\.id) == ["unknown"])
+}
