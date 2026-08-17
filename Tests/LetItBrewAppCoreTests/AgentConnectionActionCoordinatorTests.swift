@@ -24,15 +24,24 @@ import Testing
     #expect(events == ["persist:[\"claude\"]", "refresh:[\"claude\"]", "helper-failed:codex"])
 }
 
-@Test func unresolvedHelperAndLaterFailureCannotRollbackPersistedSelection() {
+@Test func lateHelperFailureProducesDiagnosticWithoutRollingBackPersistedSelection() {
     var selected: Set<String> = ["claude"]
-    var completion: (() -> Void)?
+    var completion: ((AgentHelperOperationResult) -> AgentDisconnectFollowUp)?
     AgentConnectionActionCoordinator.perform(
         .connect, id: "cursor", selected: selected,
         persist: { selected = $0 }, refreshVisibility: { _ in },
-        launchHelper: { _, _ in completion = {} }
+        launchHelper: { _, _ in
+            completion = { result in
+                AgentDisconnectCompletionPolicy.followUps(for: [result]).first!
+            }
+        }
     )
     #expect(selected == ["claude", "cursor"])
-    completion?() // a later helper failure has no selection rollback hook.
+    let outcome = completion?(AgentHelperOperationResult(
+        agentID: "cursor", status: 1, output: "helper refused", timedOut: false
+    ))
+    #expect(outcome == .showFailure(.init(agentID: "cursor", status: 1, output: "helper refused", timedOut: false)))
+    // The production model consumes this outcome only to update row details;
+    // it has no persistence callback and therefore cannot undo the selection.
     #expect(selected == ["claude", "cursor"])
 }

@@ -41,3 +41,95 @@ import Testing
     let danglingResult = AgentLiveDiskReader.inspect(agent: .claude, registryURL: root.appendingPathComponent("absent-registry"), defaultTarget: dangling, helperPath: "/letitbrew")
     #expect(danglingResult.state == .invalid)
 }
+
+@Test func liveReaderInjectsExactlyOneSelectedCaptureAndNeverAnAlternate() throws {
+    let selected = URL(fileURLWithPath: "/recorded/A.json")
+    let ambient = URL(fileURLWithPath: "/ambient/B.json")
+    let registry = try AgentInstallRegistry(targets: [.copilot: selected.path])
+    var calls: [(URL, Bool, AgentID)] = []
+    let result = AgentLiveDiskReader.inspect(
+        agent: .copilot, registry: .valid(registry), defaultTarget: ambient,
+        helperPath: "/letitbrew",
+        readExactTarget: { target, recorded, agent in
+            calls.append((target, recorded, agent))
+            return .absent(try! ExactFileSnapshot(path: target.path, exists: false))
+        }
+    )
+    #expect(calls.count == 1)
+    #expect(calls[0].0 == selected && calls[0].1 && calls[0].2 == .copilot)
+    #expect(result.target == selected)
+}
+
+@Test func liveReaderUsesOneInjectedRegistryAndSelectedCaptureForRecordedAndConfiguredProvenance() throws {
+    let registryURL = URL(fileURLWithPath: "/registry/targets.json")
+    let recorded = URL(fileURLWithPath: "/recorded/A.json")
+    let configured = URL(fileURLWithPath: "/configured/B.json")
+    let absentRecorded = try ExactFileSnapshot(path: recorded.path, exists: false)
+    let absentConfigured = try ExactFileSnapshot(path: configured.path, exists: false)
+    for (agent, registry, target, expectedRecorded, snapshot) in [
+        (AgentID.claude, AgentDiskRegistry.valid(try .init(targets: [.claude: recorded.path])), recorded, true, absentRecorded),
+        (AgentID.cursor, AgentDiskRegistry.valid(nil), configured, false, absentConfigured),
+    ] {
+        var registryReads = 0
+        var targetReads: [(URL, Bool, AgentID)] = []
+        let result = AgentLiveDiskReader.inspect(
+            agent: agent,
+            registryURL: registryURL,
+            defaultTarget: configured,
+            helperPath: "/letitbrew",
+            registryReader: { url in
+                registryReads += 1
+                #expect(url == registryURL)
+                return registry
+            },
+            readExactTarget: { url, recorded, agent in
+                targetReads.append((url, recorded, agent))
+                return .absent(snapshot)
+            }
+        )
+        #expect(registryReads == 1)
+        #expect(targetReads.count == 1)
+        #expect(targetReads.first?.0 == target)
+        #expect(targetReads.first?.1 == expectedRecorded)
+        #expect(targetReads.first?.2 == agent)
+        #expect(result.target == target)
+    }
+}
+
+@Test func liveReaderMakesUnreadableAndNonregularReadsInvalidWithoutFallback() throws {
+    let target = URL(fileURLWithPath: "/selected/target")
+    let registry = AgentDiskRegistry.valid(nil)
+    for reason in ["unreadable", "not a regular file"] {
+        var calls = 0
+        let result = AgentLiveDiskReader.inspect(
+            agent: .opencode,
+            registry: registry,
+            defaultTarget: target,
+            helperPath: "/letitbrew",
+            readExactTarget: { url, recorded, _ in
+                calls += 1
+                #expect(url == target)
+                #expect(!recorded)
+                return .invalid(resolvedURL: target, reason: reason)
+            }
+        )
+        #expect(calls == 1)
+        #expect(result.state == .invalid)
+    }
+}
+
+@Test func liveReaderRefusesActualUnreadableAndNonregularTargets() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let registry = root.appendingPathComponent("missing-registry.json")
+    let directory = root.appendingPathComponent("directory-target")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    #expect(AgentLiveDiskReader.inspect(agent: .opencode, registryURL: registry, defaultTarget: directory, helperPath: "/letitbrew").state == .invalid)
+
+    let unreadable = root.appendingPathComponent("unreadable.js")
+    try Data("{}".utf8).write(to: unreadable)
+    try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: unreadable.path)
+    defer { try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: unreadable.path) }
+    #expect(AgentLiveDiskReader.inspect(agent: .opencode, registryURL: registry, defaultTarget: unreadable, helperPath: "/letitbrew").state == .invalid)
+}

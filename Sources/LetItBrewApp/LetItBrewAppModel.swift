@@ -826,7 +826,7 @@ final class LetItBrewAppModel: ObservableObject {
             selected: connectedAgentIDs,
             persist: { next in persistConnectedAgentIDs(next) },
             refreshVisibility: { next in reapplyLatestSnapshot(connectedAgentIDs: next) },
-            launchRemoval: { ids in disconnectAgents(ids) }
+            launchRemoval: { ids in disconnectAgents(ids, uninstallingAll: true) }
         )
     }
 
@@ -934,7 +934,7 @@ final class LetItBrewAppModel: ObservableObject {
         }
     }
 
-    private func disconnectAgents(_ ids: Set<String>) {
+    private func disconnectAgents(_ ids: Set<String>, uninstallingAll: Bool = false) {
         // Same mutual exclusion as refreshAgentHooks(): must not start once
         // uninstall has, since uninstall removes these same hook entries.
         guard !hookActionInProgress, !uninstallInProgress, !updateBlocksOtherActions else { return }
@@ -971,6 +971,12 @@ final class LetItBrewAppModel: ObservableObject {
             }.value
             guard let self else { return }
             self.hookActionInProgress = false
+            let uninstallCompletion = uninstallingAll
+                ? AgentUninstallHooksCoordinator.complete(results)
+                : nil
+            let uninstallRows = uninstallCompletion.map {
+                Dictionary(uniqueKeysWithValues: $0.rows.map { ($0.agentID, $0) })
+            } ?? [:]
             let followUps = AgentDisconnectCompletionPolicy.followUps(for: results)
             let followUpByAgent = Dictionary(uniqueKeysWithValues: followUps.map { followUp in
                 switch followUp {
@@ -981,6 +987,15 @@ final class LetItBrewAppModel: ObservableObject {
                 }
             })
             self.agentHooks = self.agentHooks.map { health in
+                if let row = uninstallRows[health.id] {
+                    return AgentHookHealth(
+                        id: health.id,
+                        name: health.name,
+                        state: row.state,
+                        details: row.details,
+                        disposition: row.disposition
+                    )
+                }
                 guard let followUp = followUpByAgent[health.id] else { return health }
                 switch followUp {
                 case .markDisconnected:

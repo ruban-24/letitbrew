@@ -22,16 +22,25 @@ public enum AgentLiveDiskReader {
         agent: AgentID,
         registryURL: URL,
         defaultTarget: URL,
-        helperPath: String
+        helperPath: String,
+        registryReader: ((URL) -> AgentDiskRegistry)? = nil,
+        readExactTarget: ((URL, Bool, AgentID) -> AgentExactTargetRead)? = nil
     ) -> AgentDiskInspectionResult {
-        inspect(agent: agent, registry: readRegistry(at: registryURL), defaultTarget: defaultTarget, helperPath: helperPath)
+        inspect(
+            agent: agent,
+            registry: registryReader?(registryURL) ?? readRegistry(at: registryURL),
+            defaultTarget: defaultTarget,
+            helperPath: helperPath,
+            readExactTarget: readExactTarget
+        )
     }
 
     public static func inspect(
         agent: AgentID,
         registry: AgentDiskRegistry,
         defaultTarget: URL,
-        helperPath: String
+        helperPath: String,
+        readExactTarget: ((URL, Bool, AgentID) -> AgentExactTargetRead)? = nil
     ) -> AgentDiskInspectionResult {
         return AgentDiskInspection.inspect(
             agent: agent,
@@ -39,6 +48,9 @@ public enum AgentLiveDiskReader {
             defaultTarget: defaultTarget,
             helperPath: helperPath,
             readExactTarget: { requested, recorded in
+                if let readExactTarget {
+                    return readExactTarget(requested, recorded, agent)
+                }
                 if !recorded, agent != .opencode,
                    (try? FileManager.default.destinationOfSymbolicLink(atPath: requested.path)) != nil,
                    !FileManager.default.fileExists(atPath: requested.resolvingSymlinksInPath().path) {

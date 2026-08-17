@@ -62,4 +62,32 @@
 
 `git diff --check` passes. The only attended follow-up is real-vendor app UAT.
 
+## Second rereview completion
+
+- `AgentLiveDiskReader` now accepts injected registry and exact-target readers
+  while retaining its descriptor-capture production defaults.  Tests prove one
+  selected read for both recorded and configured provenance, no ambient
+  fallback, and refusal of real nonregular/unreadable, registry, recorded,
+  OpenCode, and dangling-symlink paths.
+- Launch still has no resolver after inspection: its exact preparation outcome
+  remains the sole mutation authority.  Healthy exact preparation is
+  registry-only/no-restart; absent and repairable exact preparations request a
+  restart only after a successful vendor mutation.  Codex trust uses the
+  immutable selected target.
+- `AgentUninstallHooksCoordinator.complete` is now the model's live async
+  completion authority for complete uninstall.  It keeps selection empty,
+  gives every agent an exact terminal row, returns only failed IDs for retry,
+  and derives fallback diagnostics from the real display name.  A later helper
+  result updates diagnostics only; it has no persistence/reconnect path.
+
+### Final evidence
+
+- Task 10 required focused policy/uninstall filters: PASS.
+- Rereview focused AppCore suite: PASS, 20 selected/parameterized tests.
+- Full `swift test --skip-build`: PASS, 668 tests.
+- `swift build`: PASS.
+- `xcodegen generate`: PASS.
+- Unsigned Debug `xcodebuild`: `** BUILD SUCCEEDED **`.
+- `git diff --check`: PASS.
+
 DONE
