@@ -703,6 +703,14 @@ import Testing
     defer { try? FileManager.default.removeItem(at: directory) }
     let storage = SessionStorage(directory: directory)
 
+    try applyDecodedHook(
+        event: "UserPromptSubmit",
+        json: #"{"session_id":"parent","cwd":"/work/app"}"#,
+        agent: .claude,
+        observedAt: Date(timeIntervalSince1970: 99),
+        storage: storage
+    )
+
     for (index, child) in ["child-a", "child-b"].enumerated() {
         try applyDecodedHook(
             event: "SubagentStart",
@@ -717,19 +725,38 @@ import Testing
         .recordID(agent: .claude, event: "SubagentStart"))
     let secondID = try #require(HookPayload(sessionId: "parent", agentId: "child-b")
         .recordID(agent: .claude, event: "SubagentStart"))
-    #expect(Set(storage.loadAll().map(\.id)) == [firstID, secondID])
+    let parentID = try #require(HookPayload(sessionId: "parent")
+        .recordID(agent: .claude, event: "UserPromptSubmit"))
+    #expect(Set(storage.loadAll().map(\.id)) == [parentID, firstID, secondID])
+
+    try applyDecodedHook(
+        event: "SubagentStop",
+        json: #"{"session_id":"parent"}"#,
+        agent: .claude,
+        observedAt: Date(timeIntervalSince1970: 102),
+        storage: storage
+    )
+    try applyDecodedHook(
+        event: "SubagentStop",
+        json: #"{"session_id":"parent","agent_id":""}"#,
+        agent: .claude,
+        observedAt: Date(timeIntervalSince1970: 103),
+        storage: storage
+    )
+    #expect(Set(storage.loadAll().map(\.id)) == [parentID, firstID, secondID])
 
     try applyDecodedHook(
         event: "SubagentStop",
         json: #"{"session_id":"parent","agent_id":"child-a"}"#,
         agent: .claude,
-        observedAt: Date(timeIntervalSince1970: 102),
+        observedAt: Date(timeIntervalSince1970: 104),
         storage: storage
     )
 
     #expect(storage.load(id: firstID) == nil)
+    #expect(storage.load(id: parentID)?.state == .working)
     #expect(storage.load(id: secondID)?.state == .working)
-    #expect(storage.loadAll().map(\.id) == [secondID])
+    #expect(Set(storage.loadAll().map(\.id)) == [parentID, secondID])
 }
 
 @Test func equalRawSessionIDsFromDifferentVendorsStayDistinctInStorage() throws {

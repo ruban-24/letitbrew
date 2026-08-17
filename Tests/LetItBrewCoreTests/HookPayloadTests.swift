@@ -77,3 +77,31 @@ import Foundation
     let payload = try JSONDecoder().decode(HookPayload.self, from: data)
     #expect(!payload.hasBackgroundTasks)
 }
+
+@Test func subagentEdgesRequireANonemptyChildIdentity() {
+    for event in ["SubagentStart", "SubagentStop"] {
+        #expect(HookPayload(sessionId: "parent")
+            .recordID(agent: .claude, event: event) == nil)
+        #expect(HookPayload(sessionId: "parent", agentId: "")
+            .recordID(agent: .claude, event: event) == nil)
+    }
+}
+
+@Test func emptyIdentityAliasesFallThroughWithoutChangingParentCanonicalization() {
+    #expect(HookPayload(
+        sessionId: "parent",
+        parentConversationId: "",
+        agentId: "",
+        subagentId: "child"
+    ).recordID(agent: .claude, event: "SubagentStart")
+        == "v1|6:claude|6:parent|5:child")
+    #expect(HookPayload(
+        sessionId: "parent",
+        agentId: "child",
+        subagentId: ""
+    ).recordID(agent: .cursor, event: "SubagentStart")
+        == "v1|6:cursor|6:parent|5:child")
+    #expect(HookPayload(sessionId: "parent", agentId: "")
+        .recordID(agent: .claude, event: "Stop")
+        == "v1|6:claude|6:parent|0:")
+}

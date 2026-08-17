@@ -86,14 +86,19 @@ public struct HookPayload: Decodable, Equatable, Sendable {
     }
 
     public func recordID(agent: AgentID, event: String) -> String? {
+        func nonempty(_ value: String?) -> String? {
+            value.flatMap { $0.isEmpty ? nil : $0 }
+        }
+
         let isSubagentEdge = event == "SubagentStart" || event == "SubagentStop"
         let parent = isSubagentEdge
-            ? (parentConversationId ?? sessionId)
-            : sessionId
-        guard let parent, !parent.isEmpty else { return nil }
+            ? (nonempty(parentConversationId) ?? nonempty(sessionId))
+            : nonempty(sessionId)
+        guard let parent else { return nil }
         let child = agent == .cursor
-            ? (subagentId ?? agentId)
-            : (agentId ?? subagentId)
+            ? (nonempty(subagentId) ?? nonempty(agentId))
+            : (nonempty(agentId) ?? nonempty(subagentId))
+        guard !isSubagentEdge || child != nil else { return nil }
         return HookRecordID(agent: agent, parentID: parent, childID: child)?.encoded
     }
 }
