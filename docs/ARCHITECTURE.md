@@ -29,7 +29,7 @@ that those compile. See [ATTENDED-UAT.md](ATTENDED-UAT.md) for what covers them.
 ```
 agent lifecycle event
   ↓  agent runs the installed hook command
-letitbrew hook <event>            (Sources/letitbrew)
+letitbrew hook <agent> <event>    (Sources/letitbrew)
   ↓  HookPayload parses the event from stdin
 HookReducer.reduce(...)           → .set(working|idle) or .end
   ↓
@@ -40,9 +40,9 @@ Decision.decide(sessions, settings, power)
 hold or release
 ```
 
-`HookReducer` is the whole state model, and it is small on purpose. Claude Code
-and Codex share event names and payload semantics, so one reducer serves both;
-Codex simply never emits `Notification`.
+`HookReducer` is the whole state model, and it is small on purpose. It reduces
+every supported adapter to only **Working** and **Idle** (or removes a terminal
+record); there is no third permission or waiting state.
 
 The complete lifecycle mapping is:
 
@@ -92,21 +92,11 @@ storage problem must not block the agent. This fail-open CLI boundary means the
 event may be missed; it does not bypass the app's battery, thermal, pause, power,
 or daemon safety gates and is not evidence that the hold changed.
 
-Codex has two conservative structural fallbacks for lifecycle gaps. Active-task
-discovery considers at most the 128 newest recent rollout candidates. Terminal
-observation reads only structural envelopes for newer `task_complete` and
-`turn_aborted` edges. Those rollout decoders retain only session ID, working
-directory, timestamps, and lifecycle event type; the hook payload decoder also
-treats `notification_type` as structural metadata. Notification prose, prompts,
-responses, reasoning, tool inputs and outputs, other tool details, and final
-assistant text are not decoded or recorded; only structural `tool_name` becomes
-a semantic activity token. Agent-supplied rollout paths are constrained to
-Codex's own sessions directory before they are read.
-
-The deterministic automated pressure harness qualifies 100 simultaneous
-sessions. It covers independent record identity, agent and full-path attribution,
-one-session stop isolation, aggregate hold release only after the last Working
-session becomes Idle, corrupt-record isolation, grouping, and presentation.
+The deterministic automated pressure harness qualifies 1, 10, 15, 50, and 100
+round-robin sessions across all five agents. It covers independent record
+identity, old-event/new-event ordering, selected-agent visibility, child-session
+isolation, aggregate hold release only after the final Working session becomes
+Idle, corrupt-record isolation, grouping, and presentation.
 
 ## Adaptive activity menu
 
@@ -186,9 +176,17 @@ the closed-lid preference reads off.
 
 ## Hook installation
 
-Hooks are installed into `~/.claude/settings.json` and `~/.codex/hooks.json`,
-each entry tagged with an ownership marker (`__letitbrew_hook`) so uninstall can
-remove exactly Let It Brew's own entries and nothing else.
+The five adapters are deliberately narrow and user-scoped: Claude Code uses
+`~/.claude/settings.json`; Codex uses `~/.codex/hooks.json` or
+`$CODEX_HOME/hooks.json`; Cursor uses `~/.cursor/hooks.json`; OpenCode writes
+its one global plugin at `~/.config/opencode/plugins/letitbrew.js` or
+`$OPENCODE_CONFIG_DIR/plugins/letitbrew.js`; and GitHub Copilot CLI uses
+`~/.copilot/hooks/letitbrew.json` or `$COPILOT_HOME/hooks/letitbrew.json`.
+Claude, Codex, Cursor, and Copilot entries carry an ownership marker
+(`__letitbrew_hook`); OpenCode owns only its named plugin. The versioned registry
+at `~/Library/Application Support/LetItBrew/agent-hook-targets.json` records the
+exact selected target, so later environment changes cannot redirect an owned
+connection.
 
 Three constraints shape that code:
 
@@ -200,8 +198,12 @@ Three constraints shape that code:
   root, or a `hooks` value that isn't the expected shape is reported as **Action
   needed** rather than rewritten. Other tools' hooks are preserved verbatim.
 
-Codex additionally requires an explicit `/hooks` trust step from the user.
-Let It Brew cannot approve its own Codex hooks, by design on Codex's side.
+Claude requires workspace trust before its hooks run. Codex additionally
+requires an explicit `/hooks` trust step; Let It Brew cannot approve it. Cursor
+maps desktop Agent and local CLI events through its user hooks. OpenCode is
+limited to its stable 1.x local runtime and preserves unrelated plugins.
+Copilot's `ErrorOccurred` hook returns success but is not a decision-capable
+lifecycle event.
 
 ## Updating
 

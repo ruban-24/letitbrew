@@ -25,6 +25,8 @@ trap '/bin/rm -rf "$TEST_ROOT"' EXIT
 
 export SWIFTPM_MODULECACHE_OVERRIDE="$TEST_ROOT/swiftpm-module-cache"
 export CLANG_MODULE_CACHE_PATH="$TEST_ROOT/clang-module-cache"
+export LETITBREW_SESSION_PRESSURE_COUNTS="1,10,15,50,100"
+export LETITBREW_SESSION_PRESSURE_AGENTS="claude,codex,cursor,opencode,copilot"
 /bin/mkdir -p "$SWIFTPM_MODULECACHE_OVERRIDE" "$CLANG_MODULE_CACHE_PATH"
 
 cd "$REPOSITORY_ROOT"

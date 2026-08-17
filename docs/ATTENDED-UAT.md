@@ -84,6 +84,79 @@ the app does not reconnect a Codex integration that the user explicitly
 disconnected, does not recheck Claude as a side effect, and does not create a
 timer or repeated refresh while the app remains active.
 
+## Five-agent hook lifecycle matrix — not run by automation
+
+This is an attended release gate, not evidence collected by this repository.
+Do **not** run it against an unbacked-up local configuration, and do not record
+which vendors happen to be installed today. At execution time, record the exact
+installed vendor version. If a vendor is absent, mark that vendor's live UAT as
+not run and keep it as a release gate; do not replace it with process-detection
+or simulated evidence.
+
+Before each vendor pass, resolve the selected user configuration target without
+replacing a symlink, record whether it is absent, and back up its exact bytes,
+mode, inode, and timestamps in a new private `0700` directory beneath
+`/private/tmp`. Record the exact registry
+`~/Library/Application Support/LetItBrew/agent-hook-targets.json` in the same
+way. Choose explicit **Connect**, verify its healthy state, and record whether
+an existing session needs restart. For every pass use harmless work and verify:
+
+1. `SessionStart` is Idle; a prompt makes it Working; a stop makes it Idle; and
+   session end removes the record.
+2. The Working → Idle → Working sequence updates the row and open-lid hold
+   within two polls; removal releases it when it is the final Working record.
+3. **Disconnect** immediately hides that vendor's records and removes only the
+   owned configuration. Restore every backed-up target's exact bytes and
+   metadata after the pass, or remove a target only when true absence was
+   recorded before the pass.
+
+Run these vendor-specific additions rather than claiming untested parity:
+
+### Claude Code
+
+Verify untrusted-workspace holdback before workspace trust. Exercise
+`PreCompact`, `PostCompact`, and `SessionStart(source: compact)` as Working.
+Start two child `agent_id` values, stop one child only, and confirm the other
+remains Working. Confirm `StopFailure` becomes Idle and `Stop` remains Working
+while `background_tasks` is nonempty, then becomes Idle after a later empty
+Stop. Where the documented permission lifecycle is observed, it preserves the
+existing Working state.
+
+### Codex
+
+Verify `/hooks` trust approval before lifecycle observation. Exercise compact
+lifecycle events and two simultaneous distinct `agent_id` values; each remains
+Working until its own `SubagentStop`. Where the documented permission lifecycle
+is observed, it preserves the existing Working state.
+
+### Cursor desktop Agent and Cursor CLI
+
+Record installed versions separately and exercise all six ordinary mapped events
+on each surface. Exercise `subagentStart`/`subagentStop`, including an async
+child that survives parent `stop`. Permission-wait UAT is **N/A — no documented
+supported hook**. Do not claim parity for a surface or version that was not
+exercised.
+
+### OpenCode
+
+Test only a stable 1.x local CLI/app runtime. Record whether
+`permission.updated`/`permission.replied` (v1.18.3) and/or the current
+`permission.asked` were observed; these permission observations are ignored for
+the two-state decision. Send duplicate `session.status: idle` and `session.idle`
+edges and confirm both remain idempotent.
+
+### GitHub Copilot CLI
+
+Confirm selected hooks remain silent and exit zero. Record the `ErrorOccurred`
+limitation without installing a decision-capable hook. Permission-wait UAT is
+**N/A — no documented supported hook** for v0.6 unless a later documented
+version changes it.
+
+At the end of each pass, verify the registry and every selected configuration
+target match the pre-test bytes and metadata exactly. This matrix never permits
+live process detection, CPU detection, or transcript parsing as a substitute
+for a lifecycle hook.
+
 ## Concurrent Working sessions and adaptive menu
 
 Run this only with an isolated, signed Dev candidate. Do not install, launch, or
@@ -92,10 +165,10 @@ do not approve or register the Dev background service, and confirm
 `com.ruban24.letitbrew.dev.daemon` is absent before, during, and after the run.
 This is an open-lid assertion and menu test; it must not change `SleepDisabled`.
 
-Before connecting either agent, create a unique private backup directory with
+Before connecting any agent, create a unique private backup directory with
 `mktemp -d /private/tmp/LetItBrew-UAT.XXXXXX` and require mode `0700`. Resolve
-each existing Claude and Codex config symlink to its target without replacing
-the symlink. Preserve the target's bytes and metadata in the backup directory
+each existing selected agent config symlink to its target without replacing the
+symlink. Preserve every target's bytes and metadata in the backup directory
 (for example, with `ditto`). Record true absence separately; do not create a
 placeholder backup for an absent config.
 
@@ -103,16 +176,15 @@ Then record:
 
 - the candidate commit and SHA-256 of the candidate app executable;
 - the Dev bundle ID and the app's signing identity;
-- whether `~/.claude/settings.json` exists; the resolved Codex hooks path
-  (`$CODEX_HOME/hooks.json` when `CODEX_HOME` is set, otherwise
-  `~/.codex/hooks.json`); a byte-for-byte backup of every existing file; and
+- whether each Claude, Codex, Cursor, OpenCode, and Copilot user target exists;
+  every resolved target path; a byte-for-byte backup of every existing file; and
   each file's pre-test SHA-256; and
 - affirmative absence of the Dev daemon registration and process.
 
 Use one newly created disposable root beneath `/private/tmp`, with two
-same-named project folders at different full paths. Start about two Claude Code
-sessions and two or three Codex sessions for use in those folders; begin the
-matrix with all sessions in the first full path. Use only harmless test work. Do
+same-named project folders at different full paths. Start sessions from the
+connected agents for use in those folders; begin the matrix with all sessions in
+the first full path. Use only harmless test work. Do
 not inspect, copy, screenshot, or include notification prose, prompts, responses,
 reasoning, tool details, or final assistant text in the evidence; record only
 structural events, counts, hold state, and menu/accessibility observations. Each

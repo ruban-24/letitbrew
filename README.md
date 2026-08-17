@@ -128,21 +128,33 @@ state. They are not separate permission, approval, or input session states.
 
 ## Supported agents
 
-Let It Brew supports five local lifecycle-hook integrations:
+Let It Brew supports these five local lifecycle-hook integrations:
 
-- **Claude Code**
-- **Codex**
-- **Cursor**
-- **OpenCode**
-- **GitHub Copilot CLI**
+| Agent | Local surfaces | Connection |
+|---|---|---|
+| Claude Code | CLI and local desktop code sessions | Lifecycle hooks after workspace trust |
+| Codex | CLI and local app sessions | Lifecycle hooks plus Codex trust approval |
+| Cursor | Local desktop Agent and local CLI | Cursor user hooks |
+| OpenCode | Stable 1.x local CLI/app runtime | Global OpenCode plugin |
+| GitHub Copilot CLI | Local CLI | Copilot user hooks |
 
-Claude Code and Codex can report local terminal and desktop-app sessions when
-their installed hooks run. Cursor, OpenCode, and GitHub Copilot CLI report
-their local hook events. Let It Brew only follows sessions running on this Mac;
-it does not discover unrelated editor, project, team, or enterprise hook scopes.
+Connect is explicit: Let It Brew writes no hook configuration until you choose
+**Connect**, records that exact target in
+`~/Library/Application Support/LetItBrew/agent-hook-targets.json`, and removes
+only its owned entry or plugin when you choose **Disconnect**. The zero-connected
+popup banner reads **Connect an agent** and **Open Settings to connect your
+coding agent.** It means no managed agent connection is selected, so no agent
+session can keep the Mac awake.
 
-Remote, cloud, and SSH sessions are not observed. Let It Brew cannot keep a Mac
-awake for work it cannot see.
+This is deliberately hook-only support. Let It Brew does not use process or CPU
+detection, transcript parsing, or fallback session discovery. If a terminal
+event is missing, a record can remain **Working** until the existing 12-hour
+stale-record backstop; **Stop Tracking** releases that session immediately.
+
+Unsupported surfaces include Cursor Tab and Cloud, the Copilot cloud agent,
+remotely hosted OpenCode runtimes, remote or SSH sessions, unrelated editor,
+project, team, and enterprise hook scopes. Let It Brew cannot keep a Mac awake
+for work it cannot see.
 
 ## Safety
 
@@ -202,7 +214,13 @@ when it applies; new sessions connect on their own.
 
 To stop using one integration, open that agent's `…` menu in
 **Settings → Agents** and choose **Disconnect**. That removes only Let It Brew's
-own entries and persists across relaunches.
+own entries and persists across relaunches. Claude Code needs the selected
+workspace to trust the installed hook. Codex needs the `/hooks` trust approval.
+Copilot's `ErrorOccurred` hook exits successfully but is not a decision-capable
+lifecycle edge, so it does not create a Working or Idle state. OpenCode's
+`OPENCODE_CONFIG_DIR`, when set, is additive: Let It Brew adds its owned global
+plugin at that selected directory and does not replace standard config roots or
+other OpenCode plugins.
 
 ## Updating
 
@@ -234,6 +252,7 @@ confirmation, downloads the release DMG and checksum.
 | `~/Library/Application Support/LetItBrew/` | Lease and recovery state used to release holds safely. |
 | `/Library/Application Support/LetItBrew/` | Background-service recovery state for the system-wide sleep setting. |
 | macOS user defaults | Preferences: pause, safety thresholds, closed-lid, Launch at Login. |
+| `~/Library/Application Support/LetItBrew/agent-hook-targets.json` | Versioned registry of the exact user-scoped targets Let It Brew owns; it prevents a later environment change from redirecting a selected connection. |
 | `~/.claude/settings.json` | Claude Code user settings; only Let It Brew-owned hook entries are changed after Connect. |
 | `~/.codex/hooks.json` | Default Codex hook file when `CODEX_HOME` is unset. When `CODEX_HOME` is present, Let It Brew uses `<CODEX_HOME>/hooks.json`. |
 | `~/.cursor/hooks.json` | Cursor's user-scoped hook file; project, team, and enterprise scopes are not touched. |

@@ -21,6 +21,12 @@ jobs:
       - name: Show Swift version
         run: swift --version
 
+      - name: Build Swift package
+        run: swift build
+
+      - name: Test agent hook contracts
+        run: scripts/test-agent-hook-contracts.sh .build/debug/letitbrew
+
       - name: Run Swift tests
         env:
           CLANG_MODULE_CACHE_PATH: /private/tmp/LetItBrewCI-ClangCache
