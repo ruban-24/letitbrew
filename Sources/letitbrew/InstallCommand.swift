@@ -105,10 +105,6 @@ private func selectedTarget(_ agent: AgentID, registry: AgentInstallRegistry, co
     return connect && agent != .opencode ? try resolveJSONTarget(configured, filesystem: filesystem) : configured
 }
 
-private func readTarget(_ target: URL, opencode: Bool = false) throws -> Data? {
-    return try ExactFileCapture.capture(at: target).data
-}
-
 private func replacement(agent: AgentID, data: Data?, cli: String, removing: Bool) throws -> Data? {
     switch agent {
     case .claude: return removing ? try ClaudeHooks.remove(from: data) : try ClaudeHooks.install(into: data, cliPath: cli)
@@ -173,23 +169,21 @@ func runUninstall(agents: Set<AgentID> = Set(AgentID.allCases)) -> Int32 {
         let filesystem = try CommandFilesystem(); var loadedRegistry = try loadRegistry(filesystem); var registry = loadedRegistry.value
         for agent in AgentID.allCases where agents.contains(agent) {
             let target = try selectedTarget(agent, registry: registry, connect: false, filesystem: filesystem)
-            let targetURL = URL(fileURLWithPath: target.displayPath)
             do {
                 try AgentInstallTransaction.uninstall(removeOwnedOrProveAbsent: {
-                    let existing = try readTarget(targetURL, opencode: agent == .opencode)
+                    let observed = try target.capture()
+                    let existing = observed.data
                     guard let existing else { return }
                     if agent == .opencode {
                         guard try replacement(agent: agent, data: existing, cli: cli, removing: true) == nil else { throw UnsafeTarget(path: target.displayPath) }
-                        try AtomicFile.remove(targetURL, ifUnchangedFrom: existing)
+                        try AtomicFile.remove(observed, expectedData: existing)
                     } else if (try validate(agent: agent, data: existing, cli: cli)).isAbsent {
                         // A stale registry retry only clears its record; it
                         // never reformats a clean/foreign JSON replacement.
                         return
                     } else {
                         let output = try replacement(agent: agent, data: existing, cli: cli, removing: true)!
-                        let capture = try ExactFileCapture.capture(at: targetURL)
-                        guard capture.data == existing else { throw ConcurrentModification(path: target.displayPath) }
-                        try AtomicFile.write(output, to: targetURL, ifUnchangedFrom: capture)
+                        _ = try AtomicFile.write(output, replacing: observed)
                     }
                 }, clearExactTarget: {
                     registry.targets.removeValue(forKey: agent); loadedRegistry.capture = try saveRegistry(registry, basedOn: loadedRegistry.capture)
@@ -204,7 +198,7 @@ func runUninstall(agents: Set<AgentID> = Set(AgentID.allCases)) -> Int32 {
 private func doctorAgent(_ agent: AgentID, registry: AgentInstallRegistry, cli: String, filesystem: CommandFilesystem) -> Bool {
     do {
         let target = try selectedTarget(agent, registry: registry, connect: false, filesystem: filesystem)
-        let data = try readTarget(URL(fileURLWithPath: target.displayPath), opencode: agent == .opencode)
+        let data = try target.capture().data
         guard data != nil else { print("\(agent.displayName): not installed"); return false }
         let state = try validate(agent: agent, data: data, cli: cli)
         if state.isHealthy { print("\(agent.displayName): healthy"); return true }

@@ -143,6 +143,18 @@ private func changedExpectedCapture(_ captured: CapturedExactFile, snapshot: Exa
     #expect(!FileManager.default.fileExists(atPath: outside.appendingPathComponent("b/registry.json").path))
 }
 
+@Test func descriptorRemoveRefusesComponentSwapAfterCaptureWithoutTouchingDestination() throws {
+    let root = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let parent = root.appendingPathComponent("a/b"); try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+    let file = parent.appendingPathComponent("settings.json"); try Data("owned".utf8).write(to: file)
+    let observed = try DirectoryAnchor.openNoFollow(at: root).target(atAbsoluteURL: file).capture()
+    let outside = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: outside) }
+    try FileManager.default.removeItem(at: root.appendingPathComponent("a"))
+    try FileManager.default.createSymbolicLink(at: root.appendingPathComponent("a"), withDestinationURL: outside)
+    #expect(throws: Error.self) { try AtomicFile.remove(observed, expectedData: Data("owned".utf8)) }
+    #expect(!FileManager.default.fileExists(atPath: outside.appendingPathComponent("b/settings.json").path))
+}
+
 @Test func descriptorWriteKeepsOriginalAnchoredRootWhenDisplayPathIsReplaced() throws {
     let container = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: container) }
     let root = container.appendingPathComponent("root"); try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
