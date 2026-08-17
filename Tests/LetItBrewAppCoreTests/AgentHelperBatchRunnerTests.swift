@@ -43,50 +43,11 @@ private func helperStub() throws -> URL {
     #expect(results[1].output == "handled codex")
 }
 
-@Test func successfulDisconnectsPersistIndependently() {
-    let results = [
-        AgentHelperOperationResult(
-            agentID: "claude", status: -1, output: "timed out", timedOut: true
-        ),
-        AgentHelperOperationResult(
-            agentID: "codex", status: 0, output: "", timedOut: false
-        ),
-    ]
-
-    let persisted = AgentDisconnectPersistence.mergingSuccessful(
-        results, into: ["already-disconnected"]
-    )
-
-    #expect(persisted == ["already-disconnected", "codex"])
-}
-
-@Test func everyRequestedDisconnectIntentPersistsRegardlessOfHelperOutcome() {
-    let persisted = AgentDisconnectPersistence.recordingIntent(
-        for: ["claude", "codex"],
-        into: ["already-disconnected"]
-    )
-
-    #expect(persisted == ["already-disconnected", "claude", "codex"])
-}
-
-@Test func recordedDisconnectIntentSuppressesAutomaticMutationUntilConnectClearsIt() {
-    let intents = AgentDisconnectPersistence.recordingIntent(
-        for: ["claude", "codex"],
-        into: []
-    )
-
-    #expect(!AgentAutomaticConnectionPolicy.mayMutate(
-        agentID: "claude", recordedDisconnectIntents: intents
-    ))
-    let afterConnect = AgentDisconnectPersistence.clearingIntent(
-        for: "claude", from: intents
-    )
-    #expect(AgentAutomaticConnectionPolicy.mayMutate(
-        agentID: "claude", recordedDisconnectIntents: afterConnect
-    ))
-    #expect(!AgentAutomaticConnectionPolicy.mayMutate(
-        agentID: "codex", recordedDisconnectIntents: afterConnect
-    ))
+@Test func explicitSelectionChangesBeforeHelperCommands() {
+    let connected = AgentConnectionSelectionPolicy.selecting("codex", in: ["claude"])
+    let disconnected = AgentConnectionSelectionPolicy.deselecting("claude", from: connected)
+    #expect(connected == ["claude", "codex"])
+    #expect(disconnected == ["codex"])
 }
 
 @Test func disconnectCompletionHasOnlyTerminalPerAgentFollowUps() {

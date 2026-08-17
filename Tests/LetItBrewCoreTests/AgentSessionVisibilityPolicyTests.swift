@@ -34,7 +34,7 @@ private func visibilitySession(
 
     let visible = AgentSessionVisibilityPolicy.visibleSessions(
         from: raw,
-        disconnectedAgentIDs: ["codex"]
+        connectedAgentIDs: ["claude"]
     )
 
     #expect(visible.map(\.id) == ["claude-work"])
@@ -48,7 +48,7 @@ private func visibilitySession(
     ]
     let visible = AgentSessionVisibilityPolicy.visibleSessions(
         from: raw,
-        disconnectedAgentIDs: ["codex"]
+        connectedAgentIDs: ["claude"]
     )
     let decision = decide(
         sessions: visible,
@@ -69,11 +69,11 @@ private func visibilitySession(
     ]
     let disconnected = AgentSessionVisibilityPolicy.visibleSessions(
         from: raw,
-        disconnectedAgentIDs: ["codex"]
+        connectedAgentIDs: ["claude"]
     )
     let reconnected = AgentSessionVisibilityPolicy.visibleSessions(
         from: raw,
-        disconnectedAgentIDs: []
+        connectedAgentIDs: ["claude", "codex"]
     )
 
     #expect(disconnected.map(\.id) == ["claude-work"])
@@ -84,7 +84,7 @@ private func visibilitySession(
     let raw = [visibilitySession(id: "codex-work", tool: "codex")]
     let visible = AgentSessionVisibilityPolicy.visibleSessions(
         from: raw,
-        disconnectedAgentIDs: ["codex"]
+        connectedAgentIDs: []
     )
     let decision = decide(
         sessions: visible,
@@ -114,7 +114,7 @@ private func visibilitySession(
 
     let visible = AgentSessionVisibilityPolicy.visibleSessions(
         from: raw,
-        disconnectedAgentIDs: ["codex"]
+        connectedAgentIDs: []
     )
     let decision = decide(
         sessions: visible,
@@ -128,7 +128,7 @@ private func visibilitySession(
     #expect(!decision.holdLidClosed)
 }
 
-@Test func unknownAndNonDisconnectedToolsRemainVisible() {
+@Test func onlyPositivelySelectedToolsAreVisible() {
     let raw = [
         visibilitySession(id: "custom-work", tool: "custom-agent"),
         visibilitySession(id: "claude-work", tool: "claude"),
@@ -137,8 +137,8 @@ private func visibilitySession(
 
     let visible = AgentSessionVisibilityPolicy.visibleSessions(
         from: raw,
-        disconnectedAgentIDs: ["codex"]
+        connectedAgentIDs: ["claude"]
     )
 
-    #expect(visible.map(\.id) == ["custom-work", "claude-work"])
+    #expect(visible.map(\.id) == ["claude-work"])
 }

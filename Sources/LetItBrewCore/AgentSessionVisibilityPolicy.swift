@@ -9,10 +9,9 @@ import Foundation
 public enum AgentSessionVisibilityPolicy {
     public static func visibleSessions(
         from sessions: [SessionRecord],
-        disconnectedAgentIDs: Set<String>
+        connectedAgentIDs: Set<String>
     ) -> [SessionRecord] {
-        guard !disconnectedAgentIDs.isEmpty else { return sessions }
-        let normalizedIDs = Set(disconnectedAgentIDs.map { $0.lowercased() })
-        return sessions.filter { !normalizedIDs.contains($0.tool.lowercased()) }
+        let normalizedIDs = Set(connectedAgentIDs.map { $0.lowercased() })
+        return sessions.filter { normalizedIDs.contains($0.tool.lowercased()) }
     }
 }
