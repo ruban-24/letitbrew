@@ -12,6 +12,10 @@ command -v node >/dev/null || { echo "FATAL: node is required for the OpenCode r
 INSTALL_SOURCE="$SCRIPT_DIR/../Sources/letitbrew/InstallCommand.swift"
 grep -Fq 'AtomicFile.write(data, replacing: capture, permissions: .exact(0o600))' "$INSTALL_SOURCE"
 ! sed -n '/private func loadRegistry/,/private func resolveJSONTarget/p' "$INSTALL_SOURCE" | grep -Eq 'Data\(contentsOf:|FileManager\.(default\.)?(createDirectory|removeItem|moveItem|replaceItem)'
+INSTALL_BLOCK="$(sed -n '/func runInstall/,/func runUninstall/p' "$INSTALL_SOURCE")"
+grep -Fq 'let observed = try target.capture()' <<<"$INSTALL_BLOCK"
+grep -Fq 'AtomicFile.write(prepared.replacement, replacing: prepared.observed)' <<<"$INSTALL_BLOCK"
+! grep -Eq 'ExactFileCapture\.capture\(at:|AtomicFile\.write\([^)]*to:|Data\(contentsOf:' <<<"$INSTALL_BLOCK"
 TEST_HOME="$(mktemp -d /tmp/letitbrew-agent-hooks.XXXXXX)"
 trap 'rm -rf "$TEST_HOME"' EXIT
 export LETITBREW_TEST_HOME="$TEST_HOME"
@@ -23,6 +27,48 @@ printf '{"version":1,"hooks":{"foreign":[{"nested":["copilot",4]}]}}\n' > "$TEST
 for agent in claude codex cursor opencode copilot; do "$CLI" install "$agent" >/dev/null; done
 REGISTRY="$TEST_HOME/Library/Application Support/LetItBrew/agent-hook-targets.json"
 test "$(stat -f '%Lp' "$REGISTRY")" = "600"
+
+# Every adapter accepts a genuinely missing target.  Four JSON adapters were
+# already exercised above with existing files; exercise the OpenCode existing
+# case separately because it is an exact standalone plugin file.
+for agent in claude codex cursor opencode copilot; do
+  MISSING_HOME="$(mktemp -d /tmp/letitbrew-agent-missing.XXXXXX)"
+  env LETITBREW_TEST_HOME="$MISSING_HOME" "$CLI" install "$agent" >/dev/null
+  test -f "$MISSING_HOME/Library/Application Support/LetItBrew/agent-hook-targets.json"
+  rm -rf "$MISSING_HOME"
+done
+OPENCODE_EXISTING_HOME="$(mktemp -d /tmp/letitbrew-opencode-existing.XXXXXX)"
+mkdir -p "$OPENCODE_EXISTING_HOME/.config/opencode/plugins"
+printf '// __letitbrew_opencode_plugin\nexport default []\n' > "$OPENCODE_EXISTING_HOME/.config/opencode/plugins/letitbrew.js"
+env LETITBREW_TEST_HOME="$OPENCODE_EXISTING_HOME" "$CLI" install opencode >/dev/null
+grep -q '__letitbrew_opencode_plugin' "$OPENCODE_EXISTING_HOME/.config/opencode/plugins/letitbrew.js"
+rm -rf "$OPENCODE_EXISTING_HOME"
+
+# First-connect JSON resolves exactly one anchored final path and records that
+# final path; a final OpenCode symlink is never followed.
+SYMLINK_CONNECT_HOME="$(mktemp -d /tmp/letitbrew-json-connect.XXXXXX)"
+mkdir -p "$SYMLINK_CONNECT_HOME/.claude" "$SYMLINK_CONNECT_HOME/managed"
+printf '{}' > "$SYMLINK_CONNECT_HOME/managed/settings.json"
+ln -s ../managed/settings.json "$SYMLINK_CONNECT_HOME/.claude/settings.json"
+env LETITBREW_TEST_HOME="$SYMLINK_CONNECT_HOME" "$CLI" install claude >/dev/null
+python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["targets"]["claude"] == sys.argv[2]' "$SYMLINK_CONNECT_HOME/Library/Application Support/LetItBrew/agent-hook-targets.json" "$SYMLINK_CONNECT_HOME/managed/settings.json"
+test "$(readlink "$SYMLINK_CONNECT_HOME/.claude/settings.json")" = '../managed/settings.json'
+rm -rf "$SYMLINK_CONNECT_HOME"
+
+# Preflight refusal is before registry persistence: malformed JSON and an
+# unowned/symlinked OpenCode plugin leave both vendor and registry untouched.
+REFUSAL_HOME="$(mktemp -d /tmp/letitbrew-install-refusal.XXXXXX)"
+mkdir -p "$REFUSAL_HOME/.claude" "$REFUSAL_HOME/.config/opencode/plugins"
+printf '{ malformed' > "$REFUSAL_HOME/.claude/settings.json"
+! env LETITBREW_TEST_HOME="$REFUSAL_HOME" "$CLI" install claude >/dev/null 2>&1
+test "$(cat "$REFUSAL_HOME/.claude/settings.json")" = '{ malformed'
+! test -e "$REFUSAL_HOME/Library/Application Support/LetItBrew/agent-hook-targets.json"
+printf '// foreign plugin\n' > "$REFUSAL_HOME/foreign.js"
+ln -s "$REFUSAL_HOME/foreign.js" "$REFUSAL_HOME/.config/opencode/plugins/letitbrew.js"
+! env LETITBREW_TEST_HOME="$REFUSAL_HOME" "$CLI" install opencode >/dev/null 2>&1
+test "$(cat "$REFUSAL_HOME/foreign.js")" = '// foreign plugin'
+! test -e "$REFUSAL_HOME/Library/Application Support/LetItBrew/agent-hook-targets.json"
+rm -rf "$REFUSAL_HOME"
 "$CLI" doctor >/dev/null
 # `prepare-exact` accepts only the exact agent/snapshot inspection.  A
 # healthy target updates its registry evidence without rewriting vendor bytes

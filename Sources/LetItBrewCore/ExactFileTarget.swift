@@ -106,6 +106,46 @@ public struct ExactFileTarget {
         guard fd >= 0 else { throw ExactFileSnapshotError.unreadable(displayPath) }
         return try CapturedExactFile.captureFromParent(target: self, parent: BoundParent(taking: OwnedFD(taking: fd)), name: url.lastPathComponent, displayPath: displayPath)
     }
+    /// Resolves only final-name JSON links beneath an anchored test root.  The
+    /// link identity brackets `readlinkat`, and every destination is fed back
+    /// through the same structural anchor rather than a pathname prefix check.
+    /// An ordinary production target deliberately keeps Foundation's existing
+    /// user-facing symlink semantics in the command layer.
+    public func resolvingAnchoredFinalSymlink(maximumHops: Int = 32) throws -> ExactFileTarget {
+        guard let root, relative != nil else { return self }
+        var current = self; var hops = 0
+        while true {
+            guard let components = current.relative,
+                  let (parentFD, name) = try root.parent(for: components, creating: false, hooks: TraversalRaceHooks()) else {
+                if hops == 0 { return current }
+                throw ExactFileSnapshotError.unreadable(current.displayPath)
+            }
+            let parent = try BoundParent(taking: parentFD)
+            var before = stat()
+            let stated = name.withCString { fstatat(parent.descriptor.rawValue, $0, &before, AT_SYMLINK_NOFOLLOW) }
+            if stated != 0 {
+                if errno == ENOENT && hops == 0 { return current }
+                throw ExactFileSnapshotError.unreadable(current.displayPath)
+            }
+            if (before.st_mode & S_IFMT) != S_IFLNK {
+                guard (before.st_mode & S_IFMT) == S_IFREG else { throw ExactFileSnapshotError.notRegular(current.displayPath) }
+                return current
+            }
+            hops += 1; guard hops <= maximumHops else { throw ExactFileSnapshotError.changed(current.displayPath) }
+            let capacity = max(Int(before.st_size) + 1, 4097)
+            var destination = [CChar](repeating: 0, count: capacity)
+            let read = name.withCString { readlinkat(parent.descriptor.rawValue, $0, &destination, destination.count - 1) }
+            guard read >= 0 else { throw ExactFileSnapshotError.unreadable(current.displayPath) }
+            var after = stat()
+            guard name.withCString({ fstatat(parent.descriptor.rawValue, $0, &after, AT_SYMLINK_NOFOLLOW) }) == 0,
+                  after.st_dev == before.st_dev, after.st_ino == before.st_ino, after.st_size == before.st_size,
+                  (after.st_mode & S_IFMT) == S_IFLNK else { throw ExactFileSnapshotError.changed(current.displayPath) }
+            let text = String(decoding: destination.prefix(Int(read)).map { UInt8(bitPattern: $0) }, as: UTF8.self)
+            let parentURL = URL(fileURLWithPath: current.displayPath).deletingLastPathComponent()
+            let nextURL = URL(fileURLWithPath: text, relativeTo: parentURL).standardizedFileURL
+            current = try root.target(atAbsoluteURL: nextURL)
+        }
+    }
     func captureForWrite(hooks: TraversalRaceHooks = TraversalRaceHooks()) throws -> CapturedExactFile {
         if let root, let relative {
             guard let (parent, name) = try root.parent(for: relative, creating: true, hooks: hooks) else { throw ExactFileSnapshotError.unreadable(displayPath) }

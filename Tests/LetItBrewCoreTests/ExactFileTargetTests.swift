@@ -189,6 +189,45 @@ private func changedExpectedCapture(_ captured: CapturedExactFile, snapshot: Exa
     #expect(try String(contentsOf: url, encoding: .utf8) == "two")
 }
 
+@Test func anchoredJSONFinalSymlinkResolvesOnceToRegularTarget() throws {
+    let root = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let configured = root.appendingPathComponent(".claude/settings.json")
+    let final = root.appendingPathComponent("managed/settings.json")
+    try FileManager.default.createDirectory(at: configured.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: final.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try Data("{}".utf8).write(to: final)
+    try FileManager.default.createSymbolicLink(at: configured, withDestinationURL: URL(fileURLWithPath: "../managed/settings.json", relativeTo: configured.deletingLastPathComponent()))
+    let resolved = try DirectoryAnchor.openNoFollow(at: root).target(atAbsoluteURL: configured).resolvingAnchoredFinalSymlink()
+    #expect(resolved.displayPath == final.standardizedFileURL.path)
+    #expect(try resolved.capture().data == Data("{}".utf8))
+}
+
+@Test func anchoredJSONFinalSymlinkRefusesDanglingOutsideAndLoopTargets() throws {
+    let root = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let parent = root.appendingPathComponent(".claude"); try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+    let anchor = try DirectoryAnchor.openNoFollow(at: root)
+    let dangling = parent.appendingPathComponent("dangling.json")
+    try FileManager.default.createSymbolicLink(at: dangling, withDestinationURL: URL(fileURLWithPath: "missing.json", relativeTo: parent))
+    #expect(throws: Error.self) { _ = try anchor.target(atAbsoluteURL: dangling).resolvingAnchoredFinalSymlink() }
+    let outside = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: outside) }
+    let outsideLink = parent.appendingPathComponent("outside.json")
+    try FileManager.default.createSymbolicLink(at: outsideLink, withDestinationURL: outside.appendingPathComponent("settings.json"))
+    #expect(throws: Error.self) { _ = try anchor.target(atAbsoluteURL: outsideLink).resolvingAnchoredFinalSymlink() }
+    let loop = parent.appendingPathComponent("loop.json")
+    try FileManager.default.createSymbolicLink(at: loop, withDestinationURL: URL(fileURLWithPath: "loop.json", relativeTo: parent))
+    #expect(throws: Error.self) { _ = try anchor.target(atAbsoluteURL: loop).resolvingAnchoredFinalSymlink(maximumHops: 2) }
+}
+
+@Test func anchoredOpenCodeFinalSymlinkIsRefusedWithoutJSONResolution() throws {
+    let root = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let plugin = root.appendingPathComponent(".config/opencode/plugin/letitbrew.ts")
+    try FileManager.default.createDirectory(at: plugin.deletingLastPathComponent(), withIntermediateDirectories: true)
+    let final = root.appendingPathComponent("foreign.ts"); try Data("foreign".utf8).write(to: final)
+    try FileManager.default.createSymbolicLink(at: plugin, withDestinationURL: final)
+    #expect(throws: Error.self) { _ = try DirectoryAnchor.openNoFollow(at: root).target(atAbsoluteURL: plugin).capture() }
+    #expect(try String(contentsOf: final, encoding: .utf8) == "foreign")
+}
+
 @Test func descriptorAbsentAppearanceSurvivesExclusivePublish() throws {
     let root = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: root) }
     let file = root.appendingPathComponent("target"); let target = try DirectoryAnchor.openNoFollow(at: root).target(atAbsoluteURL: file)
