@@ -10,10 +10,10 @@ TEST_HOME="$(mktemp -d /tmp/letitbrew-agent-hooks.XXXXXX)"
 trap 'rm -rf "$TEST_HOME"' EXIT
 export LETITBREW_TEST_HOME="$TEST_HOME"
 mkdir -p "$TEST_HOME/.claude" "$TEST_HOME/.codex" "$TEST_HOME/.cursor" "$TEST_HOME/.copilot/hooks"
-printf '{"foreign":{"claude":true}}\n' > "$TEST_HOME/.claude/settings.json"
-printf '{"description":"foreign","hooks":{"foreign":[]}}\n' > "$TEST_HOME/.codex/hooks.json"
-printf '{"version":1,"hooks":{"foreign":[]}}\n' > "$TEST_HOME/.cursor/hooks.json"
-printf '{"version":1,"hooks":{"foreign":[]}}\n' > "$TEST_HOME/.copilot/hooks/letitbrew.json"
+printf '{"foreign":{"claude":{"nested":[1,{"kept":true}]}}}\n' > "$TEST_HOME/.claude/settings.json"
+printf '{"description":"foreign","hooks":{"foreign":[{"nested":["codex",2]}]}}\n' > "$TEST_HOME/.codex/hooks.json"
+printf '{"version":1,"hooks":{"foreign":[{"nested":["cursor",3]}]}}\n' > "$TEST_HOME/.cursor/hooks.json"
+printf '{"version":1,"hooks":{"foreign":[{"nested":["copilot",4]}]}}\n' > "$TEST_HOME/.copilot/hooks/letitbrew.json"
 for agent in claude codex cursor opencode copilot; do "$CLI" install "$agent" >/dev/null; done
 REGISTRY="$TEST_HOME/Library/Application Support/LetItBrew/agent-hook-targets.json"
 test "$(stat -f '%Lp' "$REGISTRY")" = "600"
@@ -51,7 +51,7 @@ test "$(node "$SCRIPT_DIR/test-opencode-plugin.mjs" "$CLI" "$TEST_HOME/.config/o
 ! grep -q '__letitbrew_copilot_hook' "$TEST_HOME/.copilot/hooks/letitbrew.json"
 grep -q '__letitbrew_hook' "$TEST_HOME/.claude/settings.json"
 grep -q '__letitbrew_codex_hook' "$TEST_HOME/.codex/hooks.json"
-node -e 'const fs=require("fs"); for (const f of process.argv.slice(1)) { const x=JSON.parse(fs.readFileSync(f)); if (!(x.foreign?.claude || x.hooks?.foreign)) process.exit(1) }' "$TEST_HOME/.claude/settings.json" "$TEST_HOME/.codex/hooks.json" "$TEST_HOME/.cursor/hooks.json" "$TEST_HOME/.copilot/hooks/letitbrew.json"
+node -e 'const fs=require("fs"); const [claude,codex,cursor,copilot]=process.argv.slice(1).map(f=>JSON.parse(fs.readFileSync(f))); const actual=[claude.foreign,codex.hooks.foreign,cursor.hooks.foreign,copilot.hooks.foreign].map(JSON.stringify); const expected=[{"claude":{"nested":[1,{"kept":true}]}},[{"nested":["codex",2]}],[{"nested":["cursor",3]}],[{"nested":["copilot",4]}]].map(JSON.stringify); if(actual.some((value,index)=>value!==expected[index])) process.exit(1)' "$TEST_HOME/.claude/settings.json" "$TEST_HOME/.codex/hooks.json" "$TEST_HOME/.cursor/hooks.json" "$TEST_HOME/.copilot/hooks/letitbrew.json"
 # Exact grammar: unscoped and each five-agent scoped form are accepted; every
 # malformed/extra form is rejected without relying on shell word splitting.
 for agent in claude codex cursor opencode copilot; do "$CLI" install "$agent" >/dev/null; done
