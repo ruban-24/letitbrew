@@ -4,6 +4,29 @@ import LetItBrewCore
 
 private struct DanglingSymlink: Error { let path: String }
 private struct UnsafeTarget: Error { let path: String }
+private struct TestFault: Error { let name: String }
+
+/// Fault injection is deliberately unavailable outside an explicitly anchored
+/// test home.  It lets the shell contract exercise the actual command ordering
+/// without adding a production mutation path.
+private func hasTestFault(_ name: String, filesystem: CommandFilesystem) -> Bool {
+    filesystem.testHome != nil && ProcessInfo.processInfo.environment["LETITBREW_TEST_FAULT"] == name
+}
+
+private func throwTestFault(_ name: String, filesystem: CommandFilesystem) throws {
+    if hasTestFault(name, filesystem: filesystem) { throw TestFault(name: name) }
+}
+
+private func writeTestReplacement(at path: String) throws {
+    let descriptor = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0o600)
+    guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+    defer { close(descriptor) }
+    let bytes = Array("foreign replacement after quarantine".utf8)
+    let written = bytes.withUnsafeBytes { write(descriptor, $0.baseAddress, bytes.count) }
+    guard written == bytes.count, fsync(descriptor) == 0 else {
+        throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+    }
+}
 
 private enum Operation { case install, uninstall, doctor }
 
@@ -152,8 +175,10 @@ func runInstall(agents: Set<AgentID> = Set(AgentID.allCases)) -> Int32 {
                     let bytes = try replacement(agent: agent, data: existing, cli: cli, removing: false)
                     return Prepared(observed: observed, replacement: bytes!)
                 }, persistExactTarget: { prepared in
+                    try throwTestFault("registry-persist", filesystem: filesystem)
                     registry.targets[agent] = prepared.observed.target.displayPath; loadedRegistry.capture = try saveRegistry(registry, basedOn: loadedRegistry.capture)
                 }, commitVendorMutation: { prepared in
+                    try throwTestFault("vendor-commit", filesystem: filesystem)
                     _ = try AtomicFile.write(prepared.replacement, replacing: prepared.observed)
                 })
                 print("\(agent.displayName): installed")
@@ -176,16 +201,22 @@ func runUninstall(agents: Set<AgentID> = Set(AgentID.allCases)) -> Int32 {
                     guard let existing else { return }
                     if agent == .opencode {
                         guard try replacement(agent: agent, data: existing, cli: cli, removing: true) == nil else { throw UnsafeTarget(path: target.displayPath) }
-                        try AtomicFile.remove(observed, expectedData: existing)
+                        try throwTestFault("vendor-remove", filesystem: filesystem)
+                        let hooks = hasTestFault("active-replacement", filesystem: filesystem)
+                            ? AtomicFile.RaceHooks(afterQuarantineValidationBeforePublish: { try writeTestReplacement(at: target.displayPath) })
+                            : AtomicFile.RaceHooks()
+                        try AtomicFile.remove(observed, expectedData: existing, hooks: hooks)
                     } else if (try validate(agent: agent, data: existing, cli: cli)).isAbsent {
                         // A stale registry retry only clears its record; it
                         // never reformats a clean/foreign JSON replacement.
                         return
                     } else {
+                        try throwTestFault("vendor-remove", filesystem: filesystem)
                         let output = try replacement(agent: agent, data: existing, cli: cli, removing: true)!
                         _ = try AtomicFile.write(output, replacing: observed)
                     }
                 }, clearExactTarget: {
+                    try throwTestFault("registry-clear", filesystem: filesystem)
                     registry.targets.removeValue(forKey: agent); loadedRegistry.capture = try saveRegistry(registry, basedOn: loadedRegistry.capture)
                 })
                 print("\(agent.displayName): hooks removed")

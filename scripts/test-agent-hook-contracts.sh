@@ -6,6 +6,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLI="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$CLI_INPUT")"
 [[ "$CLI" = /* && -x "$CLI" ]] || { echo "FATAL: CLI must be an executable absolute path" >&2; exit 1; }
 command -v node >/dev/null || { echo "FATAL: node is required for the OpenCode runtime contract" >&2; exit 1; }
+# shellcheck source=lib-power-baseline.sh
+source "$SCRIPT_DIR/lib-power-baseline.sh"
+ENTRY_SLEEP_DISABLED="$(baseline_read_sleepdisabled)" || { echo "FATAL: could not read SleepDisabled baseline" >&2; exit 1; }
 # Registry selection/persistence is deliberately descriptor-only.  Keep this
 # source gate beside the black-box contract so a future convenience reopen
 # cannot quietly reintroduce Foundation path I/O after target selection.
@@ -13,7 +16,9 @@ INSTALL_SOURCE="$SCRIPT_DIR/../Sources/letitbrew/InstallCommand.swift"
 # This is intentionally a source gate as well as behavioral coverage: the
 # Task 8 command flow must not regress to fd pseudo-path transport, Foundation
 # path mutation, or URL AtomicFile compatibility overloads after selection.
-! grep -Eq '/dev/fd|Data\(contentsOf:|Data\([^)]*\)\.write\(to:|FileManager\.default\.(createDirectory|removeItem|moveItem|replaceItem)|AtomicFile\.(write|remove)\([^\n]*(to:|ifUnchangedFrom:)' "$INSTALL_SOURCE"
+! rg -F -e '/dev/fd' -e 'Data(contentsOf:' -e '.write(to:' -e 'FileManager.default.createDirectory' -e 'FileManager.default.removeItem' -e 'FileManager.default.moveItem' -e 'FileManager.default.replaceItem' "$INSTALL_SOURCE"
+! rg -F 'AtomicFile.write(' "$INSTALL_SOURCE" | rg -Fq 'to:'
+! rg -F 'AtomicFile.remove(' "$INSTALL_SOURCE" | rg -Fq 'ifUnchangedFrom:'
 grep -Fq 'AtomicFile.write(data, replacing: capture, permissions: .exact(0o600))' "$INSTALL_SOURCE"
 ! sed -n '/private func loadRegistry/,/private func resolveJSONTarget/p' "$INSTALL_SOURCE" | grep -Eq 'Data\(contentsOf:|FileManager\.(default\.)?(createDirectory|removeItem|moveItem|replaceItem)'
 INSTALL_BLOCK="$(sed -n '/func runInstall/,/func runUninstall/p' "$INSTALL_SOURCE")"
@@ -22,7 +27,7 @@ grep -Fq 'AtomicFile.write(prepared.replacement, replacing: prepared.observed)' 
 ! grep -Eq 'ExactFileCapture\.capture\(at:|AtomicFile\.write\([^)]*to:|Data\(contentsOf:' <<<"$INSTALL_BLOCK"
 UNINSTALL_BLOCK="$(sed -n '/func runUninstall/,/private func doctorAgent/p' "$INSTALL_SOURCE")"
 grep -Fq 'let observed = try target.capture()' <<<"$UNINSTALL_BLOCK"
-grep -Fq 'AtomicFile.remove(observed, expectedData: existing)' <<<"$UNINSTALL_BLOCK"
+grep -Fq 'AtomicFile.remove(observed, expectedData: existing, hooks: hooks)' <<<"$UNINSTALL_BLOCK"
 ! grep -Eq 'ExactFileCapture\.capture\(at:|AtomicFile\.write\([^)]*to:|AtomicFile\.remove\([^)]*ifUnchangedFrom:|Data\(contentsOf:' <<<"$UNINSTALL_BLOCK"
 DOCTOR_BLOCK="$(sed -n '/private func doctorAgent/,/func runPrepareExact/p' "$INSTALL_SOURCE")"
 grep -Fq 'let data = try target.capture().data' <<<"$DOCTOR_BLOCK"
@@ -73,11 +78,18 @@ rm -rf "$SYMLINK_CONNECT_HOME"
 # Preflight refusal is before registry persistence: malformed JSON and an
 # unowned/symlinked OpenCode plugin leave both vendor and registry untouched.
 REFUSAL_HOME="$(mktemp -d /tmp/letitbrew-install-refusal.XXXXXX)"
-mkdir -p "$REFUSAL_HOME/.claude" "$REFUSAL_HOME/.config/opencode/plugins"
-printf '{ malformed' > "$REFUSAL_HOME/.claude/settings.json"
-! env LETITBREW_TEST_HOME="$REFUSAL_HOME" "$CLI" install claude >/dev/null 2>&1
-test "$(cat "$REFUSAL_HOME/.claude/settings.json")" = '{ malformed'
-! test -e "$REFUSAL_HOME/Library/Application Support/LetItBrew/agent-hook-targets.json"
+mkdir -p "$REFUSAL_HOME/.claude" "$REFUSAL_HOME/.codex" "$REFUSAL_HOME/.cursor" "$REFUSAL_HOME/.copilot/hooks" "$REFUSAL_HOME/.config/opencode/plugins"
+for refusal in \
+  "claude:$REFUSAL_HOME/.claude/settings.json" \
+  "codex:$REFUSAL_HOME/.codex/hooks.json" \
+  "cursor:$REFUSAL_HOME/.cursor/hooks.json" \
+  "copilot:$REFUSAL_HOME/.copilot/hooks/letitbrew.json"; do
+  agent="${refusal%%:*}"; target="${refusal#*:}"
+  printf '{ malformed' > "$target"; cp "$target" "$target.before"
+  ! env LETITBREW_TEST_HOME="$REFUSAL_HOME" "$CLI" install "$agent" >/dev/null 2>&1
+  cmp -s "$target.before" "$target"
+  ! test -e "$REFUSAL_HOME/Library/Application Support/LetItBrew/agent-hook-targets.json"
+done
 printf '// foreign plugin\n' > "$REFUSAL_HOME/foreign.js"
 ln -s "$REFUSAL_HOME/foreign.js" "$REFUSAL_HOME/.config/opencode/plugins/letitbrew.js"
 ! env LETITBREW_TEST_HOME="$REFUSAL_HOME" "$CLI" install opencode >/dev/null 2>&1
@@ -170,6 +182,94 @@ grep -q '__letitbrew_copilot_hook' "$AB_COPILOT"
 grep -q '^// __letitbrew_opencode_plugin$' "$AB_OPENCODE"
 ! test -e "$AB_HOME/ambient-copilot/hooks/letitbrew.json"
 ! test -e "$AB_HOME/ambient-opencode/plugins/letitbrew.js"
+
+# Every recorded A target wins over a configured/ambient B target across the
+# complete install, doctor, uninstall lifecycle.  B is deliberately valid but
+# foreign, so touching it would be observable even when an operation succeeds.
+ALL_AB_HOME="$(mktemp -d /tmp/letitbrew-recorded-all.XXXXXX)"
+mkdir -p "$ALL_AB_HOME/custom" "$ALL_AB_HOME/.claude" "$ALL_AB_HOME/.codex" "$ALL_AB_HOME/.cursor" "$ALL_AB_HOME/.copilot/hooks" "$ALL_AB_HOME/.config/opencode/plugins" "$ALL_AB_HOME/Library/Application Support/LetItBrew"
+printf '{"foreign":{"a":"claude"}}' > "$ALL_AB_HOME/custom/claude.json"
+printf '{"description":"a","hooks":{"foreign":[]}}' > "$ALL_AB_HOME/custom/codex.json"
+printf '{"version":1,"hooks":{"foreign":[]}}' > "$ALL_AB_HOME/custom/cursor.json"
+printf '{"version":1,"hooks":{"foreign":[]}}' > "$ALL_AB_HOME/custom/copilot.json"
+printf '{"ambient":"claude"}' > "$ALL_AB_HOME/.claude/settings.json"
+printf '{"description":"ambient","hooks":{"foreign":[]}}' > "$ALL_AB_HOME/.codex/hooks.json"
+printf '{"version":1,"hooks":{"foreign":[]}}' > "$ALL_AB_HOME/.cursor/hooks.json"
+printf '{"version":1,"hooks":{"foreign":[]}}' > "$ALL_AB_HOME/.copilot/hooks/letitbrew.json"
+printf '// ambient OpenCode plugin\n' > "$ALL_AB_HOME/.config/opencode/plugins/letitbrew.js"
+for B in "$ALL_AB_HOME/.claude/settings.json" "$ALL_AB_HOME/.codex/hooks.json" "$ALL_AB_HOME/.cursor/hooks.json" "$ALL_AB_HOME/.copilot/hooks/letitbrew.json" "$ALL_AB_HOME/.config/opencode/plugins/letitbrew.js"; do cp "$B" "$B.before"; done
+python3 -c 'import json,sys; h=sys.argv[1]; targets={"claude":h+"/custom/claude.json","codex":h+"/custom/codex.json","cursor":h+"/custom/cursor.json","copilot":h+"/custom/copilot.json","opencode":h+"/custom/opencode.js"}; json.dump({"version":1,"targets":targets},open(h+"/Library/Application Support/LetItBrew/agent-hook-targets.json","w"))' "$ALL_AB_HOME"
+for agent in claude codex cursor copilot opencode; do env LETITBREW_TEST_HOME="$ALL_AB_HOME" COPILOT_HOME="$ALL_AB_HOME/ignored" OPENCODE_CONFIG_DIR="$ALL_AB_HOME/ignored" "$CLI" install "$agent" >/dev/null; done
+ALL_AB_DOCTOR="$(env LETITBREW_TEST_HOME="$ALL_AB_HOME" "$CLI" doctor || true)"
+for state in 'Claude Code: healthy' 'Codex: healthy' 'Cursor: healthy' 'GitHub Copilot CLI: healthy' 'OpenCode: healthy'; do grep -Fq "$state" <<< "$ALL_AB_DOCTOR"; done
+for agent in claude codex cursor copilot opencode; do env LETITBREW_TEST_HOME="$ALL_AB_HOME" "$CLI" uninstall "$agent" >/dev/null; done
+for B in "$ALL_AB_HOME/.claude/settings.json" "$ALL_AB_HOME/.codex/hooks.json" "$ALL_AB_HOME/.cursor/hooks.json" "$ALL_AB_HOME/.copilot/hooks/letitbrew.json" "$ALL_AB_HOME/.config/opencode/plugins/letitbrew.js"; do cmp -s "$B.before" "$B"; done
+rm -rf "$ALL_AB_HOME"
+
+# The real command ordering is exercised under fault injection, not only in
+# pure transaction closures.  A preflight/persist fault leaves the vendor
+# byte-for-byte untouched; a vendor fault leaves the exact target recorded.
+# Removal and clear boundaries deliberately retain a stale record until a
+# later retry proves the already-clean target and clears without rewriting it.
+target_for_agent() {
+  case "$1" in
+    claude) printf '%s/.claude/settings.json' "$2";;
+    codex) printf '%s/.codex/hooks.json' "$2";;
+    cursor) printf '%s/.cursor/hooks.json' "$2";;
+    copilot) printf '%s/.copilot/hooks/letitbrew.json' "$2";;
+    opencode) printf '%s/.config/opencode/plugins/letitbrew.js' "$2";;
+  esac
+}
+seed_agent_target() {
+  local agent="$1" home="$2" target
+  target="$(target_for_agent "$agent" "$home")"
+  mkdir -p "$(dirname "$target")"
+  case "$agent" in
+    claude) printf '{"foreign":{"keep":1}}\n' > "$target";;
+    codex) printf '{"description":"foreign","hooks":{"keep":[]}}\n' > "$target";;
+    cursor|copilot) printf '{"version":1,"hooks":{"keep":[]}}\n' > "$target";;
+    opencode) : ;; # its missing file is a valid install input
+  esac
+}
+for agent in claude codex cursor copilot opencode; do
+  FAULT_HOME="$(mktemp -d /tmp/letitbrew-command-fault.XXXXXX)"
+  seed_agent_target "$agent" "$FAULT_HOME"; TARGET="$(target_for_agent "$agent" "$FAULT_HOME")"
+  test -e "$TARGET" && cp "$TARGET" "$FAULT_HOME/vendor-before" || : > "$FAULT_HOME/vendor-before"
+  ! env LETITBREW_TEST_HOME="$FAULT_HOME" LETITBREW_TEST_FAULT=registry-persist "$CLI" install "$agent" >/dev/null 2>&1
+  cmp -s "$FAULT_HOME/vendor-before" "$TARGET" 2>/dev/null || test ! -e "$TARGET"
+  ! test -e "$FAULT_HOME/Library/Application Support/LetItBrew/agent-hook-targets.json"
+  rm -rf "$FAULT_HOME"
+
+  FAULT_HOME="$(mktemp -d /tmp/letitbrew-command-fault.XXXXXX)"
+  seed_agent_target "$agent" "$FAULT_HOME"; TARGET="$(target_for_agent "$agent" "$FAULT_HOME")"
+  test -e "$TARGET" && cp "$TARGET" "$FAULT_HOME/vendor-before" || : > "$FAULT_HOME/vendor-before"
+  ! env LETITBREW_TEST_HOME="$FAULT_HOME" LETITBREW_TEST_FAULT=vendor-commit "$CLI" install "$agent" >/dev/null 2>&1
+  python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["targets"][sys.argv[2]] == sys.argv[3]' "$FAULT_HOME/Library/Application Support/LetItBrew/agent-hook-targets.json" "$agent" "$TARGET"
+  cmp -s "$FAULT_HOME/vendor-before" "$TARGET" 2>/dev/null || test ! -e "$TARGET"
+  rm -rf "$FAULT_HOME"
+
+  FAULT_HOME="$(mktemp -d /tmp/letitbrew-command-fault.XXXXXX)"
+  seed_agent_target "$agent" "$FAULT_HOME"; TARGET="$(target_for_agent "$agent" "$FAULT_HOME")"
+  env LETITBREW_TEST_HOME="$FAULT_HOME" "$CLI" install "$agent" >/dev/null
+  ! env LETITBREW_TEST_HOME="$FAULT_HOME" LETITBREW_TEST_FAULT=vendor-remove "$CLI" uninstall "$agent" >/dev/null 2>&1
+  python3 -c 'import json,sys; assert sys.argv[2] in json.load(open(sys.argv[1]))["targets"]' "$FAULT_HOME/Library/Application Support/LetItBrew/agent-hook-targets.json" "$agent"
+  ! env LETITBREW_TEST_HOME="$FAULT_HOME" LETITBREW_TEST_FAULT=registry-clear "$CLI" uninstall "$agent" >/dev/null 2>&1
+  python3 -c 'import json,sys; assert sys.argv[2] in json.load(open(sys.argv[1]))["targets"]' "$FAULT_HOME/Library/Application Support/LetItBrew/agent-hook-targets.json" "$agent"
+  test -e "$TARGET" && cp "$TARGET" "$FAULT_HOME/after-removal" || : > "$FAULT_HOME/after-removal"
+  env LETITBREW_TEST_HOME="$FAULT_HOME" "$CLI" uninstall "$agent" >/dev/null
+  cmp -s "$FAULT_HOME/after-removal" "$TARGET" 2>/dev/null || test ! -e "$TARGET"
+  ! python3 -c 'import json,sys; assert sys.argv[2] not in json.load(open(sys.argv[1]))["targets"]' "$FAULT_HOME/Library/Application Support/LetItBrew/agent-hook-targets.json" "$agent"
+  rm -rf "$FAULT_HOME"
+done
+
+# A replacement that appears after OpenCode's quarantine validation is not
+# removed by the actual CLI; the registry can clear while the foreign active
+# file survives exactly as the next owner's file.
+REPLACEMENT_HOME="$(mktemp -d /tmp/letitbrew-active-replacement.XXXXXX)"
+env LETITBREW_TEST_HOME="$REPLACEMENT_HOME" "$CLI" install opencode >/dev/null
+env LETITBREW_TEST_HOME="$REPLACEMENT_HOME" LETITBREW_TEST_FAULT=active-replacement "$CLI" uninstall opencode >/dev/null
+test "$(cat "$REPLACEMENT_HOME/.config/opencode/plugins/letitbrew.js")" = 'foreign replacement after quarantine'
+rm -rf "$REPLACEMENT_HOME"
 # Doctor always prints each requested configuration state and still performs
 # its independent watchdog check when another adapter is invalid.
 DOCTOR_HOME="$(mktemp -d /tmp/letitbrew-doctor.XXXXXX)"
@@ -207,4 +307,6 @@ ln -s "$OUTSIDE_HOME" "$SYMLINK_HOME/Library/Application Support/LetItBrew"
 ! env LETITBREW_TEST_HOME="$SYMLINK_HOME" "$CLI" install claude >/dev/null 2>&1
 ! test -e "$OUTSIDE_HOME/agent-hook-targets.json"
 ! test -e "$SYMLINK_HOME/.claude/settings.json"
+EXIT_SLEEP_DISABLED="$(baseline_read_sleepdisabled)" || { echo "FATAL: could not read SleepDisabled baseline on exit" >&2; exit 1; }
+test "$ENTRY_SLEEP_DISABLED" = "$EXIT_SLEEP_DISABLED"
 echo "PASS"

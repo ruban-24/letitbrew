@@ -85,8 +85,10 @@ groups=doc.get("hooks",{}).get("Stop",[])
 kept=[g for g in groups if not any(h.get("command","").endswith(": # __letitbrew_hook") for h in g.get("hooks",[]))]
 print(json.dumps({"model":doc.get("model"),"kept":kept},sort_keys=True))
 ' "$TEST_HOME/.claude/settings.json")"
-printf '{"version":1,"hooks":{"foreign":[]}}' > "$TEST_HOME/.cursor/hooks.json"
-printf '{"version":1,"hooks":{"foreign":[]}}' > "$TEST_HOME/.copilot/hooks/letitbrew.json"
+printf '{"version":1,"hooks":{"foreign":[{"nested":["cursor",3]}]}}' > "$TEST_HOME/.cursor/hooks.json"
+printf '{"version":1,"hooks":{"foreign":[{"nested":["copilot",4]}]}}' > "$TEST_HOME/.copilot/hooks/letitbrew.json"
+cursor_foreign_before="$(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))["hooks"]["foreign"],sort_keys=True))' "$TEST_HOME/.cursor/hooks.json")"
+copilot_foreign_before="$(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))["hooks"]["foreign"],sort_keys=True))' "$TEST_HOME/.copilot/hooks/letitbrew.json")"
 
 install_status=0
 "$CLI" install >/dev/null 2>&1 || install_status=$?
@@ -127,6 +129,10 @@ check "Let It Brew's Codex entries are gone" \
 check "Let It Brew's Cursor entries are gone" bash -c '! grep -q __letitbrew_cursor_hook "$0/.cursor/hooks.json"' "$TEST_HOME"
 check "Let It Brew's OpenCode plugin is gone" test ! -e "$TEST_HOME/.config/opencode/plugins/letitbrew.js"
 check "Let It Brew's Copilot entries are gone" bash -c '! grep -q __letitbrew_copilot_hook "$0/.copilot/hooks/letitbrew.json"' "$TEST_HOME"
+cursor_foreign_after="$(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))["hooks"]["foreign"],sort_keys=True))' "$TEST_HOME/.cursor/hooks.json")"
+copilot_foreign_after="$(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))["hooks"]["foreign"],sort_keys=True))' "$TEST_HOME/.copilot/hooks/letitbrew.json")"
+check "Cursor's complete foreign subtree survived unchanged" [ "$cursor_foreign_before" = "$cursor_foreign_after" ]
+check "Copilot's complete foreign subtree survived unchanged" [ "$copilot_foreign_before" = "$copilot_foreign_after" ]
 
 # Every mergeable JSON target must refuse malformed bytes without a rewrite.
 # These are the post-uninstall configured paths, so there is no registry
@@ -162,6 +168,33 @@ uninstall_status=0
 "$CLI" uninstall opencode >/dev/null 2>&1 || uninstall_status=$?
 check "uninstall opencode refuses a final symlink" [ "$uninstall_status" -eq 1 ]
 check "an OpenCode symlink destination was left byte-identical" cmp -s "$TEST_HOME/opencode-foreign-before.js" "$TEST_HOME/opencode-symlink-destination.js"
+
+# Use the executable command's test-only boundary seams to prove disconnect
+# ordering: a failed clear leaves the recorded stale target for a real retry,
+# while a post-quarantine active replacement survives the old owner's remove.
+BOUNDARY_HOME="$(mktemp -d /tmp/letitbrew-uninstall-boundary.XXXXXX)"
+mkdir -p "$BOUNDARY_HOME/.cursor"
+printf '{"version":1,"hooks":{"foreign":[1]}}' > "$BOUNDARY_HOME/.cursor/hooks.json"
+env LETITBREW_TEST_HOME="$BOUNDARY_HOME" "$CLI" install cursor >/dev/null
+boundary_registry="$BOUNDARY_HOME/Library/Application Support/LetItBrew/agent-hook-targets.json"
+boundary_target="$BOUNDARY_HOME/.cursor/hooks.json"
+uninstall_status=0
+env LETITBREW_TEST_HOME="$BOUNDARY_HOME" LETITBREW_TEST_FAULT=registry-clear "$CLI" uninstall cursor >/dev/null 2>&1 || uninstall_status=$?
+check "registry clear failure is reported" [ "$uninstall_status" -eq 1 ]
+check "registry clear failure retains its stale Cursor record" python3 -c 'import json,sys; assert "cursor" in json.load(open(sys.argv[1]))["targets"]' "$boundary_registry"
+cp "$boundary_target" "$BOUNDARY_HOME/cursor-after-failed-clear.json"
+env LETITBREW_TEST_HOME="$BOUNDARY_HOME" "$CLI" uninstall cursor >/dev/null
+retry_stale=0
+python3 -c 'import json,sys; assert "cursor" not in json.load(open(sys.argv[1]))["targets"]' "$boundary_registry" || retry_stale=$?
+check "retry clears stale Cursor record" [ "$retry_stale" -eq 0 ]
+check "retry does not rewrite an already-clean Cursor target" cmp -s "$BOUNDARY_HOME/cursor-after-failed-clear.json" "$boundary_target"
+rm -rf "$BOUNDARY_HOME"
+
+REPLACEMENT_HOME="$(mktemp -d /tmp/letitbrew-uninstall-replacement.XXXXXX)"
+env LETITBREW_TEST_HOME="$REPLACEMENT_HOME" "$CLI" install opencode >/dev/null
+env LETITBREW_TEST_HOME="$REPLACEMENT_HOME" LETITBREW_TEST_FAULT=active-replacement "$CLI" uninstall opencode >/dev/null
+check "an active OpenCode replacement survives its predecessor's removal" test "$(cat "$REPLACEMENT_HOME/.config/opencode/plugins/letitbrew.js")" = "foreign replacement after quarantine"
+rm -rf "$REPLACEMENT_HOME"
 
 exit_baseline="$(baseline_read_sleepdisabled)" || {
     echo "FAIL: could not read an exact SleepDisabled baseline on exit." >&2
