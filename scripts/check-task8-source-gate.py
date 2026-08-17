@@ -35,12 +35,13 @@ def call_expression(text: str, start: int) -> str:
 
 def violations(text: str) -> list[str]:
     errors: list[str] = []
-    fixed = (
-        "/dev/fd", "Data(contentsOf:", ".write(to:",
-        "FileManager.default.createDirectory", "FileManager.default.removeItem",
-        "FileManager.default.moveItem", "FileManager.default.replaceItem",
-    )
-    errors.extend(f"forbidden transport: {needle}" for needle in fixed if needle in text)
+    patterns = {
+        "/dev/fd": r"/dev/fd",
+        "Data contentsOf": r"Data\s*\(\s*contentsOf\s*:",
+        "Data write(to:)": r"\.write\s*\(\s*to\s*:",
+        "FileManager mutation": r"FileManager\s*\.\s*default\s*\.\s*(?:createDirectory|removeItem|moveItem|replaceItem)\s*\(",
+    }
+    errors.extend(f"forbidden transport: {name}" for name, pattern in patterns.items() if re.search(pattern, text, re.S))
     for match in re.finditer(r"AtomicFile\.(?:write|remove)\s*\(", text):
         expression = call_expression(text, match.start())
         if re.search(r"\b(?:to|ifUnchangedFrom)\s*:", expression):

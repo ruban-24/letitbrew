@@ -71,6 +71,7 @@ private struct ExactPreparationResult: Sendable {
     let inspection: DiskHookInspection
     let selectedTarget: URL?
     let finalInspectionIsHealthy: Bool
+    let finalInspection: AgentExactPreparation.Inspection
 }
 
 private enum DiskHookInspection: Sendable {
@@ -1091,7 +1092,8 @@ final class LetItBrewAppModel: ObservableObject {
                 changedVendorBytes: result.completion.changedVendorBytes,
                 inspection: latest,
                 selectedTarget: result.target,
-                finalInspectionIsHealthy: AgentExactRefreshCoordinator.mayPresentConnected(result)
+                finalInspectionIsHealthy: AgentExactRefreshCoordinator.mayPresentConnected(result),
+                finalInspection: result.final.inspection
             )
         } catch {
             return ExactPreparationResult(
@@ -1099,7 +1101,8 @@ final class LetItBrewAppModel: ObservableObject {
                 changedVendorBytes: false,
                 inspection: .invalid(details: []),
                 selectedTarget: nil,
-                finalInspectionIsHealthy: false
+                finalInspectionIsHealthy: false,
+                finalInspection: .invalid
             )
         }
     }
@@ -1215,6 +1218,7 @@ final class LetItBrewAppModel: ObservableObject {
                 let preparation = prepareExact(agent: .claude, cliPath: cliPath, home: home, environment: environment)
                 mutation = preparation.helper
                 inspection = preparation.inspection
+                let presentation = AgentExactRefreshCoordinator.presentation(agent: .claude, selectedTarget: preparation.selectedTarget ?? home, helperSucceeded: mutation?.status == 0, finalInspection: preparation.finalInspection, changedVendorBytes: preparation.changedVendorBytes)
 
                 switch inspection {
                 case .absent:
@@ -1226,14 +1230,14 @@ final class LetItBrewAppModel: ObservableObject {
                         )
                     ))
                 case .healthy:
-                    if mutation?.status != 0 || !preparation.finalInspectionIsHealthy {
+                    if !presentation.isConnected {
                         health.append(AgentHookHealth(
                             id: "claude", name: "Claude Code", state: .couldNotConnect,
                             details: connectionFailureDetails(mutation, fallback: ["Let It Brew could not prepare its Claude Code connection."])
                         ))
                     } else {
                         let completion = AgentExactPreparation.completion(changesVendorBytes: preparation.changedVendorBytes, helperSucceeded: true)
-                        if completion.changedVendorBytes { changedAgents.append("Claude Code") }
+                        if presentation.changedVendorBytes { changedAgents.append("Claude Code") }
                         var details = ["Local CLI and Desktop Code sessions"]
                         if completion.shouldRestartSessions { details.append("Restart sessions that were already open.") }
                         health.append(AgentHookHealth(id: "claude", name: "Claude Code", state: .connected, details: details))
@@ -1283,6 +1287,7 @@ final class LetItBrewAppModel: ObservableObject {
                 let preparation = prepareExact(agent: .codex, cliPath: cliPath, home: home, environment: environment)
                 mutation = preparation.helper
                 inspection = preparation.inspection
+                let presentation = AgentExactRefreshCoordinator.presentation(agent: .codex, selectedTarget: preparation.selectedTarget ?? home, helperSucceeded: mutation?.status == 0, finalInspection: preparation.finalInspection, changedVendorBytes: preparation.changedVendorBytes)
 
                 switch inspection {
                 case .absent:
@@ -1294,7 +1299,7 @@ final class LetItBrewAppModel: ObservableObject {
                         )
                     ))
                 case .healthy:
-                    if mutation?.status != 0 || !preparation.finalInspectionIsHealthy {
+                    if !presentation.isConnected {
                         health.append(AgentHookHealth(
                             id: "codex", name: "Codex", state: .couldNotConnect,
                             details: connectionFailureDetails(mutation, fallback: ["Let It Brew could not prepare its Codex connection."])
@@ -1305,11 +1310,11 @@ final class LetItBrewAppModel: ObservableObject {
                         helperSucceeded: mutation?.status == 0
                     )
                     let changed = completion.changedVendorBytes
-                    if changed { changedAgents.append("Codex") }
+                    if presentation.changedVendorBytes { changedAgents.append("Codex") }
                     // Trust must classify the same selected exact target the
                     // coordinator just inspected and prepared, not a newly
                     // resolved ambient CODEX_HOME path.
-                    let hooksURL = preparation.selectedTarget ?? CodexHooks.hooksURL(home: home, environment: environment)
+                    let hooksURL = presentation.trustTarget ?? preparation.selectedTarget ?? CodexHooks.hooksURL(home: home, environment: environment)
                     let trust = LiveCodexHookTrustInspection.inspect(
                         executableURL: codexExecutable,
                         hooksURL: hooksURL,
@@ -1379,12 +1384,13 @@ final class LetItBrewAppModel: ObservableObject {
             }
             let preparation = prepareExact(agent: agent, cliPath: cliPath, home: home, environment: environment)
             let mutation = preparation.helper
-            if mutation.status == 0 && preparation.finalInspectionIsHealthy {
+            let presentation = AgentExactRefreshCoordinator.presentation(agent: agent, selectedTarget: preparation.selectedTarget ?? home, helperSucceeded: mutation.status == 0, finalInspection: preparation.finalInspection, changedVendorBytes: preparation.changedVendorBytes)
+            if presentation.isConnected {
                 let completion = AgentExactPreparation.completion(
                     changesVendorBytes: preparation.changedVendorBytes,
                     helperSucceeded: true
                 )
-                if completion.changedVendorBytes { changedAgents.append(agent.displayName) }
+                if presentation.changedVendorBytes { changedAgents.append(agent.displayName) }
                 health.append(AgentHookHealth(id: agent.rawValue, name: agent.displayName, state: .connected, details: completion.shouldRestartSessions ? ["Restart sessions that were already open."] : []))
             } else {
                 health.append(AgentHookHealth(id: agent.rawValue, name: agent.displayName, state: .couldNotConnect, details: connectionFailureDetails(mutation, fallback: ["Let It Brew could not prepare its \(agent.displayName) connection."])))

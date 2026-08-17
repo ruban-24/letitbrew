@@ -6,6 +6,17 @@ import LetItBrewCore
 /// inspection, helper stdin, and post-helper inspection cannot drift from a
 /// recorded target to a newly configured ambient path.
 public enum AgentExactRefreshCoordinator {
+    public struct Presentation: Sendable, Equatable {
+        public let trustTarget: URL?
+        public let isConnected: Bool
+        public let changedVendorBytes: Bool
+        public var shouldRestartSessions: Bool { changedVendorBytes }
+    }
+
+    public static func presentation(agent: AgentID, selectedTarget: URL, helperSucceeded: Bool, finalInspection: AgentExactPreparation.Inspection, changedVendorBytes: Bool) -> Presentation {
+        let connected = helperSucceeded && finalInspection == .healthyOwned
+        return Presentation(trustTarget: agent == .codex ? selectedTarget : nil, isConnected: connected, changedVendorBytes: connected && changedVendorBytes)
+    }
     public struct Observation: Sendable, Equatable {
         public let snapshot: ExactFileSnapshot
         public let inspection: AgentExactPreparation.Inspection

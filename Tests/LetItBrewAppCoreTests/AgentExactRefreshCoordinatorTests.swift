@@ -128,3 +128,17 @@ private func refreshSnapshot(_ path: String) throws -> ExactFileSnapshot {
         #expect(!AgentExactRefreshCoordinator.mayPresentConnected(result))
     }
 }
+
+@Test func productionPresentationBindsTrustAndRestartToExactFinalState() {
+    let a = URL(fileURLWithPath: "/tmp/recorded-A"); let b = URL(fileURLWithPath: "/tmp/ambient-B")
+    let codex = AgentExactRefreshCoordinator.presentation(agent: .codex, selectedTarget: a, helperSucceeded: true, finalInspection: .healthyOwned, changedVendorBytes: false)
+    #expect(codex.trustTarget == a); #expect(codex.trustTarget != b); #expect(codex.isConnected); #expect(!codex.shouldRestartSessions)
+    for agent in AgentID.allCases {
+        let failed = AgentExactRefreshCoordinator.presentation(agent: agent, selectedTarget: a, helperSucceeded: true, finalInspection: .repairableOwned, changedVendorBytes: true)
+        #expect(!failed.isConnected); #expect(!failed.shouldRestartSessions)
+        let mutation = AgentExactRefreshCoordinator.presentation(agent: agent, selectedTarget: a, helperSucceeded: true, finalInspection: .healthyOwned, changedVendorBytes: true)
+        #expect(mutation.isConnected); #expect(mutation.shouldRestartSessions)
+        let helperFailure = AgentExactRefreshCoordinator.presentation(agent: agent, selectedTarget: a, helperSucceeded: false, finalInspection: .healthyOwned, changedVendorBytes: true)
+        #expect(!helperFailure.isConnected); #expect(!helperFailure.shouldRestartSessions)
+    }
+}

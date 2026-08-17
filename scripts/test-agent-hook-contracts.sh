@@ -17,10 +17,11 @@ INSTALL_SOURCE="$SCRIPT_DIR/../Sources/letitbrew/InstallCommand.swift"
 # Task 8 command flow must not regress to fd pseudo-path transport, Foundation
 # path mutation, or URL AtomicFile compatibility overloads after selection.
 python3 "$SCRIPT_DIR/check-task8-source-gate.py" "$INSTALL_SOURCE"
-if python3 "$SCRIPT_DIR/check-task8-source-gate.py" "$SCRIPT_DIR/fixtures/task8-multiline-legacy-atomic.swift" >/dev/null 2>&1; then
-  echo "FATAL: source gate accepted multiline legacy AtomicFile/path open fixture" >&2
-  exit 1
-fi
+for fixture in "$SCRIPT_DIR"/fixtures/task8-multiline-*.swift; do
+  if python3 "$SCRIPT_DIR/check-task8-source-gate.py" "$fixture" >/dev/null 2>&1; then
+    echo "FATAL: source gate accepted $fixture" >&2; exit 1
+  fi
+done
 grep -Fq 'AtomicFile.write(data, replacing: capture, permissions: .exact(0o600))' "$INSTALL_SOURCE"
 ! sed -n '/private func loadRegistry/,/private func resolveJSONTarget/p' "$INSTALL_SOURCE" | grep -Eq 'Data\(contentsOf:|FileManager\.(default\.)?(createDirectory|removeItem|moveItem|replaceItem)'
 INSTALL_BLOCK="$(sed -n '/func runInstall/,/func runUninstall/p' "$INSTALL_SOURCE")"

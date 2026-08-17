@@ -66,4 +66,7 @@ automated evidence. No live configuration was read or changed. The only
 remaining work is attended UAT with real vendor installations and a
 signed/notarized app; neither is represented by these isolated tests.
 
+Last-fix evidence adds the production-consumed AppCore presentation boundary
+and independent multiline Data read/write/FileManager source-gate fixtures.
+
 DONE

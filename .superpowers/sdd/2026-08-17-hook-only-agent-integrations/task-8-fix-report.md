@@ -59,4 +59,7 @@ No automated or source gap remains in Task 8. Still attended: a signed/
 notarized app pass against real Claude, Codex, Cursor, OpenCode, and Copilot
 installations. No live vendor configuration was touched.
 
+The last-fix AppCore boundary and independent source-gate fixtures are covered
+by the current focused test/build and shell evidence.
+
 DONE
