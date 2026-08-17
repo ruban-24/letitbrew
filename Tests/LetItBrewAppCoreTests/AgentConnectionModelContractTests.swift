@@ -30,7 +30,8 @@ private func methodBody(_ source: String, named name: String) -> String {
     #expect(source.contains("AgentLiveDiskReader.inspect"))
     #expect(source.contains("AgentLaunchOutcomeCoordinator.execute"))
     #expect(source.contains("AgentLaunchOutcomeCoordinator.present"))
-    #expect(source.contains("AgentUninstallHooksCoordinator.perform"))
+    #expect(source.contains("AgentLaunchTrustCoordinator.selectedCodexTrust"))
+    #expect(source.contains("AgentUninstallHooksCoordinator.performAsync"))
     #expect(source.contains("AgentSessionVisibilityPipeline.apply"))
     #expect(!source.contains("runLaunchPreparations()\n            refreshAgentHooks"))
     #expect(source.contains("persistConnectedAgentIDs(next)"))
@@ -42,4 +43,7 @@ private func methodBody(_ source: String, named name: String) -> String {
     #expect(connect.contains("reapplyLatestSnapshot(connectedAgentIDs: next)"))
     #expect(disconnect.contains("persistConnectedAgentIDs(next)"))
     #expect(disconnect.contains("reapplyLatestSnapshot(connectedAgentIDs: next)"))
+    let uninstall = methodBody(source, named: "uninstallHooks")
+    #expect(uninstall.contains("removalIDs(retrying: failedUninstallAgentIDs)"))
+    #expect(uninstall.contains("failedUninstallAgentIDs = completion.retryAgentIDs"))
 }

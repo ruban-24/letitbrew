@@ -133,3 +133,73 @@ import Testing
     defer { try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: unreadable.path) }
     #expect(AgentLiveDiskReader.inspect(agent: .opencode, registryURL: registry, defaultTarget: unreadable, helperPath: "/letitbrew").state == .invalid)
 }
+
+@Test func liveReaderRouteReplacementBeforeCaptureIsInvalidForRecordedAndConfiguredTargets() throws {
+    for recorded in [true, false] {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let component = root.appendingPathComponent("component")
+        let selected = component.appendingPathComponent("A.json")
+        let ambientB = root.appendingPathComponent("ambient-B.json")
+        try FileManager.default.createDirectory(at: component, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data("{}".utf8).write(to: selected)
+        try Data("foreign B".utf8).write(to: ambientB)
+        let bBefore = try Data(contentsOf: ambientB)
+        let bAttributes = try FileManager.default.attributesOfItem(atPath: ambientB.path)
+        let registry: AgentDiskRegistry = recorded
+            ? .valid(try AgentInstallRegistry(targets: [.claude: selected.path]))
+            : .valid(nil)
+        var captures: [(URL, Bool, AgentID)] = []
+        let result = AgentLiveDiskReader.inspect(
+            agent: .claude,
+            registry: registry,
+            defaultTarget: selected,
+            helperPath: "/letitbrew",
+            hooks: .init(beforeExactCapture: { target, usedRecorded, agent in
+                captures.append((target, usedRecorded, agent))
+                let retired = root.appendingPathComponent("retired")
+                try FileManager.default.moveItem(at: component, to: retired)
+                try FileManager.default.createDirectory(at: component, withIntermediateDirectories: true)
+                try Data("replacement not A".utf8).write(to: selected)
+                throw ExactFileSnapshotError.changed(target.path)
+            })
+        )
+        #expect(result.state == .invalid)
+        #expect(captures.count == 1)
+        #expect(captures.first?.0 == selected)
+        #expect(captures.first?.1 == recorded)
+        #expect(captures.first?.2 == .claude)
+        #expect(try Data(contentsOf: ambientB) == bBefore)
+        let bAfter = try FileManager.default.attributesOfItem(atPath: ambientB.path)
+        #expect(bAfter[.systemFileNumber] as? NSNumber == bAttributes[.systemFileNumber] as? NSNumber)
+        #expect(bAfter[.modificationDate] as? Date == bAttributes[.modificationDate] as? Date)
+    }
+}
+
+@Test func liveReaderUsesCapturedRegistryBytesWhenRegistryNameIsReplaced() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let registryURL = root.appendingPathComponent("registry.json")
+    let selected = root.appendingPathComponent("recorded-A.json")
+    let ambientB = root.appendingPathComponent("ambient-B.json")
+    try Data("{}".utf8).write(to: selected)
+    try Data("foreign B".utf8).write(to: ambientB)
+    try JSONEncoder().encode(try AgentInstallRegistry(targets: [.claude: selected.path])).write(to: registryURL)
+    var targetCaptures: [URL] = []
+    let result = AgentLiveDiskReader.inspect(
+        agent: .claude, registryURL: registryURL, defaultTarget: ambientB, helperPath: "/letitbrew",
+        readExactTarget: { target, _, _ in
+            targetCaptures.append(target)
+            return .absent(try! ExactFileSnapshot(path: target.path, exists: false))
+        },
+        registryHooks: .init(afterExactCapture: { _ in
+            let replacement = root.appendingPathComponent("replacement.json")
+            try? Data("not registry JSON".utf8).write(to: replacement)
+            try? FileManager.default.removeItem(at: registryURL)
+            try? FileManager.default.moveItem(at: replacement, to: registryURL)
+        })
+    )
+    #expect(targetCaptures == [selected])
+    #expect(result.target == selected)
+}

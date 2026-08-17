@@ -213,6 +213,7 @@ final class LetItBrewAppModel: ObservableObject {
     }
     @Published private(set) var hookActionInProgress = false
     @Published private(set) var hookMessage: String?
+    private var failedUninstallAgentIDs: Set<String> = []
     @Published private(set) var launchAtLogin = false
     @Published private(set) var launchAtLoginChoiceWasSaved = false
     @Published private(set) var showLaunchAtLoginOnboarding = false
@@ -822,11 +823,20 @@ final class LetItBrewAppModel: ObservableObject {
     }
 
     func uninstallHooks() {
-        AgentUninstallHooksCoordinator.perform(
+        AgentUninstallHooksCoordinator.performAsync(
             selected: connectedAgentIDs,
             persist: { next in persistConnectedAgentIDs(next) },
             refreshVisibility: { next in reapplyLatestSnapshot(connectedAgentIDs: next) },
-            launchRemoval: { ids in disconnectAgents(ids, uninstallingAll: true) }
+            launchRemoval: { allIDs, completion in
+                let ids = AgentUninstallHooksCoordinator.removalIDs(retrying: failedUninstallAgentIDs)
+                // The first attempt receives all five; a later explicit retry
+                // is restricted to the failures retained by the completion.
+                _ = allIDs
+                disconnectAgents(ids, uninstallingAll: true, completion: completion)
+            },
+            handleCompletion: { [weak self] completion in
+                self?.failedUninstallAgentIDs = completion.retryAgentIDs
+            }
         )
     }
 
@@ -934,7 +944,11 @@ final class LetItBrewAppModel: ObservableObject {
         }
     }
 
-    private func disconnectAgents(_ ids: Set<String>, uninstallingAll: Bool = false) {
+    private func disconnectAgents(
+        _ ids: Set<String>,
+        uninstallingAll: Bool = false,
+        completion: (([AgentHelperOperationResult]) -> Void)? = nil
+    ) {
         // Same mutual exclusion as refreshAgentHooks(): must not start once
         // uninstall has, since uninstall removes these same hook entries.
         guard !hookActionInProgress, !uninstallInProgress, !updateBlocksOtherActions else { return }
@@ -978,6 +992,11 @@ final class LetItBrewAppModel: ObservableObject {
                 Dictionary(uniqueKeysWithValues: $0.rows.map { ($0.agentID, $0) })
             } ?? [:]
             let followUps = AgentDisconnectCompletionPolicy.followUps(for: results)
+            let actionCompletions = Dictionary(uniqueKeysWithValues: results.map {
+                ($0.agentID, AgentConnectionActionCoordinator.complete(
+                    .disconnect, id: $0.agentID, selectedAgentIDs: self.connectedAgentIDs, result: $0
+                ))
+            })
             let followUpByAgent = Dictionary(uniqueKeysWithValues: followUps.map { followUp in
                 switch followUp {
                 case .markDisconnected(let agentID):
@@ -1007,15 +1026,16 @@ final class LetItBrewAppModel: ObservableObject {
                         disposition: .intentionallyDisconnected
                     )
                 case .showFailure(let result):
+                    let completion = actionCompletions[result.agentID]
                     return AgentHookHealth(
                         id: health.id,
                         name: health.name,
-                        state: .couldNotConnect,
+                        state: completion?.state ?? .couldNotConnect,
                         details: [
-                            Self.disconnectFailureMessage([result]),
+                            completion?.details.first ?? Self.disconnectFailureMessage([result]),
                             "The connection is deselected. Choose Disconnect again to retry removal.",
                         ],
-                        disposition: .disconnectFailed
+                        disposition: completion?.disposition ?? .disconnectFailed
                     )
                 }
             }
@@ -1031,6 +1051,7 @@ final class LetItBrewAppModel: ObservableObject {
                 message = "Disconnected \(successful.sorted().joined(separator: " and ")). \(Self.disconnectFailureMessage(failed))"
             }
             self.hookMessage = message
+            completion?(results)
         }
     }
 
@@ -1154,13 +1175,15 @@ final class LetItBrewAppModel: ObservableObject {
                     : .failed(result.output)
             }
         )
-        let codexTrust: CodexHookTrustResult? = inspections.first(where: { $0.agentID == AgentID.codex.rawValue })?.selectedTarget.map {
-            LiveCodexHookTrustInspection.inspect(
-                executableURL: CodexExecutableLocator.locate(), hooksURL: $0,
+        let codexTrust = AgentLaunchTrustCoordinator.selectedCodexTrust(
+            selectedAgentIDs: connectedAgentIDs,
+            inspections: inspections,
+            inspect: { target in LiveCodexHookTrustInspection.inspect(
+                executableURL: CodexExecutableLocator.locate(), hooksURL: target,
                 cwd: FileManager.default.homeDirectoryForCurrentUser,
                 appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development"
-            )
-        }
+            ) }
+        )
         let rows = AgentLaunchOutcomeCoordinator.present(
             inspections: inspections,
             selectedAgentIDs: connectedAgentIDs,

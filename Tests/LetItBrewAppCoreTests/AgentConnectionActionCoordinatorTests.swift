@@ -26,13 +26,15 @@ import Testing
 
 @Test func lateHelperFailureProducesDiagnosticWithoutRollingBackPersistedSelection() {
     var selected: Set<String> = ["claude"]
-    var completion: ((AgentHelperOperationResult) -> AgentDisconnectFollowUp)?
+    var completion: ((AgentHelperOperationResult) -> AgentConnectionHelperCompletion)?
     AgentConnectionActionCoordinator.perform(
         .connect, id: "cursor", selected: selected,
         persist: { selected = $0 }, refreshVisibility: { _ in },
         launchHelper: { _, _ in
             completion = { result in
-                AgentDisconnectCompletionPolicy.followUps(for: [result]).first!
+                AgentConnectionActionCoordinator.complete(
+                    .connect, id: "cursor", selectedAgentIDs: selected, result: result
+                )
             }
         }
     )
@@ -40,8 +42,10 @@ import Testing
     let outcome = completion?(AgentHelperOperationResult(
         agentID: "cursor", status: 1, output: "helper refused", timedOut: false
     ))
-    #expect(outcome == .showFailure(.init(agentID: "cursor", status: 1, output: "helper refused", timedOut: false)))
-    // The production model consumes this outcome only to update row details;
-    // it has no persistence callback and therefore cannot undo the selection.
+    #expect(outcome?.state == .couldNotConnect)
+    #expect(outcome?.details == ["helper refused"])
+    #expect(outcome?.selectedAgentIDs == ["claude", "cursor"])
+    // The live model consumes completion presentation only; it has no
+    // persistence callback and therefore cannot undo the selection.
     #expect(selected == ["claude", "cursor"])
 }

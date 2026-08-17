@@ -45,6 +45,30 @@ public enum AgentUninstallHooksCoordinator {
         launchRemoval(Set(AgentID.allCases.map(\.rawValue)))
     }
 
+    /// Async hand-off used by the app model.  Intent and visibility are
+    /// cleared synchronously, then the retained helper completion is reduced
+    /// to presentation/retry data only.
+    public static func performAsync(
+        selected: Set<String>,
+        persist: (Set<String>) -> Void,
+        refreshVisibility: (Set<String>) -> Void,
+        launchRemoval: (Set<String>, @escaping ([AgentHelperOperationResult]) -> Void) -> Void,
+        handleCompletion: @escaping (AgentUninstallCompletion) -> Void
+    ) {
+        perform(
+            selected: selected,
+            persist: persist,
+            refreshVisibility: refreshVisibility,
+            launchRemoval: { ids in
+                launchRemoval(ids) { results in handleCompletion(complete(results)) }
+            }
+        )
+    }
+
+    public static func removalIDs(retrying failedAgentIDs: Set<String>) -> Set<String> {
+        failedAgentIDs.isEmpty ? Set(AgentID.allCases.map(\.rawValue)) : failedAgentIDs
+    }
+
     public static func complete(_ results: [AgentHelperOperationResult]) -> AgentUninstallCompletion {
         let byID = Dictionary(uniqueKeysWithValues: results.map { ($0.agentID, $0) })
         let rows = AgentID.allCases.map { agent -> AgentUninstallRowCompletion in

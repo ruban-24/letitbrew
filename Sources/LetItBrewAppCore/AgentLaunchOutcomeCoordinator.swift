@@ -54,16 +54,26 @@ public enum AgentLaunchOutcomeCoordinator {
                 return .init(agentID: id, state: .actionNeeded,
                              details: ["Let It Brew will not change this invalid connection. Fix it, then choose Check Again."], disposition: .managed)
             case .healthyOwned where outcomes[id] == nil:
-                let state = agent == .codex
-                    ? AgentConnectionPolicy.state(configuration: .healthy, codexTrust: codexTrust)
-                    : .connected
+                let state: AgentConnectionState
+                if agent == .codex {
+                    guard let codexTrust else {
+                        return .init(agentID: id, state: .couldNotConnect,
+                                     details: ["Let It Brew could not verify Codex hook approval."], disposition: .managed)
+                    }
+                    state = AgentConnectionPolicy.state(configuration: .healthy, codexTrust: codexTrust)
+                } else { state = .connected }
                 return .init(agentID: id, state: state, details: details(for: state), disposition: .managed)
             default:
                 switch outcomes[id] ?? .failed("Let It Brew did not receive a preparation result.") {
                 case .succeeded(let changed):
-                    let state = agent == .codex
-                        ? AgentConnectionPolicy.state(configuration: .healthy, codexTrust: codexTrust)
-                        : .connected
+                    let state: AgentConnectionState
+                    if agent == .codex {
+                        guard let codexTrust else {
+                            return .init(agentID: id, state: .couldNotConnect,
+                                         details: ["Let It Brew could not verify Codex hook approval."], disposition: .managed)
+                        }
+                        state = AgentConnectionPolicy.state(configuration: .healthy, codexTrust: codexTrust)
+                    } else { state = .connected }
                     return .init(agentID: id, state: state,
                                  details: state == .connected && changed ? ["Restart sessions that were already open."] : details(for: state), disposition: .managed)
                 case .failed(let message):

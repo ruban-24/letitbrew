@@ -51,3 +51,30 @@ import Testing
         #expect(retry.rows.allSatisfy { $0.disposition == .intentionallyDisconnected })
     }
 }
+
+@Test func asyncUninstallRetainsCompletionRetriesOnlyFailuresAndNeverReselects() {
+    var events: [String] = []
+    var retained: (([AgentHelperOperationResult]) -> Void)?
+    var completion: AgentUninstallCompletion?
+    AgentUninstallHooksCoordinator.performAsync(
+        selected: ["claude"],
+        persist: { events.append("persist:\($0.sorted())") },
+        refreshVisibility: { events.append("refresh:\($0.sorted())") },
+        launchRemoval: { ids, callback in
+            events.append("remove:\(ids.sorted())")
+            retained = callback
+        },
+        handleCompletion: { completion = $0 }
+    )
+    #expect(events == ["persist:[]", "refresh:[]", "remove:[\"claude\", \"codex\", \"copilot\", \"cursor\", \"opencode\"]"])
+    retained?(AgentID.allCases.map { agent in
+        .init(agentID: agent.rawValue, status: agent == .cursor ? 1 : 0, output: "", timedOut: false)
+    })
+    #expect(completion?.selectedAgentIDs.isEmpty == true)
+    #expect(completion?.retryAgentIDs == ["cursor"])
+    #expect(AgentUninstallHooksCoordinator.removalIDs(retrying: completion?.retryAgentIDs ?? []) == ["cursor"])
+    // A later refresh receives the same empty positive intent; no install
+    // launch is available in this completion protocol.
+    events.append("later-refresh:\(completion?.selectedAgentIDs.sorted() ?? [])")
+    #expect(events.last == "later-refresh:[]")
+}

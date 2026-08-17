@@ -7,7 +7,7 @@ private func launchSnapshot(_ id: String) -> ExactFileSnapshot { try! ExactFileS
 
 @Test func launchPresentationCoversSelectedAndUnselectedFiveAgentRows() {
     let inspections = AgentID.allCases.map { AgentConnectionInspection(agentID: $0.rawValue, state: $0 == .opencode ? .invalid : .healthyOwned, hasRecordedTarget: true, exactTargetSnapshot: launchSnapshot($0.rawValue)) }
-    let rows = AgentLaunchOutcomeCoordinator.present(inspections: inspections, selectedAgentIDs: ["claude", "codex"], outcomes: ["codex": .succeeded(changedVendorBytes: true)])
+    let rows = AgentLaunchOutcomeCoordinator.present(inspections: inspections, selectedAgentIDs: ["claude", "codex"], outcomes: ["codex": .succeeded(changedVendorBytes: true)], codexTrust: .trusted)
     #expect(rows.first(where: { $0.agentID == "claude" })?.state == .connected)
     #expect(rows.first(where: { $0.agentID == "codex" })?.state == .connected)
     for id in ["cursor", "opencode", "copilot"] {
@@ -38,33 +38,47 @@ private func launchSnapshot(_ id: String) -> ExactFileSnapshot { try! ExactFileS
     #expect(rows.first(where: { $0.agentID == "cursor" })?.details == ["Restart sessions that were already open."])
 }
 
-@Test func exactRefusalAttemptsOnlyOriginalAAndNeverTouchesAmbientB() {
+@Test func exactRefusalUsesDescriptorBoundaryAndPreservesForeignReplacementB() {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     let component = root.appendingPathComponent("component")
     let aURL = component.appendingPathComponent("A.json")
-    let bURL = root.appendingPathComponent("ambient-B.json")
     try! FileManager.default.createDirectory(at: component, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: root) }
-    try! Data("A".utf8).write(to: aURL)
+    try! Data("{}".utf8).write(to: aURL)
+    let anchor = try! DirectoryAnchor.openNoFollow(at: root)
+    let exactTarget = try! anchor.target(atAbsoluteURL: aURL)
+    let captured = try! exactTarget.capture()
+
+    // Swap the lexical component after A's retained descriptor captured its
+    // identity.  The new A name is an unrelated foreign B inode.
+    let original = root.appendingPathComponent("original-component")
+    try! FileManager.default.moveItem(at: component, to: original)
+    try! FileManager.default.createDirectory(at: component, withIntermediateDirectories: true)
+    let bURL = component.appendingPathComponent("A.json")
     try! Data("foreign B".utf8).write(to: bURL)
+    try! FileManager.default.setAttributes([.posixPermissions: 0o640], ofItemAtPath: bURL.path)
     let bBefore = try! Data(contentsOf: bURL)
     let bAttributes = try! FileManager.default.attributesOfItem(atPath: bURL.path)
-    let a = try! ExactFileSnapshot.capture(at: aURL)
-    let decision = AgentLaunchConnectionDecision(selectedAgentIDs: ["claude"], preparations: [.exactTarget(agentID: "claude", expectedState: .absent, snapshot: a)])
+    let decision = AgentLaunchConnectionDecision(selectedAgentIDs: ["claude"], preparations: [.exactTarget(agentID: "claude", expectedState: .repairableOwned, snapshot: captured.snapshot)])
     var launches: [ExactTargetPreparation] = []
-    // Swap a parent component after the immutable A evidence was captured.
-    let replacement = root.appendingPathComponent("replacement")
-    try! FileManager.default.moveItem(at: component, to: replacement)
-    try! FileManager.default.createSymbolicLink(at: component, withDestinationURL: replacement)
-    let outcomes = AgentLaunchOutcomeCoordinator.execute(decision.preparations, runRecorded: { _ in .failed("unexpected") }, runExact: { request in
+    var recordedLaunches = 0
+    let outcomes = AgentLaunchOutcomeCoordinator.execute(decision.preparations, runRecorded: { _ in recordedLaunches += 1; return .failed("unexpected") }, runExact: { request in
         launches.append(request)
-        // The exact helper refuses the original A evidence; no resolver or
-        // fallback helper receives ambient B after the component swap.
-        return .failed("snapshot changed at A")
+        do {
+            _ = try AtomicFile.write(Data("{\"patched\":true}".utf8), replacing: captured)
+            return .succeeded(changedVendorBytes: true)
+        } catch {
+            return .failed("\(error)")
+        }
     })
-    #expect(launches == [try! ExactTargetPreparation(agent: .claude, snapshot: a, expectedState: .absent)])
+    #expect(recordedLaunches == 0)
+    #expect(launches == [try! ExactTargetPreparation(agent: .claude, snapshot: captured.snapshot, expectedState: .repairableOwned)])
+    #expect({ if case .failed = outcomes["claude"] { return true }; return false }())
     #expect(try! Data(contentsOf: bURL) == bBefore)
-    #expect((try! FileManager.default.attributesOfItem(atPath: bURL.path))[.modificationDate] as? Date == bAttributes[.modificationDate] as? Date)
-    let rows = AgentLaunchOutcomeCoordinator.present(inspections: [.init(agentID: "claude", state: .absent, hasRecordedTarget: false, exactTargetSnapshot: a)], selectedAgentIDs: ["claude"], outcomes: outcomes)
+    let bAfter = try! FileManager.default.attributesOfItem(atPath: bURL.path)
+    for key in [.posixPermissions, .modificationDate, .systemNumber, .systemFileNumber] as [FileAttributeKey] {
+        #expect(bAfter[key] as? NSObject == bAttributes[key] as? NSObject)
+    }
+    let rows = AgentLaunchOutcomeCoordinator.present(inspections: [.init(agentID: "claude", state: .repairableOwned, hasRecordedTarget: false, exactTargetSnapshot: captured.snapshot)], selectedAgentIDs: ["claude"], outcomes: outcomes)
     #expect(rows.first?.state == .actionNeeded)
 }

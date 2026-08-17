@@ -90,4 +90,32 @@
 - Unsigned Debug `xcodebuild`: `** BUILD SUCCEEDED **`.
 - `git diff --check`: PASS.
 
+## Third rereview completion
+
+- `AgentLaunchTrustCoordinator` is the model-bound selected-only Codex trust
+  boundary. Empty and Claude-only selections perform no Codex probe; selected
+  Codex receives only the original inspected target. A selected Codex row with
+  missing trust evidence is fail-closed/actionable.
+- The A/B race proof now captures an anchored existing A through Task 8's
+  `CapturedExactFile`, swaps its parent to a foreign B inode, and invokes the
+  real descriptor `AtomicFile.write` boundary. The write refuses and B's
+  bytes, mode, device/inode, and mtime remain identical.
+- The live reader has deterministic after-registry and before-target-capture
+  seams around its production exact capture. Recorded/configured component and
+  registry replacement tests prove one selected route, invalid/no fallback,
+  and no ambient B read.
+- Connection helper completions now carry terminal presentation plus the
+  unchanged selected set and are consumed by the model's live disconnect task.
+  Complete uninstall retains its async helper completion, stores only failed
+  retry IDs, and runs a subsequent retry only for those IDs after synchronous
+  empty-selection visibility refresh.
+
+### Third rereview evidence
+
+- Expanded focused Task 10 suite: PASS, 21 selected/parameterized tests.
+- Full `swift test`: PASS, 673 tests.
+- `swift build`: PASS.
+- `xcodegen generate` and unsigned Debug `xcodebuild`: PASS.
+- `git diff --check`: PASS.
+
 DONE
