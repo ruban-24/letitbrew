@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import LetItBrewCore
 
 @Test func ordinaryInterfaceDoesNotRegressToRemovedControlsOrJargon() throws {
     let repository = URL(fileURLWithPath: #filePath)
@@ -55,4 +56,44 @@ import Testing
             "The About pane must offer the uninstall control.")
     #expect(environment.contains("Nothing was removed."),
             "A refused gate must say so, so the user never guesses at partial state.")
+}
+
+@Test func optionalConnectionTerminologyUsesTheFiveAgentCatalog() throws {
+    let repository = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+    let settings = try String(
+        contentsOf: repository.appendingPathComponent(
+            "Sources/LetItBrewApp/LetItBrewSettingsView.swift"
+        ),
+        encoding: .utf8
+    )
+    let menu = try String(
+        contentsOf: repository.appendingPathComponent(
+            "Sources/LetItBrewApp/MenuBarContentView.swift"
+        ),
+        encoding: .utf8
+    )
+    let policy = try String(
+        contentsOf: repository.appendingPathComponent(
+            "Sources/LetItBrewAppCore/MenuPresentationPolicy.swift"
+        ),
+        encoding: .utf8
+    )
+
+    #expect(AgentID.allCases.map(\.displayName) == [
+        "Claude Code", "Codex", "Cursor", "OpenCode", "GitHub Copilot CLI",
+    ])
+    #expect(settings.contains("ForEach(model.agentHooks)"),
+            "Settings must render every catalog-backed connection row.")
+    #expect(settings.contains("Connect the local coding agents you want Let It Brew to follow."))
+    #expect(policy.contains("Connect an agent"))
+    #expect(policy.contains("Open Settings to connect your coding agent."))
+    #expect(!menu.contains("Not connected"))
+
+    for removedAgentState in ["Waiting", "Needs input", "Starting"] {
+        #expect(!menu.contains(removedAgentState),
+                "The popup must not label agent sessions as \(removedAgentState).")
+    }
 }

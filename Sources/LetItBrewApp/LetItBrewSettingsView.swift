@@ -167,7 +167,7 @@ struct LetItBrewSettingsView: View {
     private var agents: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Let It Brew connects to local Claude Code and Codex sessions.")
+                Text("Connect the local coding agents you want Let It Brew to follow.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
 

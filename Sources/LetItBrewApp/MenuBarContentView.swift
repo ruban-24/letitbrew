@@ -311,9 +311,9 @@ struct MenuBarContentView: View {
         MenuSetupAttentionPolicy.presentation(for: MenuSetupAttentionInput(
             hasUpdateResult: model.updateCompletionReport != nil,
             closedLidNeedsAttention: model.daemonNeedsSetupAttention,
-            agentNames: model.agentHooks
-                .filter(\.requiresSetupAttention)
-                .map(\.name)
+            connectedAgentCount: model.agentHooks.filter {
+                $0.state == .connected && $0.disposition == .managed
+            }.count
         ))
     }
 
