@@ -42,20 +42,23 @@ private func rejectSymlink(_ url: URL) throws {
     if (try? FileManager.default.destinationOfSymbolicLink(atPath: url.path)) != nil { throw UnsafeTarget(path: url.path) }
 }
 
-private func loadRegistry() throws -> AgentInstallRegistry {
+private struct LoadedRegistry { var value: AgentInstallRegistry; var capture: ExactFileCapture }
+
+private func loadRegistry() throws -> LoadedRegistry {
     let url = try registryURL(); try rejectSymlink(url)
     let capture = try ExactFileCapture.capture(at: url)
-    guard let data = capture.data else { return try AgentInstallRegistry() }
+    guard let data = capture.data else { return LoadedRegistry(value: try AgentInstallRegistry(), capture: capture) }
     let registry = try JSONDecoder().decode(AgentInstallRegistry.self, from: data)
     for target in registry.targets.values { try isWithinTestHome(URL(fileURLWithPath: target)) }
-    return registry
+    return LoadedRegistry(value: registry, capture: capture)
 }
 
-private func saveRegistry(_ registry: AgentInstallRegistry) throws {
+private func saveRegistry(_ registry: AgentInstallRegistry, basedOn capture: ExactFileCapture) throws -> ExactFileCapture {
     let url = try registryURL(); try rejectSymlink(url)
     let data = try JSONEncoder().encode(registry)
-    try AtomicFile.write(data, to: url, ifUnchangedFrom: try ExactFileCapture.capture(at: url))
+    try AtomicFile.write(data, to: url, ifUnchangedFrom: capture)
     guard chmod(url.path, S_IRUSR | S_IWUSR) == 0 else { throw UnsafeTarget(path: url.path) }
+    return try ExactFileCapture.capture(at: url)
 }
 
 /// Follow a user-owned JSON symlink exactly once at Connect, then record the
@@ -131,7 +134,7 @@ private struct Prepared { let target: URL; let capture: ExactFileCapture; let re
 func runInstall(agents: Set<AgentID> = Set(AgentID.allCases)) -> Int32 {
     let cli = resolvedCLIPath(); var failures = 0
     do {
-        var registry = try loadRegistry()
+        var loadedRegistry = try loadRegistry(); var registry = loadedRegistry.value
         for agent in AgentID.allCases where agents.contains(agent) {
             let target = try selectedTarget(agent, registry: registry, connect: true)
             do {
@@ -141,7 +144,7 @@ func runInstall(agents: Set<AgentID> = Set(AgentID.allCases)) -> Int32 {
                     let bytes = try replacement(agent: agent, data: existing, cli: cli, removing: false)
                     return Prepared(target: target, capture: capture, replacement: bytes!)
                 }, persistExactTarget: { prepared in
-                    registry.targets[agent] = prepared.target.path; try saveRegistry(registry)
+                    registry.targets[agent] = prepared.target.path; loadedRegistry.capture = try saveRegistry(registry, basedOn: loadedRegistry.capture)
                 }, commitVendorMutation: { prepared in
                     try AtomicFile.write(prepared.replacement, to: prepared.target, ifUnchangedFrom: prepared.capture)
                 })
@@ -155,7 +158,7 @@ func runInstall(agents: Set<AgentID> = Set(AgentID.allCases)) -> Int32 {
 func runUninstall(agents: Set<AgentID> = Set(AgentID.allCases)) -> Int32 {
     let cli = resolvedCLIPath(); var failures = 0
     do {
-        var registry = try loadRegistry()
+        var loadedRegistry = try loadRegistry(); var registry = loadedRegistry.value
         for agent in AgentID.allCases where agents.contains(agent) {
             let target = try selectedTarget(agent, registry: registry, connect: false)
             do {
@@ -176,7 +179,7 @@ func runUninstall(agents: Set<AgentID> = Set(AgentID.allCases)) -> Int32 {
                         try AtomicFile.write(output, to: target, ifUnchangedFrom: capture)
                     }
                 }, clearExactTarget: {
-                    registry.targets.removeValue(forKey: agent); try saveRegistry(registry)
+                    registry.targets.removeValue(forKey: agent); loadedRegistry.capture = try saveRegistry(registry, basedOn: loadedRegistry.capture)
                 })
                 print("\(agent.displayName): hooks removed")
             } catch { failure(agent, target, error, .uninstall); failures += 1 }
@@ -198,9 +201,9 @@ private func doctorAgent(_ agent: AgentID, registry: AgentInstallRegistry, cli: 
 }
 
 func runDoctor(agents: Set<AgentID> = Set(AgentID.allCases)) -> Int32 {
-    let registry = try? loadRegistry(); let cli = resolvedCLIPath()
+    let loadedRegistry = try? loadRegistry(); let cli = resolvedCLIPath()
     let agentsHealthy: Bool
-    if let registry {
+    if let registry = loadedRegistry?.value {
         agentsHealthy = AgentID.allCases.filter { agents.contains($0) }.map { doctorAgent($0, registry: registry, cli: cli) }.allSatisfy { $0 }
     } else {
         for agent in AgentID.allCases where agents.contains(agent) { print("\(agent.displayName): configuration invalid") }
@@ -217,7 +220,7 @@ func runPrepareExact(agent: AgentID, input: Data) -> Int32 {
         let preparation = try JSONDecoder().decode(ExactTargetPreparation.self, from: input)
         guard preparation.agent == agent else { throw UnsafeTarget(path: "agent mismatch") }
         let target = URL(fileURLWithPath: preparation.snapshot.path); try isWithinTestHome(target)
-        var registry = try loadRegistry()
+        var loadedRegistry = try loadRegistry(); var registry = loadedRegistry.value
         if let other = registry.targets[agent], other != target.path { throw UnsafeTarget(path: other) }
         let capture = try ExactFileCapture.capture(at: target)
         guard capture.snapshot == preparation.snapshot else { throw UnsafeTarget(path: target.path) }
@@ -225,9 +228,9 @@ func runPrepareExact(agent: AgentID, input: Data) -> Int32 {
         let currentReport = try validate(agent: agent, data: current, cli: cli)
         let observed: ExactTargetExpectedState = current == nil ? .absent : currentReport.isHealthy ? .healthyOwned : currentReport.isAbsent ? .absent : .repairableOwned
         guard observed == preparation.expectedState else { throw UnsafeTarget(path: target.path) }
-        if observed == .healthyOwned { registry.targets[agent] = target.path; try saveRegistry(registry); return 0 }
+        if observed == .healthyOwned { registry.targets[agent] = target.path; _ = try saveRegistry(registry, basedOn: loadedRegistry.capture); return 0 }
         let bytes = try replacement(agent: agent, data: current, cli: cli, removing: false)!
-        try AgentInstallTransaction.install(preflightPureTransform: { Prepared(target: target, capture: capture, replacement: bytes) }, persistExactTarget: { prepared in registry.targets[agent] = prepared.target.path; try saveRegistry(registry) }, commitVendorMutation: { prepared in try AtomicFile.write(prepared.replacement, to: prepared.target, ifUnchangedFrom: prepared.capture) })
+        try AgentInstallTransaction.install(preflightPureTransform: { Prepared(target: target, capture: capture, replacement: bytes) }, persistExactTarget: { prepared in registry.targets[agent] = prepared.target.path; loadedRegistry.capture = try saveRegistry(registry, basedOn: loadedRegistry.capture) }, commitVendorMutation: { prepared in try AtomicFile.write(prepared.replacement, to: prepared.target, ifUnchangedFrom: prepared.capture) })
         return 0
     } catch { FileHandle.standardError.write(Data("prepare-exact refused: \(error)\n".utf8)); return 1 }
 }
