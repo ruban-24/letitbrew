@@ -85,10 +85,10 @@ or read Claude/Codex/Cursor/OpenCode/Copilot prompt and response content.
 - Mapping: `session.created`→SessionStart; `session.status` busy/retry→
   UserPromptSubmit; `session.status` idle and `session.idle`→Stop;
   `session.deleted`→SessionEnd.
-- Stable v1.18.3 emits `permission.updated` and `permission.replied`; current
-  docs also define `permission.asked`. All three preserve prior state, and
-  UAT must record which spellings were actually observed for the tested
-  OpenCode version; no runtime-emission claim is made until then.
+- The tagged v1.18.3 SDK types define `permission.updated` and
+  `permission.replied`; current docs also define `permission.asked`. All three
+  preserve prior state. UAT must record which spellings were actually observed
+  for the tested OpenCode version; no runtime-emission claim is made until then.
 - OpenCode v2 beta is not claimed by this release.
 
 ## GitHub Copilot CLI
