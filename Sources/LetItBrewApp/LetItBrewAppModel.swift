@@ -1032,9 +1032,34 @@ final class LetItBrewAppModel: ObservableObject {
             case .copilot:
                 _ = try CopilotHooks.install(into: capture.data, cliPath: cliPath); report = CopilotHooks.report(for: capture.data, cliPath: cliPath)
             }
-            let state: ExactTargetExpectedState = !capture.snapshot.exists ? .absent : report.isHealthy ? .healthyOwned : report.isAbsent ? .absent : .repairableOwned
-            let preparation = try ExactTargetPreparation(agent: agent, snapshot: capture.snapshot, expectedState: state)
-            return ExactPreparationResult(helper: runHelper(at: cliPath, arguments: ["prepare-exact", agent.rawValue], input: try JSONEncoder().encode(preparation)), changedVendorBytes: state != .healthyOwned)
+            let inspection: AgentExactPreparation.Inspection = !capture.snapshot.exists || report.isAbsent
+                ? .absent
+                : report.isHealthy ? .healthyOwned : .repairableOwned
+            let firstConnectTarget = agent == .opencode
+                ? configured
+                : configured.resolvingSymlinksInPath().standardizedFileURL
+            // Keep policy (recorded target priority, one-time JSON resolution,
+            // invalid refusal, and healthy no-restart) pure and independently
+            // testable.  The model only supplies its read-only capture and runs
+            // the resulting hidden helper command.
+            let decision = try AgentExactPreparation.decide(
+                agent: agent,
+                recordedTarget: registry?.targets[agent],
+                configuredTarget: configured,
+                firstConnectResolvedTarget: firstConnectTarget,
+                snapshot: capture.snapshot,
+                inspection: inspection
+            )
+            guard let input = decision.input else {
+                return ExactPreparationResult(
+                    helper: HelperRunResult(status: 1, output: "Exact preparation refused: invalid inspection", timedOut: false),
+                    changedVendorBytes: false
+                )
+            }
+            return ExactPreparationResult(
+                helper: runHelper(at: cliPath, arguments: ["prepare-exact", agent.rawValue], input: input),
+                changedVendorBytes: decision.changesVendorBytes
+            )
         } catch {
             return ExactPreparationResult(helper: HelperRunResult(status: 1, output: "Exact preparation refused: \(error)", timedOut: false), changedVendorBytes: false)
         }
