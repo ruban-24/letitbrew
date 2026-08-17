@@ -26,6 +26,8 @@ targets:
     platform: macOS
     sources:
       - path: Sources/LetItBrewAppCore
+    dependencies:
+      - target: LetItBrewCore
     settings:
       base:
         PRODUCT_NAME: LetItBrewAppCore
