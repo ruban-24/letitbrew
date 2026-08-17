@@ -103,7 +103,7 @@ update_runner_main() {
 
     RUNNER_SUPPORT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && /bin/pwd -P)" || return 1
     RUNNER_ROOT="$(cd "$RUNNER_SUPPORT_DIR/.." && /bin/pwd -P)" || return 1
-    for support in upgrade-installed-app.sh verify-artifact.sh lib-power-baseline.sh; do
+    for support in upgrade-installed-app.sh verify-artifact.sh verify-legal-resources.sh lib-power-baseline.sh; do
         [ -f "$RUNNER_SUPPORT_DIR/$support" ] && [ ! -L "$RUNNER_SUPPORT_DIR/$support" ] || {
             update_runner_fail "signed update support is incomplete"
             return 1
@@ -111,6 +111,7 @@ update_runner_main() {
     done
     [ -x "$RUNNER_SUPPORT_DIR/upgrade-installed-app.sh" ] || return 1
     [ -x "$RUNNER_SUPPORT_DIR/verify-artifact.sh" ] || return 1
+    [ -x "$RUNNER_SUPPORT_DIR/verify-legal-resources.sh" ] || return 1
 
     candidate="$(update_runner_canonical_existing "$candidate")" || {
         update_runner_fail "candidate is missing or unsafe"

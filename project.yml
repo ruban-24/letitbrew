@@ -113,6 +113,7 @@ targets:
           /usr/bin/install -m 755 "$SRCROOT/scripts/run-update.sh" "$update_support_dir/run-update.sh"
           /usr/bin/install -m 755 "$SRCROOT/scripts/upgrade-installed-app.sh" "$update_support_dir/upgrade-installed-app.sh"
           /usr/bin/install -m 755 "$SRCROOT/scripts/verify-artifact.sh" "$update_support_dir/verify-artifact.sh"
+          /usr/bin/install -m 755 "$SRCROOT/scripts/verify-legal-resources.sh" "$update_support_dir/verify-legal-resources.sh"
           /usr/bin/install -m 644 "$SRCROOT/scripts/lib-power-baseline.sh" "$update_support_dir/lib-power-baseline.sh"
           /usr/bin/install -m 644 "$SRCROOT/LICENSE" "$legal_dir/LICENSE"
           /usr/bin/install -m 644 "$SRCROOT/NOTICE" "$legal_dir/NOTICE"

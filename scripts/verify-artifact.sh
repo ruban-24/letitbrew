@@ -3,6 +3,7 @@
 # complete signed product before any installed bundle or service is touched.
 set -uo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && /bin/pwd -P)"
 APP="${1:?usage: verify-artifact.sh <Let It Brew.app> [--release]}"
 MODE="${2:-}"
 EXPECTED_TEAM="MV2UL94MDC"
@@ -29,33 +30,6 @@ check() {
     fi
 }
 note() { printf '     %s\n' "$*"; }
-
-verify_legal_resources() {
-    local legal_dir="$APP/Contents/Resources/Legal"
-    local legal_entries legal_path legal_mode
-
-    check "Legal directory present" test -d "$legal_dir"
-    check "Legal directory is not a symlink" test ! -L "$legal_dir"
-    if [ -d "$legal_dir" ] && [ ! -L "$legal_dir" ]; then
-        legal_entries="$(/usr/bin/find "$legal_dir" -mindepth 1 -maxdepth 1 -print 2>/dev/null | /usr/bin/sed 's|.*/||' | /usr/bin/sort | /usr/bin/tr '\n' ',')"
-        check "Legal contains exactly LICENSE, NOTICE, and TRADEMARKS.md" \
-            test "$legal_entries" = "LICENSE,NOTICE,TRADEMARKS.md,"
-        for legal_path in LICENSE NOTICE TRADEMARKS.md; do
-            check "Legal/$legal_path present as an ordinary file" test -f "$legal_dir/$legal_path"
-            check "Legal/$legal_path is not a symlink" test ! -L "$legal_dir/$legal_path"
-            legal_mode="$(/usr/bin/stat -f '%Lp' "$legal_dir/$legal_path" 2>/dev/null)"
-            check "Legal/$legal_path has mode 644" test "$legal_mode" = 644
-        done
-        check "Legal/LICENSE has the Apache 2.0 header" \
-            /usr/bin/grep -Fq "Apache License" "$legal_dir/LICENSE"
-        check "Legal/LICENSE names Version 2.0, January 2004" \
-            /usr/bin/grep -Fxq "                           Version 2.0, January 2004" "$legal_dir/LICENSE"
-        check "Legal/NOTICE attributes Ruban" \
-            /usr/bin/grep -Fq "Copyright 2026 Ruban" "$legal_dir/NOTICE"
-        check "Legal/TRADEMARKS.md has the trademark-policy heading" \
-            /usr/bin/grep -Fxq "# Let It Brew Trademark Policy" "$legal_dir/TRADEMARKS.md"
-    fi
-}
 
 plist_value() {
     /usr/libexec/PlistBuddy -c "Print :$2" "$1" 2>/dev/null
@@ -110,18 +84,6 @@ PLISTS_DIR="$APP/Contents/Library/LaunchDaemons"
 echo "== verifying production artifact $APP =="
 [ "$MODE" = "--release" ] && echo "(release mode: Developer ID + secure timestamp required)"
 
-if [ "${LETITBREW_VERIFY_ARTIFACT_LEGAL_ONLY:-}" = 1 ]; then
-    echo
-    echo "-- embedded legal resources --"
-    verify_legal_resources
-    if [ "$fail" -eq 0 ]; then
-        echo "PASS: embedded legal resource verification"
-    else
-        echo "FAIL: embedded legal resource verification" >&2
-    fi
-    exit "$fail"
-fi
-
 echo
 echo "-- required components --"
 for file in "$MAIN" "$DAEMON" "$HELPER" "$INFO_PLIST"; do
@@ -131,7 +93,11 @@ done
 
 echo
 echo "-- embedded legal resources --"
-verify_legal_resources
+LEGAL_VERIFIER="$SCRIPT_DIR/verify-legal-resources.sh"
+check "legal resource verifier present" test -x "$LEGAL_VERIFIER"
+if [ -x "$LEGAL_VERIFIER" ]; then
+    "$LEGAL_VERIFIER" "$APP" || fail=1
+fi
 check "main executable bit set" test -x "$MAIN"
 check "daemon executable bit set" test -x "$DAEMON"
 check "helper executable bit set" test -x "$HELPER"
@@ -173,13 +139,13 @@ else
     check "update support directory is not a symlink" test ! -L "$UPDATE_SUPPORT"
     if [ -d "$UPDATE_SUPPORT" ] && [ ! -L "$UPDATE_SUPPORT" ]; then
         update_support_count="$(/usr/bin/find "$UPDATE_SUPPORT" -mindepth 1 -maxdepth 1 -print | /usr/bin/awk 'END { print NR + 0 }')"
-        check "exactly four update support entries" test "$update_support_count" -eq 4
-        for support in run-update.sh upgrade-installed-app.sh verify-artifact.sh lib-power-baseline.sh; do
+        check "exactly five update support entries" test "$update_support_count" -eq 5
+        for support in run-update.sh upgrade-installed-app.sh verify-artifact.sh verify-legal-resources.sh lib-power-baseline.sh; do
             support_path="$UPDATE_SUPPORT/$support"
             check "$support present as an ordinary file" test -f "$support_path"
             check "$support is not a symlink" test ! -L "$support_path"
         done
-        for support in run-update.sh upgrade-installed-app.sh verify-artifact.sh; do
+        for support in run-update.sh upgrade-installed-app.sh verify-artifact.sh verify-legal-resources.sh; do
             support_mode="$(/usr/bin/stat -f '%Lp' "$UPDATE_SUPPORT/$support" 2>/dev/null)"
             check "$support has mode 755" test "$support_mode" = 755
         done

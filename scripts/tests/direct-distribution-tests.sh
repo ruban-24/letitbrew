@@ -91,7 +91,15 @@ make_fake_app() {
 }
 
 verify_legal_resources_only() {
-    LETITBREW_VERIFY_ARTIFACT_LEGAL_ONLY=1 "$SCRIPT_DIR/verify-artifact.sh" "$1"
+    "$SCRIPT_DIR/verify-legal-resources.sh" "$1"
+}
+
+make_legal_only_app() {
+    local app="$1"
+    /bin/mkdir -p "$app/Contents/Resources/Legal"
+    /usr/bin/install -m 644 "$SCRIPT_DIR/../LICENSE" "$app/Contents/Resources/Legal/LICENSE"
+    /usr/bin/install -m 644 "$SCRIPT_DIR/../NOTICE" "$app/Contents/Resources/Legal/NOTICE"
+    /usr/bin/install -m 644 "$SCRIPT_DIR/../TRADEMARKS.md" "$app/Contents/Resources/Legal/TRADEMARKS.md"
 }
 
 echo "-- shared path and manifest contracts --"
@@ -128,9 +136,15 @@ done
 
 for legal_name in LICENSE NOTICE TRADEMARKS.md; do
     fixture="$TEST_ROOT/legal-symlink-$legal_name/Let It Brew.app"
+    foreign="$TEST_ROOT/foreign-$legal_name"
     make_fake_app "$fixture"
     /bin/rm -f "$fixture/Contents/Resources/Legal/$legal_name"
-    /bin/ln -s "$TEST_ROOT/foreign-$legal_name" "$fixture/Contents/Resources/Legal/$legal_name"
+    case "$legal_name" in
+        LICENSE) /usr/bin/install -m 644 "$SCRIPT_DIR/../LICENSE" "$foreign" ;;
+        NOTICE) /usr/bin/install -m 644 "$SCRIPT_DIR/../NOTICE" "$foreign" ;;
+        TRADEMARKS.md) /usr/bin/install -m 644 "$SCRIPT_DIR/../TRADEMARKS.md" "$foreign" ;;
+    esac
+    /bin/ln -s "$foreign" "$fixture/Contents/Resources/Legal/$legal_name"
     expect_false "rejects a symlinked Legal/$legal_name" verify_legal_resources_only "$fixture"
 done
 
@@ -139,6 +153,14 @@ make_fake_app "$fixture"
 /bin/mkdir -p "$fixture/Contents/Resources/Legal"
 printf 'MIT License\n' >"$fixture/Contents/Resources/Legal/LICENSE"
 expect_false "rejects a non-Apache embedded LICENSE" verify_legal_resources_only "$fixture"
+
+minimal_legal_app="$TEST_ROOT/legal-only/Let It Brew.app"
+make_legal_only_app "$minimal_legal_app"
+expect_false "normal verifier refuses a Legal-only app" "$SCRIPT_DIR/verify-artifact.sh" "$minimal_legal_app"
+expect_false "old Legal-only environment cannot bypass normal verification" \
+    env LETITBREW_VERIFY_ARTIFACT_LEGAL_ONLY=1 "$SCRIPT_DIR/verify-artifact.sh" "$minimal_legal_app"
+expect_false "old Legal-only environment cannot bypass release verification" \
+    env LETITBREW_VERIFY_ARTIFACT_LEGAL_ONLY=1 "$SCRIPT_DIR/verify-artifact.sh" "$minimal_legal_app" --release
 
 echo
 echo "-- Developer ID identity refusal and selection --"

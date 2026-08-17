@@ -56,7 +56,7 @@ Verifies the production product before installation:
 - exact launch-daemon plist label, associated app, program, Mach service,
   RunAtLoad, and KeepAlive contract;
 - exact ordinary-file `UpdateSupport` payload (`run-update.sh`,
-  `upgrade-installed-app.sh`, `verify-artifact.sh`, and
+  `upgrade-installed-app.sh`, `verify-artifact.sh`, `verify-legal-resources.sh`, and
   `lib-power-baseline.sh`) with fixed executable/data modes;
 - entitlement-free daemon/helper, icon and `LSUIElement` metadata, app/helper
   version consistency, and no UserNotifications linkage.
@@ -163,7 +163,7 @@ Gatekeeper acceptance, the exact two-item DMG layout, and a release-verified app
 whose decimal build is strictly newer.
 
 The app stages the candidate, verifies its executable identity again, copies
-the four updater support files only from its own signed bundle into a private
+the five updater support files only from its own signed bundle into a private
 0700 workspace, records and rechecks their hashes, then launches the runner and
 quits. Nothing from the downloaded DMG is executed.
 
