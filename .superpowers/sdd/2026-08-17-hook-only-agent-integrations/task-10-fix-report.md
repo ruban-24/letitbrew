@@ -2,6 +2,18 @@
 
 ## Rereview follow-up
 
+## Second rereview follow-up
+
+- Immutable exact preparation state now controls launch restart evidence:
+  healthy-owned registry backfill reports no vendor-byte change; absent and
+  repairable preparation successes report a change.
+- Launch inspection carries the exact selected target into the Codex trust
+  check. Trusted, approval-required, and unverifiable results map through the
+  standard connection policy without ambient-path fallback.
+- The exact-A refusal proof now creates real A/B files, swaps an A parent
+  component after capture, records the sole A preparation, and verifies B's
+  bytes and mtime are unchanged.
+
 - `AgentLaunchOutcomeCoordinator` executes only immutable launch
   preparations and presents all five rows from original inspection plus helper
   outcome. It has no target/environment resolver; the exact-A refusal test
@@ -43,7 +55,7 @@
 
 - Focused rereview behavior suite: PASS, 12 selected/parameterized tests.
 - `swift test --filter AgentLiveDiskReaderTests`: PASS.
-- Full `swift test`: PASS, 660 tests.
+- Full `swift test`: PASS, 662 tests.
 - `swift build`: PASS.
 - `xcodegen generate`: PASS.
 - Unsigned Debug `xcodebuild`: `** BUILD SUCCEEDED **`.

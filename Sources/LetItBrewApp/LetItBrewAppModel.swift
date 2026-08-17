@@ -1078,7 +1078,8 @@ final class LetItBrewAppModel: ObservableObject {
                 agentID: agent.rawValue,
                 state: inspected.state,
                 hasRecordedTarget: inspected.usedRecordedTarget,
-                exactTargetSnapshot: inspected.snapshot
+                exactTargetSnapshot: inspected.snapshot,
+                selectedTarget: inspected.target
             )
         }
         let migration = AgentConnectionMigration.migrate(
@@ -1134,14 +1135,22 @@ final class LetItBrewAppModel: ObservableObject {
                     input: input
                 )
                 return result.status == 0
-                    ? .succeeded(changedVendorBytes: true)
+                    ? .succeeded(changedVendorBytes: preparation.expectedState != .healthyOwned)
                     : .failed(result.output)
             }
         )
+        let codexTrust: CodexHookTrustResult? = inspections.first(where: { $0.agentID == AgentID.codex.rawValue })?.selectedTarget.map {
+            LiveCodexHookTrustInspection.inspect(
+                executableURL: CodexExecutableLocator.locate(), hooksURL: $0,
+                cwd: FileManager.default.homeDirectoryForCurrentUser,
+                appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development"
+            )
+        }
         let rows = AgentLaunchOutcomeCoordinator.present(
             inspections: inspections,
             selectedAgentIDs: connectedAgentIDs,
-            outcomes: outcomes
+            outcomes: outcomes,
+            codexTrust: codexTrust
         )
         let byID = Dictionary(uniqueKeysWithValues: rows.map { ($0.agentID, $0) })
         agentHooks = agentHooks.map { health in

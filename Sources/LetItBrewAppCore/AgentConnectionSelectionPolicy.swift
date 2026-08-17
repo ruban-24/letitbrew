@@ -1,10 +1,11 @@
+import Foundation
 import LetItBrewCore
 
 public enum AgentConfigurationInspectionState: Equatable, Sendable {
     case absent, healthyOwned, repairableOwned, invalid
     var exactTargetExpectedState: ExactTargetExpectedState? { switch self { case .absent: .absent; case .healthyOwned: .healthyOwned; case .repairableOwned: .repairableOwned; case .invalid: nil } }
 }
-public struct AgentConnectionInspection: Equatable, Sendable { public let agentID: String; public let state: AgentConfigurationInspectionState; public let hasRecordedTarget: Bool; public let exactTargetSnapshot: ExactFileSnapshot?; public init(agentID: String, state: AgentConfigurationInspectionState, hasRecordedTarget: Bool, exactTargetSnapshot: ExactFileSnapshot?) { self.agentID=agentID; self.state=state; self.hasRecordedTarget=hasRecordedTarget; self.exactTargetSnapshot=exactTargetSnapshot } }
+public struct AgentConnectionInspection: Equatable, Sendable { public let agentID: String; public let state: AgentConfigurationInspectionState; public let hasRecordedTarget: Bool; public let exactTargetSnapshot: ExactFileSnapshot?; public let selectedTarget: URL?; public init(agentID: String, state: AgentConfigurationInspectionState, hasRecordedTarget: Bool, exactTargetSnapshot: ExactFileSnapshot?, selectedTarget: URL? = nil) { self.agentID=agentID; self.state=state; self.hasRecordedTarget=hasRecordedTarget; self.exactTargetSnapshot=exactTargetSnapshot; self.selectedTarget=selectedTarget } }
 public enum AgentLaunchPreparation: Equatable, Sendable { case recordedTarget(agentID: String); case exactTarget(agentID: String, expectedState: ExactTargetExpectedState, snapshot: ExactFileSnapshot) }
 public struct AgentLaunchConnectionDecision: Equatable, Sendable { public let selectedAgentIDs: Set<String>; public let preparations: [AgentLaunchPreparation] }
 public enum AgentLaunchConnectionPolicy {

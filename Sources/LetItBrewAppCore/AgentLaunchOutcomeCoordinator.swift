@@ -34,7 +34,8 @@ public enum AgentLaunchOutcomeCoordinator {
     public static func present(
         inspections: [AgentConnectionInspection],
         selectedAgentIDs: Set<String>,
-        outcomes: [String: AgentLaunchHelperOutcome]
+        outcomes: [String: AgentLaunchHelperOutcome],
+        codexTrust: CodexHookTrustResult? = nil
     ) -> [AgentLaunchRowPresentation] {
         let byID = Dictionary(uniqueKeysWithValues: inspections.map { ($0.agentID, $0) })
         return AgentID.allCases.map { agent in
@@ -53,12 +54,18 @@ public enum AgentLaunchOutcomeCoordinator {
                 return .init(agentID: id, state: .actionNeeded,
                              details: ["Let It Brew will not change this invalid connection. Fix it, then choose Check Again."], disposition: .managed)
             case .healthyOwned where outcomes[id] == nil:
-                return .init(agentID: id, state: .connected, details: [], disposition: .managed)
+                let state = agent == .codex
+                    ? AgentConnectionPolicy.state(configuration: .healthy, codexTrust: codexTrust)
+                    : .connected
+                return .init(agentID: id, state: state, details: details(for: state), disposition: .managed)
             default:
                 switch outcomes[id] ?? .failed("Let It Brew did not receive a preparation result.") {
                 case .succeeded(let changed):
-                    return .init(agentID: id, state: .connected,
-                                 details: changed ? ["Restart sessions that were already open."] : [], disposition: .managed)
+                    let state = agent == .codex
+                        ? AgentConnectionPolicy.state(configuration: .healthy, codexTrust: codexTrust)
+                        : .connected
+                    return .init(agentID: id, state: state,
+                                 details: state == .connected && changed ? ["Restart sessions that were already open."] : details(for: state), disposition: .managed)
                 case .failed(let message):
                     return .init(agentID: id, state: .actionNeeded,
                                  details: [message], disposition: .managed)
@@ -67,6 +74,14 @@ public enum AgentLaunchOutcomeCoordinator {
                                  details: ["Let It Brew did not prepare this selected connection."], disposition: .managed)
                 }
             }
+        }
+    }
+
+    private static func details(for state: AgentConnectionState) -> [String] {
+        switch state {
+        case .connected, .connecting: []
+        case .actionNeeded: ["Approve Let It Brew in Codex, then try again."]
+        case .couldNotConnect: ["Let It Brew could not verify Codex hook approval."]
         }
     }
 }
