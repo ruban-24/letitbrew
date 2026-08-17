@@ -97,3 +97,32 @@ import LetItBrewCore
                 "The popup must not label agent sessions as \(removedAgentState).")
     }
 }
+
+@Test func publicReadmeDocumentsTheOptionalFiveAgentCatalog() throws {
+    let repository = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+    let readme = try String(
+        contentsOf: repository.appendingPathComponent("README.md"),
+        encoding: .utf8
+    )
+
+    for displayName in AgentID.allCases.map(\.displayName) {
+        #expect(readme.contains(displayName),
+                "The README must document the supported agent: \(displayName).")
+    }
+
+    for obsoleteClaim in [
+        "connects Claude Code and Codex automatically",
+        "watches Claude Code and Codex sessions only",
+        "Does it work with Cursor or other editor-embedded agents?** No.",
+    ] {
+        #expect(!readme.contains(obsoleteClaim),
+                "The README must not retain the obsolete claim: \(obsoleteClaim)")
+    }
+
+    #expect(readme.contains(
+        "[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)"
+    ))
+}
