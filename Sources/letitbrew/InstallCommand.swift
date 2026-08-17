@@ -55,7 +55,7 @@ private func rejectSymlink(_ url: URL) throws {
 private struct LoadedRegistry { var value: AgentInstallRegistry; var capture: ExactFileCapture }
 
 private func loadRegistry() throws -> LoadedRegistry {
-    let url = try registryURL(); try rejectSymlink(url)
+    let url = try registryURL(); try isWithinTestHome(url); try rejectSymlink(url)
     let capture = try ExactFileCapture.capture(at: url)
     guard let data = capture.data else { return LoadedRegistry(value: try AgentInstallRegistry(), capture: capture) }
     let registry = try JSONDecoder().decode(AgentInstallRegistry.self, from: data)
@@ -64,7 +64,7 @@ private func loadRegistry() throws -> LoadedRegistry {
 }
 
 private func saveRegistry(_ registry: AgentInstallRegistry, basedOn capture: ExactFileCapture) throws -> ExactFileCapture {
-    let url = try registryURL(); try rejectSymlink(url)
+    let url = try registryURL(); try isWithinTestHome(url); try rejectSymlink(url)
     let data = try JSONEncoder().encode(registry)
     try AtomicFile.write(data, to: url, ifUnchangedFrom: capture, privateMode: true)
     return try ExactFileCapture.capture(at: url)

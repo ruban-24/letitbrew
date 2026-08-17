@@ -15,6 +15,8 @@ printf '{"description":"foreign","hooks":{"foreign":[]}}\n' > "$TEST_HOME/.codex
 printf '{"version":1,"hooks":{"foreign":[]}}\n' > "$TEST_HOME/.cursor/hooks.json"
 printf '{"version":1,"hooks":{"foreign":[]}}\n' > "$TEST_HOME/.copilot/hooks/letitbrew.json"
 for agent in claude codex cursor opencode copilot; do "$CLI" install "$agent" >/dev/null; done
+REGISTRY="$TEST_HOME/Library/Application Support/LetItBrew/agent-hook-targets.json"
+test "$(stat -f '%Lp' "$REGISTRY")" = "600"
 "$CLI" doctor >/dev/null
 grep -q '__letitbrew_hook' "$TEST_HOME/.claude/settings.json"
 grep -q '__letitbrew_codex_hook' "$TEST_HOME/.codex/hooks.json"
@@ -46,4 +48,15 @@ for agent in claude codex cursor opencode copilot; do "$CLI" uninstall "$agent" 
 "$CLI" uninstall >/dev/null
 ! "$CLI" >/dev/null 2>&1
 for command in "install claude extra" "uninstall nope" "uninstall claude extra" "install nope" "prepare-exact"; do ! "$CLI" $command >/dev/null 2>&1; done
+# Registry parent symlinks are unsafe even with a non-symlink final name: a
+# test-home operation must fail before either vendor config or registry bytes
+# can escape through the parent.
+SYMLINK_HOME="$(mktemp -d /tmp/letitbrew-registry-link.XXXXXX)"
+OUTSIDE_HOME="$(mktemp -d /tmp/letitbrew-registry-outside.XXXXXX)"
+trap 'rm -rf "$TEST_HOME" "$SYMLINK_HOME" "$OUTSIDE_HOME"' EXIT
+mkdir -p "$SYMLINK_HOME/Library/Application Support"
+ln -s "$OUTSIDE_HOME" "$SYMLINK_HOME/Library/Application Support/LetItBrew"
+! env LETITBREW_TEST_HOME="$SYMLINK_HOME" "$CLI" install claude >/dev/null 2>&1
+! test -e "$OUTSIDE_HOME/agent-hook-targets.json"
+! test -e "$SYMLINK_HOME/.claude/settings.json"
 echo "PASS"
