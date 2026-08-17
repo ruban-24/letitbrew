@@ -6,8 +6,8 @@ if (!cli || !plugin || process.argv.length !== 4 || !path.isAbsolute(cli) || !pa
 let source
 try { source = await fs.readFile(plugin) } catch { process.exit(2) }
 const calls = []
-globalThis.Bun = { spawn(args) {
-  const call = { args, text: "", ended: false }
+globalThis.Bun = { spawn(args, options) {
+  const call = { args, options, text: "", ended: false }
   calls.push(call)
   return { stdin: { write(value) { call.text += value }, end() { call.ended = true } }, exited: Promise.resolve(), kill() {} }
 } }
@@ -22,5 +22,5 @@ await send({ type: "session.idle", properties: { sessionID: "s1", info: { direct
 await send({ type: "session.deleted", properties: { sessionID: "s1", info: { directory: "/work" } } })
 const events = calls.map(call => ({ args: call.args, value: JSON.parse(call.text), ended: call.ended }))
 const names = events.map(value => value.args.slice(2).join(" "))
-if (names.join(",") !== "opencode SessionStart,opencode UserPromptSubmit,opencode Stop,opencode Stop,opencode SessionEnd" || events.some(value => value.args[1] !== "hook" || value.args[2] !== "opencode" || value.value.session_id !== "s1" || value.value.cwd !== "/work" || !value.ended)) throw new Error(`runtime contract mismatch: ${JSON.stringify(events)}`)
+if (names.join(",") !== "opencode SessionStart,opencode UserPromptSubmit,opencode Stop,opencode Stop,opencode SessionEnd" || calls.some(value => !path.isAbsolute(value.args[0]) || path.basename(value.args[0]) !== path.basename(cli) || value.options.stdout !== "ignore" || value.options.stderr !== "ignore") || events.some(value => value.args[1] !== "hook" || value.args[2] !== "opencode" || value.value.session_id !== "s1" || value.value.cwd !== "/work" || !value.ended)) throw new Error(`runtime contract mismatch: ${JSON.stringify(events)}`)
 console.log("PASS: OpenCode plugin runtime contract")

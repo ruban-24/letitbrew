@@ -67,6 +67,21 @@ public enum AtomicFile {
         }
     }
 
+    /// Descriptor-capture aware variant used by agent configuration and the
+    /// registry.  It compares bytes, identity, size and nanosecond mtime
+    /// immediately before publication instead of accepting a later mtime.
+    public static func write(_ data: Data, to url: URL, ifUnchangedFrom capture: ExactFileCapture) throws {
+        guard capture.snapshot.path == url.standardizedFileURL.path else { throw ConcurrentModification(path: url.path) }
+        try capture.snapshot.verify()
+        let directory = url.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let tempURL = directory.appendingPathComponent(".\(url.lastPathComponent).\(UUID().uuidString).tmp")
+        try data.write(to: tempURL, options: .atomic)
+        guard (try ExactFileCapture.capture(at: url)).snapshot == capture.snapshot else { try? FileManager.default.removeItem(at: tempURL); throw ConcurrentModification(path: url.path) }
+        if capture.snapshot.exists { _ = try FileManager.default.replaceItemAt(url, withItemAt: tempURL) }
+        else { try FileManager.default.moveItem(at: tempURL, to: url) }
+    }
+
     /// Removes an owned regular file without ever unlinking the active name.
     /// The name is first moved aside, then the opened quarantine inode is
     /// validated and unlinked only if it is still that same inode.  This is

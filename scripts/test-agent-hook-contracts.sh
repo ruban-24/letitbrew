@@ -2,6 +2,7 @@
 # Five-agent contract: all writes are contained below one explicit test home.
 set -euo pipefail
 CLI_INPUT="${1:?usage: test-agent-hook-contracts.sh /absolute/path/to/letitbrew}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLI="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$CLI_INPUT")"
 [[ "$CLI" = /* && -x "$CLI" ]] || { echo "FATAL: CLI must be an executable absolute path" >&2; exit 1; }
 command -v node >/dev/null || { echo "FATAL: node is required for the OpenCode runtime contract" >&2; exit 1; }
@@ -20,7 +21,7 @@ grep -q '__letitbrew_codex_hook' "$TEST_HOME/.codex/hooks.json"
 grep -q '__letitbrew_cursor_hook' "$TEST_HOME/.cursor/hooks.json"
 grep -q '^// __letitbrew_opencode_plugin$' "$TEST_HOME/.config/opencode/plugins/letitbrew.js"
 grep -q '__letitbrew_copilot_hook' "$TEST_HOME/.copilot/hooks/letitbrew.json"
-test "$(node scripts/test-opencode-plugin.mjs "$CLI" "$TEST_HOME/.config/opencode/plugins/letitbrew.js")" = "PASS: OpenCode plugin runtime contract"
+test "$(node "$SCRIPT_DIR/test-opencode-plugin.mjs" "$CLI" "$TEST_HOME/.config/opencode/plugins/letitbrew.js")" = "PASS: OpenCode plugin runtime contract"
 "$CLI" uninstall cursor >/dev/null
 "$CLI" uninstall opencode >/dev/null
 "$CLI" uninstall copilot >/dev/null

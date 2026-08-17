@@ -24,6 +24,8 @@ public struct ExactFileSnapshot: Codable, Equatable, Sendable {
         if exists {
             guard deviceID != nil, inode != nil, byteCount != nil, modificationSeconds != nil,
                   modificationNanoseconds != nil, sha256 != nil else { throw ExactFileSnapshotError.invalidEvidence }
+            guard byteCount! >= 0, modificationNanoseconds! >= 0, modificationNanoseconds! < 1_000_000_000,
+                  sha256!.count == 64, sha256!.allSatisfy({ $0.isHexDigit }) else { throw ExactFileSnapshotError.invalidEvidence }
         } else if [deviceID.map { _ in 1 }, inode.map { _ in 1 }, byteCount.map { _ in 1 }, modificationSeconds.map { _ in 1 }, modificationNanoseconds.map { _ in 1 }, sha256.map { _ in 1 }].contains(where: { $0 != nil }) {
             throw ExactFileSnapshotError.invalidEvidence
         }
@@ -62,6 +64,28 @@ public struct ExactFileSnapshot: Codable, Equatable, Sendable {
 
     public func verify() throws {
         guard try ExactFileSnapshot.capture(at: URL(fileURLWithPath: path)) == self else { throw ExactFileSnapshotError.changed(path) }
+    }
+}
+
+/// Bytes and identity captured from one `O_NOFOLLOW` descriptor.  Callers
+/// derive their pure replacement exclusively from `data`, then carry this
+/// value into the compare-and-publish operation; no path re-read is needed
+/// between preflight and persistence.
+public struct ExactFileCapture: Equatable, Sendable {
+    public let snapshot: ExactFileSnapshot
+    public let data: Data?
+    public static func capture(at url: URL) throws -> ExactFileCapture {
+        let snapshot = try ExactFileSnapshot.capture(at: url)
+        guard snapshot.exists else { return ExactFileCapture(snapshot: snapshot, data: nil) }
+        let fd = open(snapshot.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+        guard fd >= 0 else { throw ExactFileSnapshotError.unreadable(snapshot.path) }
+        defer { close(fd) }
+        var bytes = Data(); var buffer = [UInt8](repeating: 0, count: 8192)
+        while true { let n = read(fd, &buffer, buffer.count); if n < 0 { throw ExactFileSnapshotError.unreadable(snapshot.path) }; if n == 0 { break }; bytes.append(buffer, count: Int(n)) }
+        // Capture once more is intentionally refused if the descriptor/path
+        // identity moved while the bytes were being collected.
+        guard try ExactFileSnapshot.capture(at: url) == snapshot else { throw ExactFileSnapshotError.changed(snapshot.path) }
+        return ExactFileCapture(snapshot: snapshot, data: bytes)
     }
 }
 
