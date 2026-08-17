@@ -240,6 +240,41 @@ private func changedExpectedCapture(_ captured: CapturedExactFile, snapshot: Exa
     #expect(try String(contentsOf: final, encoding: .utf8) == "foreign")
 }
 
+@Test func anchoredTraversalRefusesEveryParentPositionForAllFiveVendorTargets() throws {
+    let targets: [[String]] = [
+        [".claude", "settings.json"],
+        [".codex", "hooks.json"],
+        [".cursor", "hooks.json"],
+        [".config", "opencode", "plugins", "letitbrew.js"],
+        [".copilot", "hooks", "letitbrew.json"]
+    ]
+    for components in targets {
+        for parentCount in 1..<components.count {
+            let root = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: root) }
+            let targetURL = components.reduce(root) { $0.appendingPathComponent($1) }
+            try FileManager.default.createDirectory(at: targetURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data("owned".utf8).write(to: targetURL)
+            let swapped = components.prefix(parentCount).reduce(root) { $0.appendingPathComponent($1) }
+            let outside = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: outside) }
+            try FileManager.default.removeItem(at: swapped)
+            try FileManager.default.createSymbolicLink(at: swapped, withDestinationURL: outside)
+            let target = try DirectoryAnchor.openNoFollow(at: root).target(atAbsoluteURL: targetURL)
+            #expect(throws: Error.self, "\(components.joined(separator: "/")) parent \(parentCount)") { _ = try target.capture() }
+            #expect(!FileManager.default.fileExists(atPath: outside.appendingPathComponent(components.last!).path))
+        }
+    }
+}
+
+@Test func ordinaryTargetsPreserveProductionParentSymlinkCompatibility() throws {
+    let root = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let realParent = root.appendingPathComponent("real"); try FileManager.default.createDirectory(at: realParent, withIntermediateDirectories: true)
+    let final = realParent.appendingPathComponent("settings.json"); try Data("{}".utf8).write(to: final)
+    let linkedParent = root.appendingPathComponent("linked")
+    try FileManager.default.createSymbolicLink(at: linkedParent, withDestinationURL: realParent)
+    let ordinary = ExactFileTarget.ordinary(linkedParent.appendingPathComponent("settings.json"))
+    #expect(try ordinary.capture().data == Data("{}".utf8))
+}
+
 @Test func descriptorAbsentAppearanceSurvivesExclusivePublish() throws {
     let root = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: root) }
     let file = root.appendingPathComponent("target"); let target = try DirectoryAnchor.openNoFollow(at: root).target(atAbsoluteURL: file)

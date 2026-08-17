@@ -10,6 +10,10 @@ command -v node >/dev/null || { echo "FATAL: node is required for the OpenCode r
 # source gate beside the black-box contract so a future convenience reopen
 # cannot quietly reintroduce Foundation path I/O after target selection.
 INSTALL_SOURCE="$SCRIPT_DIR/../Sources/letitbrew/InstallCommand.swift"
+# This is intentionally a source gate as well as behavioral coverage: the
+# Task 8 command flow must not regress to fd pseudo-path transport, Foundation
+# path mutation, or URL AtomicFile compatibility overloads after selection.
+! grep -Eq '/dev/fd|Data\(contentsOf:|Data\([^)]*\)\.write\(to:|FileManager\.default\.(createDirectory|removeItem|moveItem|replaceItem)|AtomicFile\.(write|remove)\([^\n]*(to:|ifUnchangedFrom:)' "$INSTALL_SOURCE"
 grep -Fq 'AtomicFile.write(data, replacing: capture, permissions: .exact(0o600))' "$INSTALL_SOURCE"
 ! sed -n '/private func loadRegistry/,/private func resolveJSONTarget/p' "$INSTALL_SOURCE" | grep -Eq 'Data\(contentsOf:|FileManager\.(default\.)?(createDirectory|removeItem|moveItem|replaceItem)'
 INSTALL_BLOCK="$(sed -n '/func runInstall/,/func runUninstall/p' "$INSTALL_SOURCE")"
