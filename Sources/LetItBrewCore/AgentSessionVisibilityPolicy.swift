@@ -15,3 +15,10 @@ public enum AgentSessionVisibilityPolicy {
         return sessions.filter { normalizedIDs.contains($0.tool.lowercased()) }
     }
 }
+
+public extension AgentSessionVisibilityPolicy {
+    /// Temporary Task 10 compatibility for the shipping model's negative API.
+    static func visibleSessions(from sessions: [SessionRecord], disconnectedAgentIDs: Set<String>) -> [SessionRecord] {
+        sessions.filter { !Set(disconnectedAgentIDs.map { $0.lowercased() }).contains($0.tool.lowercased()) }
+    }
+}
