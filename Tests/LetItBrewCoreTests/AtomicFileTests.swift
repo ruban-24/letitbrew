@@ -147,3 +147,43 @@ private func ownedTemporaryFile(_ contents: String) throws -> URL {
     }
     #expect(try String(contentsOf: url, encoding: .utf8) == "foreign replacement")
 }
+
+@Test func exactRemovalRefusesAFinalSymlinkWithoutTouchingItsDestination() throws {
+    let owned = try ownedTemporaryFile("owned")
+    let directory = owned.deletingLastPathComponent()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let link = directory.appendingPathComponent("owned-link")
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: owned)
+    #expect(throws: ConcurrentModification.self) {
+        try AtomicFile.remove(link, ifUnchangedFrom: Data("owned".utf8))
+    }
+    #expect(try String(contentsOf: owned, encoding: .utf8) == "owned")
+    #expect((try? FileManager.default.destinationOfSymbolicLink(atPath: link.path)) != nil)
+}
+
+@Test func exactRemovalRefusesANonRegularFinalTarget() throws {
+    let owned = try ownedTemporaryFile("owned")
+    let directory = owned.deletingLastPathComponent()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let target = directory.appendingPathComponent("directory-target")
+    try FileManager.default.createDirectory(at: target, withIntermediateDirectories: false)
+    #expect(throws: ConcurrentModification.self) {
+        try AtomicFile.remove(target, ifUnchangedFrom: Data())
+    }
+    #expect(FileManager.default.fileExists(atPath: target.path))
+}
+
+@Test func exactWriteRefusesSymlinkSubstitutionAfterCapture() throws {
+    let owned = try ownedTemporaryFile("owned")
+    let directory = owned.deletingLastPathComponent()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let capture = try ExactFileCapture.capture(at: owned)
+    let replacement = directory.appendingPathComponent("replacement")
+    try Data("foreign".utf8).write(to: replacement)
+    try FileManager.default.removeItem(at: owned)
+    try FileManager.default.createSymbolicLink(at: owned, withDestinationURL: replacement)
+    #expect(throws: ConcurrentModification.self) {
+        try AtomicFile.write(Data("ours".utf8), to: owned, ifUnchangedFrom: capture)
+    }
+    #expect(try String(contentsOf: replacement, encoding: .utf8) == "foreign")
+}

@@ -10,3 +10,12 @@ import Testing
     root["extra"] = true
     #expect(throws: ExactTargetPreparationError.self) { _ = try JSONDecoder().decode(ExactTargetPreparation.self, from: JSONSerialization.data(withJSONObject: root)) }
 }
+@Test func preparationRejectsUnknownAgentAndState() throws {
+    let snapshot = "{\"path\":\"/tmp/missing\",\"exists\":false}"
+    for value in [
+        "{\"version\":1,\"agent\":\"unknown\",\"snapshot\":\(snapshot),\"expectedState\":\"absent\"}",
+        "{\"version\":1,\"agent\":\"claude\",\"snapshot\":\(snapshot),\"expectedState\":\"unknown\"}",
+    ] {
+        #expect(throws: Error.self) { _ = try JSONDecoder().decode(ExactTargetPreparation.self, from: Data(value.utf8)) }
+    }
+}
