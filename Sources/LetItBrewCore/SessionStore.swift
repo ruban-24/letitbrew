@@ -29,12 +29,14 @@ public enum SessionStore {
         now: Date,
         ttl: TimeInterval
     ) -> [SessionRecord] {
-        records
+        guard ttl.isFinite, ttl > 0 else { return [] }
+        return records
             .filter { record in
                 guard let parsed = HookRecordID(encoded: record.id),
                       parsed.agent.rawValue == record.tool
                 else { return false }
-                return now.timeIntervalSince(record.updatedAt) < ttl
+                let age = now.timeIntervalSince(record.updatedAt)
+                return age >= 0 && age < ttl
             }
             .sorted { $0.updatedAt > $1.updatedAt }
     }

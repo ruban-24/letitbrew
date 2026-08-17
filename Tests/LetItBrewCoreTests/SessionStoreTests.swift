@@ -25,6 +25,34 @@ private func record(
     ).map(\.id) == ["v1|6:claude|4:live|0:"])
 }
 
+@Test func recentUsesAStrictNonnegativeAgeWindow() {
+    let now = Date(timeIntervalSince1970: 1_000)
+    let ttl: TimeInterval = 60
+    let cases: [(String, TimeInterval, Bool)] = [
+        ("zero", 0, true),
+        ("exact-ttl", ttl, false),
+        ("future", -1, false),
+    ]
+
+    for (name, age, expected) in cases {
+        let session = record("v1|6:claude|\(name.utf8.count):\(name)|0:",
+                             ageSeconds: age, now: now)
+        #expect(
+            SessionStore.recent(records: [session], now: now, ttl: ttl).isEmpty == !expected,
+            Comment(rawValue: name)
+        )
+    }
+}
+
+@Test func recentRejectsNonpositiveAndNonfiniteTTLs() {
+    let now = Date(timeIntervalSince1970: 1_000)
+    let session = record("v1|6:claude|4:live|0:", ageSeconds: 0, now: now)
+
+    for ttl: TimeInterval in [0, -1, .nan, .infinity, -.infinity] {
+        #expect(SessionStore.recent(records: [session], now: now, ttl: ttl).isEmpty)
+    }
+}
+
 @Test func preV06BareIDsRemainDecodableButCannotDriveActivity() throws {
     let data = Data(#"{"id":"legacy","tool":"claude","state":"working","detail":null,"cwd":"/tmp","pid":null,"updatedAt":1000}"#.utf8)
     let legacy = try JSONDecoder().decode(SessionRecord.self, from: data)

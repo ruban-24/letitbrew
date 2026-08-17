@@ -180,8 +180,11 @@ public struct SessionRecord: Codable, Equatable, Sendable {
         detail = try container.decodeIfPresent(String.self, forKey: .detail)
         cwd = try container.decode(String.self, forKey: .cwd)
         pid = try container.decodeIfPresent(Int32.self, forKey: .pid)
-        updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt)
-            ?? container.decode(Date.self, forKey: .legacyUpdatedAt)
+        updatedAt = if container.contains(.updatedAt) {
+            try container.decode(Date.self, forKey: .updatedAt)
+        } else {
+            try container.decode(Date.self, forKey: .legacyUpdatedAt)
+        }
         eventObservedAt = try container.decodeIfPresent(TimeInterval.self, forKey: .eventObservedAt)
         startedAt = try container.decodeIfPresent(Date.self, forKey: .startedAt)
         accumulatedWorkingTime = try container.decodeIfPresent(

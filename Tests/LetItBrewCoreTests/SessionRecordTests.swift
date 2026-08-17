@@ -98,6 +98,36 @@ private func tempDirectory() -> URL {
     #expect(record.tool == "codex")
 }
 
+@Test func canonicalUpdatedAtRejectsNullOrWrongTypeEvenWithLegacyTimestamp() {
+    let invalidCanonicalValues = ["null", #""not-a-date""#]
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .secondsSince1970
+    for canonical in invalidCanonicalValues {
+        let json = #"{"id":"legacy","tool":"claude","state":"working","cwd":"/tmp","updated_at":\#(canonical),"updatedAt":1000}"#
+        #expect(throws: DecodingError.self) {
+            try decoder.decode(SessionRecord.self, from: Data(json.utf8))
+        }
+    }
+}
+
+@Test func canonicalUpdatedAtWinsWhenBothTimestampKeysAreValid() throws {
+    let json = #"{"id":"legacy","tool":"claude","state":"working","cwd":"/tmp","updated_at":2000,"updatedAt":1000}"#
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .secondsSince1970
+    let record = try decoder.decode(SessionRecord.self, from: Data(json.utf8))
+
+    #expect(record.updatedAt == Date(timeIntervalSince1970: 2_000))
+}
+
+@Test func legacyUpdatedAtAloneStillDecodes() throws {
+    let json = #"{"id":"legacy","tool":"claude","state":"working","cwd":"/tmp","updatedAt":1000}"#
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .secondsSince1970
+    let record = try decoder.decode(SessionRecord.self, from: Data(json.utf8))
+
+    #expect(record.updatedAt == Date(timeIntervalSince1970: 1_000))
+}
+
 @Test func oldRecordWithoutStartedAtDecodesAndUsesItsEarliestKnownTimestamp() throws {
     let json = #"{"id":"legacy","tool":"codex","state":"working","cwd":"/tmp","updated_at":"1970-01-01T00:20:00Z","state_changed_at":"1970-01-01T00:16:40Z"}"#
     let decoder = JSONDecoder()
@@ -319,7 +349,7 @@ private func tempDirectory() -> URL {
     #expect(record.repositoryID == "/Users/me/code/letitbrew")
 }
 
-@Test func encodesTheLiteralUpdatedAtKey() throws {
+@Test func encodesOnlyTheCanonicalUpdatedAtKey() throws {
     // A round-trip test alone would pass even if CodingKeys used the wrong
     // string on both the encode and decode side. Assert the wire format
     // directly: `updated_at` is a contract other tools (the hook CLI, the
