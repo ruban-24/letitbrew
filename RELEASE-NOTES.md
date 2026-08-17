@@ -1,15 +1,34 @@
 # Release notes
 
-Let It Brew is a menu-bar macOS app that keeps a Mac awake while a supported
-local Claude or Codex session is Working, then releases its hold when no
-observed local session is Working.
+Let It Brew is a menu-bar macOS app that keeps a Mac awake while selected local
+agent hooks report Working, then releases its hold when no managed session is
+Working.
 
-Open source under the [MIT License](LICENSE). Releases are distributed as a
+v0.6.0 and later are open source under the [Apache License 2.0](LICENSE);
+v0.5.1 and earlier remain under the
+[MIT License](LICENSES/MIT-v0.5.1-and-earlier.txt). Releases are distributed as a
 signed, notarized, and stapled DMG from
 [GitHub Releases](https://github.com/ruban-24/letitbrew/releases). Verify the DMG
 against the SHA-256 published with the release.
 
 ---
+
+## 0.6.0
+
+New:
+
+- Claude Code, Codex, Cursor, OpenCode, and GitHub Copilot CLI use owned,
+  hook-only lifecycle integrations.
+- Agent connections are explicit: choose **Connect** in Settings to install an
+  owned hook integration, and **Disconnect** to remove it.
+
+Changed:
+
+- Process, rollout, transcript, and ambient session observation have been
+  removed. Only selected hook integrations can create managed activity.
+- v0.6.0 and later use Apache License 2.0. The code remains open source, while
+  [TRADEMARKS.md](TRADEMARKS.md) describes the distinct Let It Brew name, icon,
+  and branding boundary for forks and redistributed builds.
 
 ## 0.5.1
 

@@ -168,6 +168,9 @@ import LetItBrewCore
     }
 
     #expect(readme.contains(
-        "[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)"
+        "[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)"
     ))
+    #expect(readme.contains("Let It Brew v0.6.0 and later is licensed under the"))
+    #expect(readme.contains("[Apache License 2.0](LICENSE) (`Apache-2.0`). v0.5.1 and earlier remain under the"))
+    #expect(readme.contains("[MIT License](LICENSES/MIT-v0.5.1-and-earlier.txt)."))
 }

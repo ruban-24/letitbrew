@@ -1,6 +1,7 @@
 #!/bin/bash
 # Isolated command-adapter tests. These never invoke real xcodebuild, codesign,
-# hdiutil, notarytool, stapler, spctl, or the release artifact verifier.
+# hdiutil, notarytool, stapler, or spctl. The verifier's legal-only fixture
+# mode validates copied static legal resources without inspecting signatures.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && /bin/pwd -P)"
@@ -74,7 +75,8 @@ make_fake_app() {
     /bin/mkdir -p \
         "$app/Contents/MacOS" \
         "$app/Contents/Library/LaunchServices" \
-        "$app/Contents/Helpers"
+        "$app/Contents/Helpers" \
+        "$app/Contents/Resources/Legal"
     printf 'plist\n' >"$app/Contents/Info.plist"
     for executable in \
         "$app/Contents/MacOS/LetItBrew" \
@@ -83,6 +85,13 @@ make_fake_app() {
         printf 'fake executable: %s\n' "$executable" >"$executable"
         /bin/chmod +x "$executable"
     done
+    /usr/bin/install -m 644 "$SCRIPT_DIR/../LICENSE" "$app/Contents/Resources/Legal/LICENSE"
+    /usr/bin/install -m 644 "$SCRIPT_DIR/../NOTICE" "$app/Contents/Resources/Legal/NOTICE"
+    /usr/bin/install -m 644 "$SCRIPT_DIR/../TRADEMARKS.md" "$app/Contents/Resources/Legal/TRADEMARKS.md"
+}
+
+verify_legal_resources_only() {
+    LETITBREW_VERIFY_ARTIFACT_LEGAL_ONLY=1 "$SCRIPT_DIR/verify-artifact.sh" "$1"
 }
 
 echo "-- shared path and manifest contracts --"
@@ -103,6 +112,33 @@ expect_true "accepts canonical major.minor.patch" release_version_is_canonical 0
 expect_false "rejects a two-component release version" release_version_is_canonical 0.4
 expect_false "rejects a leading-zero release version" release_version_is_canonical 00.4.0
 expect_false "rejects a fourth release component" release_version_is_canonical 0.4.0.1
+
+echo
+echo "-- embedded legal resource contract --"
+legal_app="$TEST_ROOT/legal/Let It Brew.app"
+make_fake_app "$legal_app"
+expect_true "accepts exactly the three embedded legal resources" verify_legal_resources_only "$legal_app"
+
+for legal_name in LICENSE NOTICE TRADEMARKS.md; do
+    fixture="$TEST_ROOT/legal-missing-$legal_name/Let It Brew.app"
+    make_fake_app "$fixture"
+    /bin/rm -f "$fixture/Contents/Resources/Legal/$legal_name"
+    expect_false "rejects a missing Legal/$legal_name" verify_legal_resources_only "$fixture"
+done
+
+for legal_name in LICENSE NOTICE TRADEMARKS.md; do
+    fixture="$TEST_ROOT/legal-symlink-$legal_name/Let It Brew.app"
+    make_fake_app "$fixture"
+    /bin/rm -f "$fixture/Contents/Resources/Legal/$legal_name"
+    /bin/ln -s "$TEST_ROOT/foreign-$legal_name" "$fixture/Contents/Resources/Legal/$legal_name"
+    expect_false "rejects a symlinked Legal/$legal_name" verify_legal_resources_only "$fixture"
+done
+
+fixture="$TEST_ROOT/legal-wrong-family/Let It Brew.app"
+make_fake_app "$fixture"
+/bin/mkdir -p "$fixture/Contents/Resources/Legal"
+printf 'MIT License\n' >"$fixture/Contents/Resources/Legal/LICENSE"
+expect_false "rejects a non-Apache embedded LICENSE" verify_legal_resources_only "$fixture"
 
 echo
 echo "-- Developer ID identity refusal and selection --"

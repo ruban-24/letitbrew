@@ -41,16 +41,40 @@ for image_target in $image_targets; do
     fi
 done
 
-if ! grep -qE '^[[:space:]]+MARKETING_VERSION: 0\.5\.1$' project.yml; then
-    fail "project.yml MARKETING_VERSION is not 0.5.1"
+if ! grep -qE '^[[:space:]]+MARKETING_VERSION: 0\.6\.0$' project.yml; then
+    fail "project.yml MARKETING_VERSION is not 0.6.0"
 fi
 
-if ! grep -qE '^[[:space:]]+CURRENT_PROJECT_VERSION: 20$' project.yml; then
-    fail "project.yml CURRENT_PROJECT_VERSION is not 20"
+if ! grep -qE '^[[:space:]]+CURRENT_PROJECT_VERSION: 21$' project.yml; then
+    fail "project.yml CURRENT_PROJECT_VERSION is not 21"
 fi
 
-if ! grep -Fq 'print("letitbrew 0.5.1")' Sources/letitbrew/main.swift; then
-    fail "letitbrew --version source is not 0.5.1"
+if ! grep -Fq 'print("letitbrew 0.6.0")' Sources/letitbrew/main.swift; then
+    fail "letitbrew --version source is not 0.6.0"
+fi
+
+if [ "$(/usr/bin/grep -m 1 -v '^$' LICENSE)" != "                                 Apache License" ] \
+    || ! grep -Fq "Version 2.0, January 2004" LICENSE; then
+    fail "LICENSE is not the Apache License 2.0 canonical header"
+fi
+
+if [ "$(/usr/bin/sed -n '1p' LICENSES/MIT-v0.5.1-and-earlier.txt 2>/dev/null)" != "MIT License" ]; then
+    fail "historical MIT license is missing or malformed"
+fi
+
+if ! grep -Fq "Copyright 2026 Ruban" NOTICE 2>/dev/null \
+    || ! grep -Fq "TRADEMARKS.md" NOTICE 2>/dev/null; then
+    fail "NOTICE lacks the required Ruban attribution or trademark-policy link"
+fi
+
+if ! grep -Fq "Apache-2.0" README.md \
+    || ! grep -Fq "v0.6.0 and later" README.md \
+    || ! grep -Fq "v0.5.1 and earlier" README.md; then
+    fail "README license boundary is incomplete"
+fi
+
+if ! grep -Fq "By contributing, you agree that your contribution is licensed under Apache License 2.0 and that you have the right to submit it." CONTRIBUTING.md; then
+    fail "CONTRIBUTING.md does not state Apache 2.0 inbound terms"
 fi
 
 if grep -qi 'GitHub pre-release' SIGNING.md; then

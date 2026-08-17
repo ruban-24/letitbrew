@@ -11,7 +11,7 @@ Codex, Cursor, OpenCode, or GitHub Copilot CLI session is actually working —
 and lets it sleep the moment the work stops.
 
 [![Download](https://img.shields.io/github/v/release/ruban-24/letitbrew?label=Download%20DMG&color=E8912D)](https://github.com/ruban-24/letitbrew/releases/latest)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)](https://www.apple.com/macos/)
 [![CI](https://github.com/ruban-24/letitbrew/actions/workflows/ci.yml/badge.svg)](https://github.com/ruban-24/letitbrew/actions/workflows/ci.yml)
 
@@ -403,4 +403,10 @@ owners.
 
 ## License
 
-[MIT](LICENSE) © Ruban
+Let It Brew v0.6.0 and later is licensed under the
+[Apache License 2.0](LICENSE) (`Apache-2.0`). v0.5.1 and earlier remain under the
+[MIT License](LICENSES/MIT-v0.5.1-and-earlier.txt).
+
+Apache 2.0 permits commercial use and redistribution of the code. It does not
+grant rights to present a fork or modified build as the official Let It Brew
+project; see [TRADEMARKS.md](TRADEMARKS.md).

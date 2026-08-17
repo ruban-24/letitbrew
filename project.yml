@@ -17,8 +17,8 @@ settings:
     MACOSX_DEPLOYMENT_TARGET: "14.0"
     SWIFT_VERSION: "6.0"
     VERSIONING_SYSTEM: apple-generic
-    CURRENT_PROJECT_VERSION: 20
-    MARKETING_VERSION: 0.5.1
+    CURRENT_PROJECT_VERSION: 21
+    MARKETING_VERSION: 0.6.0
 
 targets:
   LetItBrewAppCore:
@@ -97,7 +97,7 @@ targets:
       - target: LetItBrewDaemonCore
       - target: LetItBrewCore
     postBuildScripts:
-      - name: Embed signed launch daemon and update support
+      - name: Embed signed launch daemon, update support, and legal resources
         basedOnDependencyAnalysis: false
         script: |
           set -eu
@@ -105,7 +105,8 @@ targets:
           plists_dir="$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Library/LaunchDaemons"
           helpers_dir="$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers"
           update_support_dir="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/UpdateSupport"
-          /bin/mkdir -p "$services_dir" "$plists_dir" "$helpers_dir" "$update_support_dir"
+          legal_dir="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/Legal"
+          /bin/mkdir -p "$services_dir" "$plists_dir" "$helpers_dir" "$update_support_dir" "$legal_dir"
           /usr/bin/install -m 755 "$BUILT_PRODUCTS_DIR/LetItBrewDaemon" "$services_dir/LetItBrewDaemon"
           /usr/bin/install -m 755 "$BUILT_PRODUCTS_DIR/letitbrew" "$helpers_dir/letitbrew"
           /usr/bin/install -m 644 "$LETITBREW_DAEMON_PLIST" "$plists_dir/$LETITBREW_DAEMON_LABEL.plist"
@@ -113,6 +114,9 @@ targets:
           /usr/bin/install -m 755 "$SRCROOT/scripts/upgrade-installed-app.sh" "$update_support_dir/upgrade-installed-app.sh"
           /usr/bin/install -m 755 "$SRCROOT/scripts/verify-artifact.sh" "$update_support_dir/verify-artifact.sh"
           /usr/bin/install -m 644 "$SRCROOT/scripts/lib-power-baseline.sh" "$update_support_dir/lib-power-baseline.sh"
+          /usr/bin/install -m 644 "$SRCROOT/LICENSE" "$legal_dir/LICENSE"
+          /usr/bin/install -m 644 "$SRCROOT/NOTICE" "$legal_dir/NOTICE"
+          /usr/bin/install -m 644 "$SRCROOT/TRADEMARKS.md" "$legal_dir/TRADEMARKS.md"
           # Files created beneath a file-provider-managed directory can inherit
           # Finder metadata that codesign rejects. Strip metadata before Xcode
           # applies the outer app signature; embedded Mach-O signatures remain.

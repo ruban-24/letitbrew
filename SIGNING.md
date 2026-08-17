@@ -136,8 +136,8 @@ all FUNC, SAFE, and DIST gates pass, publish the final stapled
 `LetItBrew-<version>.dmg`, its final `LetItBrew-<version>-SHA256SUMS`, and the
 byte-identical `LetItBrew.dmg` website alias from the release workspace. The
 stable GitHub Release must identify the same version/build
-and link the source commit, MIT License, release notes, SHA-256, and
-[GitHub Issues](https://github.com/ruban-24/letitbrew/issues).
+and link the source commit, Apache License 2.0, NOTICE, trademark policy,
+release notes, SHA-256, and [GitHub Issues](https://github.com/ruban-24/letitbrew/issues).
 
 Download the DMG back through GitHub Releases rather than testing the local
 upload source. Record the release URL, downloaded SHA-256, exact source commit,

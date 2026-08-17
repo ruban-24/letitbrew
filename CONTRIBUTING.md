@@ -58,7 +58,8 @@ to manage a background service it can't prove is its own.
 A fork signed with a different team will build and run, but closed-lid support
 will refuse to register. To make it work in your fork, change that constant and
 the identifiers in `project.yml` to your own. Please don't ship a build that
-keeps this project's Team ID or bundle identifiers.
+keeps this project's Team ID or bundle identifiers. Use a distinct product name
+and icon, and see [TRADEMARKS.md](TRADEMARKS.md) for the brand-use boundary.
 
 ## Testing
 
@@ -91,4 +92,4 @@ Describe the user-visible change, the failure mode it addresses, the tests you
 ran, and any remaining manual UAT. Safety-critical tests must assert exact state
 and must not silently discard missing evidence.
 
-By contributing, you agree your work is licensed under the [MIT License](LICENSE).
+By contributing, you agree that your contribution is licensed under Apache License 2.0 and that you have the right to submit it.
