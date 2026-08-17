@@ -16,7 +16,9 @@ func resolvedCLIPath() -> String {
 private func testHome() throws -> URL? {
     guard let value = ProcessInfo.processInfo.environment["LETITBREW_TEST_HOME"] else { return nil }
     guard !value.isEmpty, value.hasPrefix("/") else { throw UnsafeTarget(path: "LETITBREW_TEST_HOME must be an absolute path") }
-    return URL(fileURLWithPath: value).standardizedFileURL
+    let url = URL(fileURLWithPath: value).standardizedFileURL
+    if (try? FileManager.default.destinationOfSymbolicLink(atPath: url.path)) != nil { throw UnsafeTarget(path: url.path) }
+    return url
 }
 
 private func isWithinTestHome(_ url: URL) throws {

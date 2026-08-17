@@ -75,16 +75,19 @@ public struct ExactFileCapture: Equatable, Sendable {
     public let snapshot: ExactFileSnapshot
     public let data: Data?
     public static func capture(at url: URL) throws -> ExactFileCapture {
-        let snapshot = try ExactFileSnapshot.capture(at: url)
-        guard snapshot.exists else { return ExactFileCapture(snapshot: snapshot, data: nil) }
-        let fd = open(snapshot.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
-        guard fd >= 0 else { throw ExactFileSnapshotError.unreadable(snapshot.path) }
+        let path = url.standardizedFileURL.path
+        let fd = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+        if fd < 0 { if errno == ENOENT { return ExactFileCapture(snapshot: try ExactFileSnapshot(path: path, exists: false), data: nil) }; throw ExactFileSnapshotError.unreadable(path) }
         defer { close(fd) }
+        var before = stat()
+        guard fstat(fd, &before) == 0, (before.st_mode & S_IFMT) == S_IFREG else { throw ExactFileSnapshotError.notRegular(path) }
         var bytes = Data(); var buffer = [UInt8](repeating: 0, count: 8192)
-        while true { let n = read(fd, &buffer, buffer.count); if n < 0 { throw ExactFileSnapshotError.unreadable(snapshot.path) }; if n == 0 { break }; bytes.append(buffer, count: Int(n)) }
-        // Capture once more is intentionally refused if the descriptor/path
-        // identity moved while the bytes were being collected.
-        guard try ExactFileSnapshot.capture(at: url) == snapshot else { throw ExactFileSnapshotError.changed(snapshot.path) }
+        while true { let n = read(fd, &buffer, buffer.count); if n < 0 { throw ExactFileSnapshotError.unreadable(path) }; if n == 0 { break }; bytes.append(buffer, count: Int(n)) }
+        var after = stat()
+        guard fstat(fd, &after) == 0, before.st_dev == after.st_dev, before.st_ino == after.st_ino,
+              before.st_size == after.st_size, before.st_mtimespec.tv_sec == after.st_mtimespec.tv_sec,
+              before.st_mtimespec.tv_nsec == after.st_mtimespec.tv_nsec else { throw ExactFileSnapshotError.changed(path) }
+        let snapshot = try ExactFileSnapshot(path: path, exists: true, deviceID: Int64(before.st_dev), inode: UInt64(before.st_ino), byteCount: Int64(before.st_size), modificationSeconds: Int64(before.st_mtimespec.tv_sec), modificationNanoseconds: Int64(before.st_mtimespec.tv_nsec), sha256: SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined())
         return ExactFileCapture(snapshot: snapshot, data: bytes)
     }
 }

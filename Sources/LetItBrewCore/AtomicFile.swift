@@ -117,7 +117,8 @@ public enum AtomicFile {
             guard qfd >= 0 else { throw ConcurrentModification(path: quarantine.path) }
             defer { close(qfd) }
             var captured = stat()
-            guard fstat(qfd, &captured) == 0, (captured.st_mode & S_IFMT) == S_IFREG else {
+            guard fstat(qfd, &captured) == 0, (captured.st_mode & S_IFMT) == S_IFREG,
+                  captured.st_dev == sourceStat.st_dev, captured.st_ino == sourceStat.st_ino else {
                 throw ConcurrentModification(path: quarantine.path)
             }
             var data = Data()
