@@ -138,10 +138,6 @@ private func failure(_ agent: AgentID, _ target: ExactFileTarget, _ error: Error
     FileHandle.standardError.write(Data("\(agent.displayName): could not be \(verb) at \(target.displayPath); file was left unchanged (\(error)).\n".utf8))
 }
 
-/// Keeps the one descriptor capture that supplied the adapter's input alive
-/// across registry persistence and into the vendor commit.
-private struct Prepared { let observed: CapturedExactFile; let replacement: Data }
-
 func runInstall(agents: Set<AgentID> = Set(AgentID.allCases)) -> Int32 {
     let cli = resolvedCLIPath(); var failures = 0
     do {
@@ -149,18 +145,13 @@ func runInstall(agents: Set<AgentID> = Set(AgentID.allCases)) -> Int32 {
         for agent in AgentID.allCases where agents.contains(agent) {
             let target = try selectedTarget(agent, registry: registry, connect: true, filesystem: filesystem)
             do {
-                try AgentInstallTransaction.install(preflightPureTransform: {
-                    let observed = try target.capture()
-                    let existing = observed.data
-                    let bytes = try replacement(agent: agent, data: existing, cli: cli, removing: false)
-                    return Prepared(observed: observed, replacement: bytes!)
-                }, persistExactTarget: { prepared in
-                    try throwTestFault("registry-persist", filesystem: filesystem)
-                    registry.targets[agent] = prepared.observed.target.displayPath; loadedRegistry.capture = try saveRegistry(registry, basedOn: loadedRegistry.capture)
-                }, commitVendorMutation: { prepared in
-                    try throwTestFault("vendor-commit", filesystem: filesystem)
-                    _ = try AtomicFile.write(prepared.replacement, replacing: prepared.observed)
-                })
+                let observed = try target.capture()
+                let bytes = try replacement(agent: agent, data: observed.data, cli: cli, removing: false)!
+                try throwTestFault("registry-persist", filesystem: filesystem)
+                registry.targets[agent] = observed.target.displayPath
+                loadedRegistry.capture = try saveRegistry(registry, basedOn: loadedRegistry.capture)
+                try throwTestFault("vendor-commit", filesystem: filesystem)
+                _ = try AtomicFile.write(bytes, replacing: observed)
                 print("\(agent.displayName): installed")
             } catch { failure(agent, target, error, .install); failures += 1 }
         }
@@ -175,10 +166,8 @@ func runUninstall(agents: Set<AgentID> = Set(AgentID.allCases)) -> Int32 {
         for agent in AgentID.allCases where agents.contains(agent) {
             let target = try selectedTarget(agent, registry: registry, connect: false, filesystem: filesystem)
             do {
-                try AgentInstallTransaction.uninstall(removeOwnedOrProveAbsent: {
-                    let observed = try target.capture()
-                    let existing = observed.data
-                    guard let existing else { return }
+                let observed = try target.capture()
+                if let existing = observed.data {
                     if agent == .opencode {
                         guard try replacement(agent: agent, data: existing, cli: cli, removing: true) == nil else { throw UnsafeTarget(path: target.displayPath) }
                         try throwTestFault("vendor-remove", filesystem: filesystem)
@@ -188,19 +177,17 @@ func runUninstall(agents: Set<AgentID> = Set(AgentID.allCases)) -> Int32 {
                             })
                             : AtomicFile.RaceHooks()
                         try AtomicFile.remove(observed, expectedData: existing, hooks: hooks)
-                    } else if (try validate(agent: agent, data: existing, cli: cli)).isAbsent {
+                    } else if !(try validate(agent: agent, data: existing, cli: cli)).isAbsent {
                         // A stale registry retry only clears its record; it
                         // never reformats a clean/foreign JSON replacement.
-                        return
-                    } else {
                         try throwTestFault("vendor-remove", filesystem: filesystem)
                         let output = try replacement(agent: agent, data: existing, cli: cli, removing: true)!
                         _ = try AtomicFile.write(output, replacing: observed)
                     }
-                }, clearExactTarget: {
-                    try throwTestFault("registry-clear", filesystem: filesystem)
-                    registry.targets.removeValue(forKey: agent); loadedRegistry.capture = try saveRegistry(registry, basedOn: loadedRegistry.capture)
-                })
+                }
+                try throwTestFault("registry-clear", filesystem: filesystem)
+                registry.targets.removeValue(forKey: agent)
+                loadedRegistry.capture = try saveRegistry(registry, basedOn: loadedRegistry.capture)
                 print("\(agent.displayName): hooks removed")
             } catch { failure(agent, target, error, .uninstall); failures += 1 }
         }
@@ -252,7 +239,9 @@ func runPrepareExact(agent: AgentID, input: Data) -> Int32 {
         guard observed == preparation.expectedState else { throw UnsafeTarget(path: target.displayPath) }
         if observed == .healthyOwned { registry.targets[agent] = target.displayPath; _ = try saveRegistry(registry, basedOn: loadedRegistry.capture); return 0 }
         let bytes = try replacement(agent: agent, data: current, cli: cli, removing: false)!
-        try AgentInstallTransaction.install(preflightPureTransform: { Prepared(observed: capture, replacement: bytes) }, persistExactTarget: { prepared in registry.targets[agent] = prepared.observed.target.displayPath; loadedRegistry.capture = try saveRegistry(registry, basedOn: loadedRegistry.capture) }, commitVendorMutation: { prepared in _ = try AtomicFile.write(prepared.replacement, replacing: prepared.observed) })
+        registry.targets[agent] = capture.target.displayPath
+        loadedRegistry.capture = try saveRegistry(registry, basedOn: loadedRegistry.capture)
+        _ = try AtomicFile.write(bytes, replacing: capture)
         return 0
     } catch { FileHandle.standardError.write(Data("prepare-exact refused: \(error)\n".utf8)); return 1 }
 }

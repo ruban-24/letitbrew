@@ -1,25 +1,5 @@
 import Foundation
 
-/// Spawns and drives the privileged loop that owns `pmset disablesleep`.
-///
-/// The daemon-backed implementation added later keeps this same shape: the
-/// flag becomes a connection-scoped XPC hold and `start` becomes a version
-/// ping, with no caller changes.
-public protocol SleepWatchdogLaunching: AnyObject, Sendable {
-    func isFlagPresent() -> Bool
-    /// Ask for lid-closed mode. False if the request could not be recorded.
-    func createFlag() -> Bool
-    /// Give it up. The loop restores normal sleep within a cycle. Returns
-    /// whether the flag is now confirmed absent — false on any failure
-    /// (including one that leaves the flag in place), so a caller that
-    /// still believes it owns the hold can retry on the next tick instead of
-    /// forgetting a removal that never actually happened.
-    func removeFlag() -> Bool
-    /// Start the privileged loop. Blocking: it waits on the administrator
-    /// prompt. Called once per run.
-    func start(appPID: Int32) -> SleepSettingResult
-}
-
 /// A record the root loop leaves inside its exclusive lease directory the
 /// instant it takes on the responsibility of restoring `pmset disablesleep`,
 /// written BEFORE it ever writes the setting. A debt held only in a shell
@@ -249,7 +229,7 @@ public enum SleepWatchdogRepair {
 /// Real backend. The flag is a file in Application Support; the loop runs as
 /// root via `osascript`'s "with administrator privileges", backgrounded so the
 /// prompt returns as soon as the loop is alive.
-public final class OsascriptSleepWatchdog: SleepWatchdogLaunching, @unchecked Sendable {
+public final class OsascriptSleepWatchdog: @unchecked Sendable {
     private let flagURL: URL
     private let leaseURL: URL
 

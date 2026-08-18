@@ -7,24 +7,12 @@ public enum SleepSettingResult: Equatable, Sendable {
     case failed(String)
 }
 
-/// Controls the system-wide `pmset disablesleep` flag.
-///
-/// This is the only lever that keeps a Mac awake with the lid closed and no
-/// external display: `IOPMAssertion` cannot override clamshell sleep. Unlike
-/// those assertions it is a global setting needing root, and it is not scoped
-/// to AC versus battery, so it lives behind its own seam. A daemon-backed
-/// implementation slots in here later with no caller changes.
-public protocol SleepSettingControlling: AnyObject, Sendable {
-    /// Nil when the state could not be read.
-    func isSleepDisabled() -> Bool?
-}
-
 /// Reads the flag with `pmset -g`.
 ///
 /// Not `@MainActor`, and callers must keep it off the main thread: a
 /// synchronous `Process.waitUntilExit` spins the main run loop, where a
 /// re-entrant display-driver callback can crash the process.
-public final class PMSetSleepControl: SleepSettingControlling, @unchecked Sendable {
+public final class PMSetSleepControl: @unchecked Sendable {
     public init() {}
 
     public func isSleepDisabled() -> Bool? {

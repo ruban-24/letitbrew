@@ -2,11 +2,7 @@ import Foundation
 import IOKit.ps
 
 /// Reads battery and thermal state for the decision function.
-public protocol PowerSourceReading: Sendable {
-    func current() -> PowerState
-}
-
-public struct IOKitPowerSource: PowerSourceReading {
+public struct IOKitPowerSource: Sendable {
     public init() {}
 
     public func current() -> PowerState {

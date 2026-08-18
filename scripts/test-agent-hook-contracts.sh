@@ -28,7 +28,7 @@ grep -Fq 'AtomicFile.write(data, replacing: capture, permissions: .exact(0o600))
 ! sed -n '/private func loadRegistry/,/private func resolveJSONTarget/p' "$INSTALL_SOURCE" | grep -Eq 'Data\(contentsOf:|FileManager\.(default\.)?(createDirectory|removeItem|moveItem|replaceItem)'
 INSTALL_BLOCK="$(sed -n '/func runInstall/,/func runUninstall/p' "$INSTALL_SOURCE")"
 grep -Fq 'let observed = try target.capture()' <<<"$INSTALL_BLOCK"
-grep -Fq 'AtomicFile.write(prepared.replacement, replacing: prepared.observed)' <<<"$INSTALL_BLOCK"
+grep -Fq 'AtomicFile.write(bytes, replacing: observed)' <<<"$INSTALL_BLOCK"
 ! grep -Eq 'ExactFileCapture\.capture\(at:|AtomicFile\.write\([^)]*to:|Data\(contentsOf:' <<<"$INSTALL_BLOCK"
 UNINSTALL_BLOCK="$(sed -n '/func runUninstall/,/private func doctorAgent/p' "$INSTALL_SOURCE")"
 grep -Fq 'let observed = try target.capture()' <<<"$UNINSTALL_BLOCK"
@@ -39,7 +39,7 @@ grep -Fq 'let data = try target.capture().data' <<<"$DOCTOR_BLOCK"
 ! grep -Eq 'Data\(contentsOf:|ExactFileCapture\.capture\(at:' <<<"$DOCTOR_BLOCK"
 PREPARE_BLOCK="$(sed -n '/func runPrepareExact/,/private func doctorLease/p' "$INSTALL_SOURCE")"
 grep -Fq 'let capture = try target.capture()' <<<"$PREPARE_BLOCK"
-grep -Fq 'AtomicFile.write(prepared.replacement, replacing: prepared.observed)' <<<"$PREPARE_BLOCK"
+grep -Fq 'AtomicFile.write(bytes, replacing: capture)' <<<"$PREPARE_BLOCK"
 ! grep -Eq 'Data\(contentsOf:|ExactFileCapture\.capture\(at:|AtomicFile\.write\([^)]*to:' <<<"$PREPARE_BLOCK"
 TEST_HOME="$(mktemp -d /tmp/letitbrew-agent-hooks.XXXXXX)"
 trap 'rm -rf "$TEST_HOME"' EXIT

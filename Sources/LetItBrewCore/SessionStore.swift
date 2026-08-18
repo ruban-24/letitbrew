@@ -1,12 +1,8 @@
 import Darwin
 import Foundation
 
-/// Whether a process still exists. Injected so eviction is testable.
-public protocol ProcessLiveness: Sendable {
-    func isAlive(pid: Int32) -> Bool
-}
-
-public struct KillZeroLiveness: ProcessLiveness {
+/// Whether a process still exists.
+public struct KillZeroLiveness: Sendable {
     public init() {}
 
     public func isAlive(pid: Int32) -> Bool {
@@ -22,7 +18,7 @@ public enum SessionStore {
     ///
     /// Agent process liveness cannot establish a trustworthy activity edge:
     /// only a current lifecycle hook record is eligible, and its freshness is
-    /// the full activity boundary. The liveness primitives above remain for
+    /// the full activity boundary. The liveness check above remains for
     /// validating the app-owned closed-lid watchdog lease.
     public static func recent(
         records: [SessionRecord],
