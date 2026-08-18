@@ -24,7 +24,12 @@ jobs:
       - name: Build Swift package
         run: swift build
 
+      - name: Test agent hook baseline seam
+        run: scripts/tests/agent-hook-baseline-tests.sh
+
       - name: Test agent hook contracts
+        env:
+          LETITBREW_TEST_AGENT_HOOK_SLEEP_DISABLED_BASELINE: "0"
         run: scripts/test-agent-hook-contracts.sh .build/debug/letitbrew
 
       - name: Run Swift tests

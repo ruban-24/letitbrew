@@ -8,7 +8,9 @@ CLI="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$CLI_IN
 command -v node >/dev/null || { echo "FATAL: node is required for the OpenCode runtime contract" >&2; exit 1; }
 # shellcheck source=lib-power-baseline.sh
 source "$SCRIPT_DIR/lib-power-baseline.sh"
-ENTRY_SLEEP_DISABLED="$(baseline_read_sleepdisabled)" || { echo "FATAL: could not read SleepDisabled baseline" >&2; exit 1; }
+# shellcheck source=lib-agent-hook-test-baseline.sh
+source "$SCRIPT_DIR/lib-agent-hook-test-baseline.sh"
+ENTRY_SLEEP_DISABLED="$(agent_hook_test_read_sleepdisabled)" || { echo "FATAL: could not read SleepDisabled baseline" >&2; exit 1; }
 # Registry selection/persistence is deliberately descriptor-only.  Keep this
 # source gate beside the black-box contract so a future convenience reopen
 # cannot quietly reintroduce Foundation path I/O after target selection.
@@ -300,6 +302,6 @@ ln -s "$OUTSIDE_HOME" "$SYMLINK_HOME/Library/Application Support/LetItBrew"
 ! env LETITBREW_TEST_HOME="$SYMLINK_HOME" "$CLI" install claude >/dev/null 2>&1
 ! test -e "$OUTSIDE_HOME/agent-hook-targets.json"
 ! test -e "$SYMLINK_HOME/.claude/settings.json"
-EXIT_SLEEP_DISABLED="$(baseline_read_sleepdisabled)" || { echo "FATAL: could not read SleepDisabled baseline on exit" >&2; exit 1; }
+EXIT_SLEEP_DISABLED="$(agent_hook_test_read_sleepdisabled)" || { echo "FATAL: could not read SleepDisabled baseline on exit" >&2; exit 1; }
 test "$ENTRY_SLEEP_DISABLED" = "$EXIT_SLEEP_DISABLED"
 echo "PASS"
