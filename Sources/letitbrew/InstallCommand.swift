@@ -22,7 +22,7 @@ private enum Operation { case install, uninstall, doctor }
 func resolvedCLIPath() -> String {
     var size: UInt32 = 0; _NSGetExecutablePath(nil, &size)
     var buffer = [Int8](repeating: 0, count: Int(size)); _NSGetExecutablePath(&buffer, &size)
-    let resolved = URL(fileURLWithPath: String(cString: buffer)).resolvingSymlinksInPath().standardizedFileURL.path
+    let resolved = URL(fileURLWithPath: String(decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)).resolvingSymlinksInPath().standardizedFileURL.path
     // Foundation's URL normalization does not consistently collapse the
     // Darwin `/tmp` alias. Persistent hooks must embed the same canonical
     // executable identity an external process receives through realpath(3).
