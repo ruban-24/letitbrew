@@ -212,9 +212,11 @@ Claude requires workspace trust before its hooks run. Codex additionally
 requires an explicit `/hooks` trust step; Let It Brew cannot approve it. Cursor
 maps desktop Agent and local CLI events through its user hooks. OpenCode is
 limited to its stable 1.x local runtime and preserves unrelated plugins.
-v0.6 installs no Copilot `ErrorOccurred` hook: an error without `Stop` or
-`SessionEnd` relies on the 12-hour stale-record backstop or **Stop Tracking**.
-The selected Copilot hooks themselves are silent and exit zero.
+Copilot's observational `ErrorOccurred` hook maps an explicit
+`recoverable: false` payload to Idle. Recoverable or malformed error payloads
+preserve the prior state because the same turn may continue. Let It Brew does
+not install Copilot's decision-capable `PreToolUse` or `PermissionRequest`
+hooks. The selected Copilot hooks themselves are silent and exit zero.
 
 ## Updating
 

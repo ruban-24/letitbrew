@@ -15,7 +15,8 @@ public enum HookSessionUpdater {
             toolName: payload.toolName,
             notificationType: payload.notificationType,
             source: payload.source,
-            hasBackgroundTasks: payload.hasBackgroundTasks
+            hasBackgroundTasks: payload.hasBackgroundTasks,
+            errorRecoverable: payload.errorRecoverable
         ) else { return }
 
         try storage.mutate(

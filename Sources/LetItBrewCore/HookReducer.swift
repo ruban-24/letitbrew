@@ -24,7 +24,8 @@ public enum HookReducer {
         toolName: String?,
         notificationType: String?,
         source: String? = nil,
-        hasBackgroundTasks: Bool = false
+        hasBackgroundTasks: Bool = false,
+        errorRecoverable: Bool? = nil
     ) -> HookEffect? {
         switch event {
         case "SessionStart":
@@ -47,6 +48,11 @@ public enum HookReducer {
             return hasBackgroundTasks ? .set(.working, detail: nil) : .set(.idle, detail: nil)
         case "StopFailure":
             return .set(.idle, detail: nil)
+        case "ErrorOccurred":
+            // Copilot can recover from some execution errors and continue the
+            // same turn. Only its explicit terminal value releases the hold;
+            // a missing or future payload shape preserves the prior state.
+            return errorRecoverable == false ? .set(.idle, detail: nil) : nil
         case "SubagentStop", "SessionEnd":
             return .end
         default:

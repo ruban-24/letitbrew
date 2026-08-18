@@ -23,6 +23,20 @@ import Foundation
     #expect(payload.sessionId == "abc")
     #expect(payload.toolName == nil)
     #expect(payload.notificationType == nil)
+    #expect(payload.errorRecoverable == nil)
+}
+
+@Test func decodesCopilotErrorRecoverabilityWithoutReadingErrorProse() throws {
+    let recoverable = try JSONDecoder().decode(
+        HookPayload.self,
+        from: Data(#"{"session_id":"copilot-1","recoverable":true,"error":{"message":"private"}}"#.utf8)
+    )
+    let terminal = try JSONDecoder().decode(
+        HookPayload.self,
+        from: Data(#"{"session_id":"copilot-2","recoverable":false,"error_context":"model_call"}"#.utf8)
+    )
+    #expect(recoverable.errorRecoverable == true)
+    #expect(terminal.errorRecoverable == false)
 }
 
 @Test func decodesEmptyObject() throws {

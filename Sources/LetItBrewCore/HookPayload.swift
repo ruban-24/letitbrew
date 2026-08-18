@@ -1,7 +1,7 @@
 import Foundation
 
-/// The JSON a hook delivers on stdin. Claude Code and Codex use the same
-/// field names, so one decoder serves both.
+/// The JSON a hook delivers on stdin. The supported agents share enough
+/// structural fields that one decoder can serve every adapter.
 ///
 /// Every field is optional and unknown fields are ignored on purpose: both
 /// tools add fields over time, and a decode failure here would mean a hook
@@ -17,6 +17,7 @@ public struct HookPayload: Decodable, Equatable, Sendable {
     public var hookEventName: String?
     public var toolName: String?
     public var notificationType: String?
+    public var errorRecoverable: Bool?
 
     private enum CodingKeys: String, CodingKey {
         case sessionID = "session_id"
@@ -32,6 +33,7 @@ public struct HookPayload: Decodable, Equatable, Sendable {
         case hookEventName = "hook_event_name"
         case toolName = "tool_name"
         case notificationType = "notification_type"
+        case errorRecoverable = "recoverable"
     }
 
     public init(
@@ -44,7 +46,8 @@ public struct HookPayload: Decodable, Equatable, Sendable {
         hasBackgroundTasks: Bool = false,
         hookEventName: String? = nil,
         toolName: String? = nil,
-        notificationType: String? = nil
+        notificationType: String? = nil,
+        errorRecoverable: Bool? = nil
     ) {
         self.sessionId = sessionId
         self.parentConversationId = parentConversationId
@@ -56,6 +59,7 @@ public struct HookPayload: Decodable, Equatable, Sendable {
         self.hookEventName = hookEventName
         self.toolName = toolName
         self.notificationType = notificationType
+        self.errorRecoverable = errorRecoverable
     }
 
     public init(from decoder: Decoder) throws {
@@ -78,6 +82,7 @@ public struct HookPayload: Decodable, Equatable, Sendable {
         hookEventName = try values.decodeIfPresent(String.self, forKey: .hookEventName)
         toolName = try values.decodeIfPresent(String.self, forKey: .toolName)
         notificationType = try values.decodeIfPresent(String.self, forKey: .notificationType)
+        errorRecoverable = try values.decodeIfPresent(Bool.self, forKey: .errorRecoverable)
     }
 
     public func recordID(agent: AgentID, event: String) -> String? {

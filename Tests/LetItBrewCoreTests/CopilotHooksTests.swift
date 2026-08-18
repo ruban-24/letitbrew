@@ -8,11 +8,11 @@ private func copilotObject(_ data: Data) throws -> [String: Any] {
 
 @Test func copilotUsesOnlyObservationalLifecycleEvents() {
     #expect(CopilotHooks.events == [
-        "SessionStart", "UserPromptSubmit", "PostToolUse", "Stop", "SessionEnd",
+        "SessionStart", "UserPromptSubmit", "PostToolUse", "ErrorOccurred", "Stop",
+        "SessionEnd",
     ])
     #expect(!CopilotHooks.events.contains("PreToolUse"))
     #expect(!CopilotHooks.events.contains("PermissionRequest"))
-    #expect(!CopilotHooks.events.contains("ErrorOccurred"))
 }
 
 @Test func copilotHomeRelocatesTheUserHookFile() {
@@ -29,6 +29,7 @@ private func copilotObject(_ data: Data) throws -> [String: Any] {
     let root = try copilotObject(data)
     #expect(root["version"] as? Int == 1)
     let hooks = try #require(root["hooks"] as? [String: Any])
+    #expect((hooks["ErrorOccurred"] as? [Any])?.count == 1)
     let stop = try #require(hooks["Stop"] as? [Any])
     try #require(stop.count == 1)
     let entry = try #require(stop[0] as? [String: Any])

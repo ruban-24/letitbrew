@@ -175,10 +175,11 @@ edges and confirm both remain idempotent.
 
 ### GitHub Copilot CLI
 
-Confirm selected hooks remain silent and exit zero. Record the `ErrorOccurred`
-limitation without installing a decision-capable hook. Permission-wait UAT is
-**N/A — no documented supported hook** for v0.6 unless a later documented
-version changes it.
+Confirm selected hooks remain silent and exit zero. Exercise `ErrorOccurred`
+with the tested CLI version: `recoverable: true` must preserve the prior state,
+while `recoverable: false` must become Idle. Permission-wait UAT is **N/A for
+v0.6** because Let It Brew deliberately does not install Copilot's documented
+decision-capable `PermissionRequest` hook.
 
 At the end of each pass, complete the exact-target recovery and verification
 above for the registry and every selected configuration target. This matrix never

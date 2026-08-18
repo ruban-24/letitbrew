@@ -97,11 +97,12 @@ or read Claude/Codex/Cursor/OpenCode/Copilot prompt and response content.
 - Sources: https://docs.github.com/en/copilot/reference/hooks-reference and
   https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/use-hooks
 - Use PascalCase compatibility events for snake_case payloads:
-  SessionStart, UserPromptSubmit, PostToolUse, Stop, SessionEnd.
-- Do not install `PreToolUse`: command failures on that control hook are
-  fail-closed. The selected observational events are sufficient for
-  Working/Idle only if the generated command is silent and unconditionally
-  exits zero; execution tests must prove both properties before release.
-- `ErrorOccurred` is not installed in v0.6.0; an error path without
-  `SessionEnd` relies on the stale-record backstop or Stop Tracking.
+  SessionStart, UserPromptSubmit, PostToolUse, ErrorOccurred, Stop, SessionEnd.
+- `ErrorOccurred` is observational and its output is not processed. A payload
+  with `recoverable: false` maps to Idle; `true`, missing, or malformed
+  recoverability preserves the prior state so a continuing turn stays Working.
+- Do not install `PreToolUse` or `PermissionRequest`: both can make permission
+  decisions. The selected observational events are sufficient for Working/Idle
+  only if the generated command is silent and unconditionally exits zero;
+  execution tests must prove both properties before release.
 - Copilot cloud agent is out of scope.

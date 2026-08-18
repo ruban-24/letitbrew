@@ -4,13 +4,12 @@ import Foundation
 /// Installs Let It Brew's observational lifecycle hooks in GitHub Copilot
 /// CLI's user-level hook file.
 ///
-/// This adapter deliberately installs only `SessionStart`,
-/// `UserPromptSubmit`, `PostToolUse`, `Stop`, and `SessionEnd`. In particular,
-/// it never installs `PreToolUse`, `PermissionRequest`, or `ErrorOccurred`:
-/// v0.6.0 must not block a tool, influence an approval, or add context to a
-/// Copilot turn. An error path that emits neither `Stop` nor `SessionEnd`
-/// therefore relies on Let It Brew's 12-hour stale-record backstop or the
-/// user's Stop Tracking action.
+/// This adapter deliberately installs only observational lifecycle events:
+/// `SessionStart`, `UserPromptSubmit`, `PostToolUse`, `ErrorOccurred`, `Stop`,
+/// and `SessionEnd`. It never installs `PreToolUse` or `PermissionRequest`:
+/// v0.6.0 must not block a tool or influence an approval. Copilot ignores hook
+/// output for `ErrorOccurred`; Let It Brew releases Working only when its
+/// documented `recoverable` field is false.
 ///
 /// `letitbrew.json` belongs to the user. All operations retain unknown root
 /// keys and foreign flat entries exactly, and refuse malformed shapes rather
@@ -22,7 +21,8 @@ public enum CopilotHooks {
     /// The complete v0.6.0 Copilot lifecycle surface. These are intentionally
     /// PascalCase because they are Copilot CLI's source event names.
     public static let events = [
-        "SessionStart", "UserPromptSubmit", "PostToolUse", "Stop", "SessionEnd",
+        "SessionStart", "UserPromptSubmit", "PostToolUse", "ErrorOccurred", "Stop",
+        "SessionEnd",
     ]
 
     /// Persistent hooks embed an absolute fallback rather than using PATH, so

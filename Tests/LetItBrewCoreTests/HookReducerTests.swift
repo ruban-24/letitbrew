@@ -4,15 +4,23 @@ import Testing
 private func reduce(
     _ event: String,
     source: String? = nil,
-    hasBackgroundTasks: Bool = false
+    hasBackgroundTasks: Bool = false,
+    errorRecoverable: Bool? = nil
 ) -> HookEffect? {
     HookReducer.reduce(
         event: event,
         toolName: nil,
         notificationType: nil,
         source: source,
-        hasBackgroundTasks: hasBackgroundTasks
+        hasBackgroundTasks: hasBackgroundTasks,
+        errorRecoverable: errorRecoverable
     )
+}
+
+@Test func onlyUnrecoverableCopilotErrorsBecomeIdle() {
+    #expect(reduce("ErrorOccurred", errorRecoverable: false) == .set(.idle, detail: nil))
+    #expect(reduce("ErrorOccurred", errorRecoverable: true) == nil)
+    #expect(reduce("ErrorOccurred", errorRecoverable: nil) == nil)
 }
 
 @Test func sessionStartIsIdleNotWorking() {

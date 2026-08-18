@@ -121,7 +121,7 @@ grep -q '__letitbrew_copilot_hook' "$TEST_HOME/.copilot/hooks/letitbrew.json"
 # lifecycle surface, rather than accepting one marker or an arbitrary grep.
 node -e '
 const fs=require("fs");
-const cases=[[process.argv[1],"__letitbrew_hook",13],[process.argv[2],"__letitbrew_codex_hook",11],[process.argv[3],"__letitbrew_cursor_hook",8],[process.argv[4],"__letitbrew_copilot_hook",5]];
+const cases=[[process.argv[1],"__letitbrew_hook",13],[process.argv[2],"__letitbrew_codex_hook",11],[process.argv[3],"__letitbrew_cursor_hook",8],[process.argv[4],"__letitbrew_copilot_hook",6]];
 for (const [file, marker, count] of cases) { const source=fs.readFileSync(file,"utf8"); const found=source.split(marker).length-1; if(found!==count) throw new Error(`${file}: expected ${count} ${marker} entries, got ${found}`) }
 ' "$TEST_HOME/.claude/settings.json" "$TEST_HOME/.codex/hooks.json" "$TEST_HOME/.cursor/hooks.json" "$TEST_HOME/.copilot/hooks/letitbrew.json"
 test "$(node "$SCRIPT_DIR/test-opencode-plugin.mjs" "$CLI" "$TEST_HOME/.config/opencode/plugins/letitbrew.js")" = "PASS: OpenCode plugin runtime contract"

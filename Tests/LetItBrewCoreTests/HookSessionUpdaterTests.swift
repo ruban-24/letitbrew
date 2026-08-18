@@ -698,6 +698,42 @@ import Testing
     #expect(storage.load(id: id)?.lastEvent == "StopFailure")
 }
 
+@Test func copilotErrorsPreserveRecoverableWorkAndReleaseUnrecoverableWork() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+    let id = hookUpdaterID("copilot-error", agent: .copilot)
+
+    try applyDecodedHook(
+        event: "UserPromptSubmit",
+        json: #"{"session_id":"copilot-error","cwd":"/work/app"}"#,
+        agent: .copilot,
+        observedAt: Date(timeIntervalSince1970: 100),
+        storage: storage
+    )
+    try applyDecodedHook(
+        event: "ErrorOccurred",
+        json: #"{"session_id":"copilot-error","cwd":"/work/app","recoverable":true}"#,
+        agent: .copilot,
+        observedAt: Date(timeIntervalSince1970: 110),
+        storage: storage
+    )
+
+    #expect(storage.load(id: id)?.state == .working)
+    #expect(storage.load(id: id)?.lastEvent == "UserPromptSubmit")
+
+    try applyDecodedHook(
+        event: "ErrorOccurred",
+        json: #"{"session_id":"copilot-error","cwd":"/work/app","recoverable":false}"#,
+        agent: .copilot,
+        observedAt: Date(timeIntervalSince1970: 120),
+        storage: storage
+    )
+
+    #expect(storage.load(id: id)?.state == .idle)
+    #expect(storage.load(id: id)?.lastEvent == "ErrorOccurred")
+}
+
 @Test func subagentStopRemovesOnlyTheAddressedChildRecord() throws {
     let directory = hookUpdaterTempDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
