@@ -8,9 +8,7 @@ import Foundation
 /// that reports nothing.
 public struct HookPayload: Decodable, Equatable, Sendable {
     public var sessionId: String?
-    public var parentConversationId: String?
     public var agentId: String?
-    public var subagentId: String?
     public var cwd: String?
     public var source: String?
     public var hasBackgroundTasks: Bool
@@ -21,13 +19,9 @@ public struct HookPayload: Decodable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case sessionID = "session_id"
-        case conversationID = "conversation_id"
-        case parentConversationID = "parent_conversation_id"
         case camelSessionID = "sessionId"
         case agentID = "agent_id"
-        case subagentID = "subagent_id"
         case cwd
-        case workspaceRoots = "workspace_roots"
         case source
         case backgroundTasks = "background_tasks"
         case hookEventName = "hook_event_name"
@@ -38,9 +32,7 @@ public struct HookPayload: Decodable, Equatable, Sendable {
 
     public init(
         sessionId: String? = nil,
-        parentConversationId: String? = nil,
         agentId: String? = nil,
-        subagentId: String? = nil,
         cwd: String? = nil,
         source: String? = nil,
         hasBackgroundTasks: Bool = false,
@@ -50,9 +42,7 @@ public struct HookPayload: Decodable, Equatable, Sendable {
         errorRecoverable: Bool? = nil
     ) {
         self.sessionId = sessionId
-        self.parentConversationId = parentConversationId
         self.agentId = agentId
-        self.subagentId = subagentId
         self.cwd = cwd
         self.source = source
         self.hasBackgroundTasks = hasBackgroundTasks
@@ -65,16 +55,9 @@ public struct HookPayload: Decodable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         sessionId = try values.decodeIfPresent(String.self, forKey: .sessionID)
-            ?? values.decodeIfPresent(String.self, forKey: .conversationID)
             ?? values.decodeIfPresent(String.self, forKey: .camelSessionID)
-            ?? values.decodeIfPresent(String.self, forKey: .parentConversationID)
-        parentConversationId = try values.decodeIfPresent(
-            String.self, forKey: .parentConversationID
-        )
         agentId = try values.decodeIfPresent(String.self, forKey: .agentID)
-        subagentId = try values.decodeIfPresent(String.self, forKey: .subagentID)
-        let roots = try values.decodeIfPresent([String].self, forKey: .workspaceRoots)
-        cwd = try values.decodeIfPresent(String.self, forKey: .cwd) ?? roots?.first
+        cwd = try values.decodeIfPresent(String.self, forKey: .cwd)
         source = try values.decodeIfPresent(String.self, forKey: .source)
         hasBackgroundTasks = !(try values.decodeIfPresent(
             [BackgroundTask].self, forKey: .backgroundTasks
@@ -91,13 +74,9 @@ public struct HookPayload: Decodable, Equatable, Sendable {
         }
 
         let isSubagentEdge = event == "SubagentStart" || event == "SubagentStop"
-        let parent = isSubagentEdge
-            ? (nonempty(parentConversationId) ?? nonempty(sessionId))
-            : nonempty(sessionId)
+        let parent = nonempty(sessionId)
         guard let parent else { return nil }
-        let child = agent == .cursor
-            ? (nonempty(subagentId) ?? nonempty(agentId))
-            : (nonempty(agentId) ?? nonempty(subagentId))
+        let child = nonempty(agentId)
         guard !isSubagentEdge || child != nil else { return nil }
         return HookRecordID(agent: agent, parentID: parent, childID: child)?.encoded
     }

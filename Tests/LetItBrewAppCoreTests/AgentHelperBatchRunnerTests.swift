@@ -67,16 +67,16 @@ private func helperStub() throws -> URL {
     ])
 }
 
-@Test func allFiveAgentsAreAttemptedOnceAfterAMiddleFailure() throws {
+@Test func allFourAgentsAreAttemptedOnceAfterAMiddleFailure() throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
     let helper = directory.appendingPathComponent("helper.sh")
-    try Data("#!/bin/sh\n[ \"$2\" = \"cursor\" ] && exit 7\nprintf '%s' \"$2\"\n".utf8).write(to: helper)
+    try Data("#!/bin/sh\n[ \"$2\" = \"opencode\" ] && exit 7\nprintf '%s' \"$2\"\n".utf8).write(to: helper)
     try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: helper.path)
     let ids = AgentID.allCases.map(\.rawValue)
     let results = AgentHelperBatchRunner.run(executableURL: helper, command: "uninstall", agentIDs: ids, timeout: 5)
     #expect(results.map(\.agentID) == ids)
-    #expect(results.filter(\.succeeded).map(\.agentID) == ["claude", "codex", "opencode", "copilot"])
-    #expect(results.first(where: { $0.agentID == "cursor" })?.status == 7)
+    #expect(results.filter(\.succeeded).map(\.agentID) == ["claude", "codex", "copilot"])
+    #expect(results.first(where: { $0.agentID == "opencode" })?.status == 7)
 }

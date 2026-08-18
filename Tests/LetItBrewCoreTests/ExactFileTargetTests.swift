@@ -299,11 +299,10 @@ private enum DescriptorTestFailure: Error { case parentSync }
     #expect(try String(contentsOf: final, encoding: .utf8) == "foreign")
 }
 
-@Test func anchoredTraversalRefusesEveryParentPositionForAllFiveVendorTargets() throws {
+@Test func anchoredTraversalRefusesEveryParentPositionForAllFourVendorTargets() throws {
     let targets: [[String]] = [
         [".claude", "settings.json"],
         [".codex", "hooks.json"],
-        [".cursor", "hooks.json"],
         [".config", "opencode", "plugins", "letitbrew.js"],
         [".copilot", "hooks", "letitbrew.json"]
     ]

@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import LetItBrewCore
 
-private let flatMarker = "__letitbrew_cursor_hook"
+private let flatMarker = "__letitbrew_flat_hook"
 private let flatOwnershipComment = HookFile.ownershipComment(marker: flatMarker)
 
 private func flatJSON(_ value: Any) throws -> Data {
@@ -12,8 +12,8 @@ private func flatJSON(_ value: Any) throws -> Data {
 }
 
 @Test func flatSweepRemovesOnlyExactOwnedEntries() throws {
-    let foreign: [String: Any] = ["command": "notify --text __letitbrew_cursor_hook"]
-    let ours: [String: Any] = ["command": "run; : # __letitbrew_cursor_hook"]
+    let foreign: [String: Any] = ["command": "notify --text __letitbrew_flat_hook"]
+    let ours: [String: Any] = ["command": "run; : # __letitbrew_flat_hook"]
     let hooks: [String: Any] = ["stop": [foreign, ours]]
 
     let swept = FlatHookFile.sweep(
@@ -36,7 +36,7 @@ private func flatJSON(_ value: Any) throws -> Data {
         ["run": "execute\(flatOwnershipComment) trailing"], marker: flatMarker, commandKey: "run"
     ))
     #expect(!FlatHookFile.isOurs(
-        ["run": "execute; : # __letitbrew_cursor_hook_v2"], marker: flatMarker, commandKey: "run"
+        ["run": "execute; : # __letitbrew_flat_hook_v2"], marker: flatMarker, commandKey: "run"
     ))
 }
 

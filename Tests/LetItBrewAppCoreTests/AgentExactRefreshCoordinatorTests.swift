@@ -78,7 +78,7 @@ private func refreshSnapshot(_ path: String) throws -> ExactFileSnapshot {
     for (state, expectedChange) in [(AgentExactPreparation.Inspection.absent, true), (.repairableOwned, true)] {
         var inspected: [URL] = []
         let result = try AgentExactRefreshCoordinator.run(
-            agent: .cursor, recordedTarget: target.path, configuredTarget: URL(fileURLWithPath: "/tmp/B"), firstConnectResolvedTarget: target,
+            agent: .copilot, recordedTarget: target.path, configuredTarget: URL(fileURLWithPath: "/tmp/B"), firstConnectResolvedTarget: target,
             inspect: { value in inspected.append(value); return .init(snapshot: snapshot, inspection: state) },
             launch: { _, _ in true }
         )
@@ -113,7 +113,7 @@ private func refreshSnapshot(_ path: String) throws -> ExactFileSnapshot {
     #expect(codex.target == recorded)
     #expect(AgentExactRefreshCoordinator.mayPresentConnected(codex))
 
-    for agent in [AgentID.cursor, .opencode, .copilot] {
+    for agent in [AgentID.opencode, .copilot] {
         var calls = 0
         let result = try AgentExactRefreshCoordinator.run(
             agent: agent, recordedTarget: recorded.path, configuredTarget: ambient, firstConnectResolvedTarget: ambient,

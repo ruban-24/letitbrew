@@ -462,10 +462,24 @@ struct AgentLogo: View {
                 Image("ClaudeAgent")
                     .resizable()
                     .interpolation(.high)
+                    .scaledToFit()
             case "codex":
                 Image("CodexAgent")
                     .resizable()
                     .interpolation(.high)
+                    .scaledToFit()
+            case "opencode":
+                Image("OpenCodeAgent")
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFill()
+                    .scaleEffect(3)
+                    .clipped()
+            case "copilot":
+                Image("CopilotAgent")
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
             default:
                 Image(systemName: "terminal")
                     .resizable()
@@ -474,7 +488,6 @@ struct AgentLogo: View {
                     .padding(3)
             }
         }
-        .scaledToFit()
         .accessibilityHidden(true)
     }
 }

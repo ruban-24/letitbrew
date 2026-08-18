@@ -10,7 +10,7 @@ private func fixtureAbsentSnapshot(_ path: String) -> ExactFileSnapshot { try! E
     let decision = AgentLaunchConnectionPolicy.decision(persistedSelection: nil, legacyDisconnected: ["codex"], inspections: [
         .init(agentID: "claude", state: .repairableOwned, hasRecordedTarget: false, exactTargetSnapshot: claude),
         .init(agentID: "codex", state: .healthyOwned, hasRecordedTarget: false, exactTargetSnapshot: fixtureSnapshot("/legacy/codex/hooks.json")),
-        .init(agentID: "cursor", state: .absent, hasRecordedTarget: false, exactTargetSnapshot: fixtureAbsentSnapshot("/legacy/cursor"))], legacyMigratableAgentIDs: ["claude", "codex"])
+        .init(agentID: "opencode", state: .absent, hasRecordedTarget: false, exactTargetSnapshot: fixtureAbsentSnapshot("/legacy/opencode"))], legacyMigratableAgentIDs: ["claude", "codex"])
     #expect(decision.selectedAgentIDs == ["claude"])
     #expect(decision.preparations == [.exactTarget(agentID: "claude", expectedState: .repairableOwned, snapshot: claude)])
 }
@@ -21,8 +21,8 @@ private func fixtureAbsentSnapshot(_ path: String) -> ExactFileSnapshot { try! E
 }
 
 @Test func persistedSelectionRepairsAbsenceButNeverMutatesInvalidConfig() {
-    let decision = AgentLaunchConnectionPolicy.decision(persistedSelection: ["cursor", "copilot"], legacyDisconnected: [], inspections: [.init(agentID: "cursor", state: .absent, hasRecordedTarget: true, exactTargetSnapshot: nil), .init(agentID: "copilot", state: .invalid, hasRecordedTarget: true, exactTargetSnapshot: nil)], legacyMigratableAgentIDs: [])
-    #expect(decision.selectedAgentIDs == ["cursor", "copilot"]); #expect(decision.preparations == [.recordedTarget(agentID: "cursor")])
+    let decision = AgentLaunchConnectionPolicy.decision(persistedSelection: ["opencode", "copilot"], legacyDisconnected: [], inspections: [.init(agentID: "opencode", state: .absent, hasRecordedTarget: true, exactTargetSnapshot: nil), .init(agentID: "copilot", state: .invalid, hasRecordedTarget: true, exactTargetSnapshot: nil)], legacyMigratableAgentIDs: [])
+    #expect(decision.selectedAgentIDs == ["opencode", "copilot"]); #expect(decision.preparations == [.recordedTarget(agentID: "opencode")])
 }
 
 @Test func selectedHealthyLegacyConnectionBackfillsItsExactTarget() {
@@ -33,8 +33,8 @@ private func fixtureAbsentSnapshot(_ path: String) -> ExactFileSnapshot { try! E
 }
 
 @Test func selectionAddsAndRemovesOnlyRequestedAgent() {
-    #expect(AgentConnectionSelectionPolicy.selecting("cursor", in: ["claude"]) == ["claude", "cursor"])
-    #expect(AgentConnectionSelectionPolicy.deselecting("cursor", from: ["claude", "cursor"]) == ["claude"])
+    #expect(AgentConnectionSelectionPolicy.selecting("opencode", in: ["claude"]) == ["claude", "opencode"])
+    #expect(AgentConnectionSelectionPolicy.deselecting("opencode", from: ["claude", "opencode"]) == ["claude"])
 }
 
 @Test func selectionPolicyAdversarialMatrixIsDeterministic() {
@@ -51,10 +51,10 @@ private func fixtureAbsentSnapshot(_ path: String) -> ExactFileSnapshot { try! E
 
 @Test func preparationsCoverRecordedAndExactStatesInSortedOrder() {
     let a = fixtureSnapshot("/legacy/a"); let b = fixtureAbsentSnapshot("/legacy/b")
-    let decision = AgentLaunchConnectionPolicy.decision(persistedSelection: ["cursor", "claude", "codex", "copilot"], legacyDisconnected: [], inspections: [
-        .init(agentID: "cursor", state: .repairableOwned, hasRecordedTarget: true, exactTargetSnapshot: nil),
+    let decision = AgentLaunchConnectionPolicy.decision(persistedSelection: ["opencode", "claude", "codex", "copilot"], legacyDisconnected: [], inspections: [
+        .init(agentID: "opencode", state: .repairableOwned, hasRecordedTarget: true, exactTargetSnapshot: nil),
         .init(agentID: "claude", state: .absent, hasRecordedTarget: false, exactTargetSnapshot: b),
         .init(agentID: "codex", state: .healthyOwned, hasRecordedTarget: false, exactTargetSnapshot: a),
         .init(agentID: "copilot", state: .invalid, hasRecordedTarget: true, exactTargetSnapshot: nil)], legacyMigratableAgentIDs: [])
-    #expect(decision.preparations == [.exactTarget(agentID: "claude", expectedState: .absent, snapshot: b), .exactTarget(agentID: "codex", expectedState: .healthyOwned, snapshot: a), .recordedTarget(agentID: "cursor")])
+    #expect(decision.preparations == [.exactTarget(agentID: "claude", expectedState: .absent, snapshot: b), .exactTarget(agentID: "codex", expectedState: .healthyOwned, snapshot: a), .recordedTarget(agentID: "opencode")])
 }

@@ -14,13 +14,13 @@ import Testing
     var exact: ExactTargetPreparation?
     AgentLaunchPreparationRunner.run(
         [
-            .recordedTarget(agentID: "cursor"),
+            .recordedTarget(agentID: "opencode"),
             .exactTarget(agentID: "claude", expectedState: .absent, snapshot: snapshot),
         ],
         runRecorded: { events.append("recorded:\($0)") },
         runExact: { request in exact = request; events.append("exact:\(request.agent.rawValue)") }
     )
-    #expect(events == ["recorded:cursor", "exact:claude"])
+    #expect(events == ["recorded:opencode", "exact:claude"])
     #expect(exact?.snapshot == snapshot)
     #expect(exact?.expectedState == .absent)
 }

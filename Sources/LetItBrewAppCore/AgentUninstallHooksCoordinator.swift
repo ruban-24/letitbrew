@@ -31,7 +31,7 @@ public struct AgentUninstallCompletion: Equatable, Sendable {
 
 /// Retry state belongs to one explicit empty-selection uninstall cycle. A new
 /// positive intent or fresh uninstall clears stale failures, so a prior
-/// partial removal cannot suppress agents in a later all-five uninstall.
+/// partial removal cannot suppress agents in a later full-catalog uninstall.
 public struct AgentUninstallCycle: Equatable, Sendable {
     public private(set) var failedAgentIDs: Set<String> = []
     public init() {}

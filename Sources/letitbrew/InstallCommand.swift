@@ -69,7 +69,6 @@ private final class CommandFilesystem {
         switch agent {
         case .claude: url = ClaudeHooks.settingsURL(home: homeURL)
         case .codex: url = CodexHooks.hooksURL(home: homeURL, environment: adapterEnvironment)
-        case .cursor: url = CursorHooks.settingsURL(home: homeURL)
         case .opencode: url = OpenCodePlugin.pluginURL(home: homeURL, environment: adapterEnvironment)
         case .copilot: url = CopilotHooks.hooksURL(home: homeURL, environment: adapterEnvironment)
         }
@@ -121,7 +120,6 @@ private func replacement(agent: AgentID, data: Data?, cli: String, removing: Boo
     switch agent {
     case .claude: return removing ? try ClaudeHooks.remove(from: data) : try ClaudeHooks.install(into: data, cliPath: cli)
     case .codex: return removing ? try CodexHooks.remove(from: data) : try CodexHooks.install(into: data, cliPath: cli)
-    case .cursor: return removing ? try CursorHooks.remove(from: data) : try CursorHooks.install(into: data, cliPath: cli)
     case .copilot: return removing ? try CopilotHooks.remove(from: data) : try CopilotHooks.install(into: data, cliPath: cli)
     case .opencode: return removing ? try OpenCodePlugin.remove(from: data) : try OpenCodePlugin.install(into: data, cliPath: cli)
     }
@@ -131,7 +129,6 @@ private func report(agent: AgentID, data: Data?, cli: String) -> HookInstallRepo
     switch agent {
     case .claude: ClaudeHooks.report(for: data, cliPath: cli)
     case .codex: CodexHooks.report(for: data, cliPath: cli)
-    case .cursor: CursorHooks.report(for: data, cliPath: cli)
     case .copilot: CopilotHooks.report(for: data, cliPath: cli)
     case .opencode: OpenCodePlugin.report(for: data, cliPath: cli)
     }

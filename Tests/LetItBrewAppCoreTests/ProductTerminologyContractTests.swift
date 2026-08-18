@@ -58,7 +58,7 @@ import LetItBrewCore
             "A refused gate must say so, so the user never guesses at partial state.")
 }
 
-@Test func optionalConnectionTerminologyUsesTheFiveAgentCatalog() throws {
+@Test func optionalConnectionTerminologyUsesTheFourAgentCatalog() throws {
     let repository = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()
         .deletingLastPathComponent()
@@ -83,7 +83,7 @@ import LetItBrewCore
     )
 
     #expect(AgentID.allCases.map(\.displayName) == [
-        "Claude Code", "Codex", "Cursor", "OpenCode", "GitHub Copilot CLI",
+        "Claude Code", "Codex", "OpenCode", "GitHub Copilot CLI",
     ])
     #expect(settings.contains("ForEach(model.agentHooks)"),
             "Settings must render every catalog-backed connection row.")
@@ -98,7 +98,7 @@ import LetItBrewCore
     }
 }
 
-@Test func publicReadmeDocumentsTheOptionalFiveAgentCatalog() throws {
+@Test func publicReadmeDocumentsTheOptionalFourAgentCatalog() throws {
     let repository = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()
         .deletingLastPathComponent()
@@ -129,7 +129,7 @@ import LetItBrewCore
     }
 
     for requiredFreshConnectFact in [
-        "all five agent rows are optional and disconnected.",
+        "all four agent rows are optional and disconnected.",
         "choose **Connect** for each local agent you want Let It Brew to follow",
         "no agent configuration is changed before that choice.",
         "migrates only previously owned Claude Code and Codex connections.",
@@ -141,7 +141,6 @@ import LetItBrewCore
         "`~/.claude/settings.json` | Claude Code user settings; only Let It Brew-owned hook entries are changed after Connect.",
         "`~/.codex/hooks.json` | Default Codex hook file when `CODEX_HOME` is unset.",
         "When `CODEX_HOME` is present, Let It Brew uses `<CODEX_HOME>/hooks.json`.",
-        "`~/.cursor/hooks.json` | Cursor's user-scoped hook file; project, team, and enterprise scopes are not touched.",
         "`~/.config/opencode/plugins/letitbrew.js` | Default OpenCode plugin path when `OPENCODE_CONFIG_DIR` is unset.",
         "When `OPENCODE_CONFIG_DIR` is present, Let It Brew uses `<OPENCODE_CONFIG_DIR>/plugins/letitbrew.js`.",
         "`~/.copilot/hooks/letitbrew.json` | Default GitHub Copilot CLI hook file when `COPILOT_HOME` is unset.",
@@ -155,8 +154,8 @@ import LetItBrewCore
                 "Uninstalling must name \(displayName).")
     }
 
-    #expect(normalizedReadme.contains("Yes for local Cursor hooks."))
-    #expect(normalizedReadme.contains("Let It Brew also supports local OpenCode and GitHub Copilot CLI hooks."))
+    #expect(normalizedReadme.contains("Let It Brew supports local OpenCode and GitHub Copilot CLI hooks."))
+    #expect(!readme.localizedCaseInsensitiveContains("cursor"))
 
     for obsoleteClaim in [
         "connects Claude Code and Codex automatically",

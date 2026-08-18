@@ -5,12 +5,12 @@ import Testing
 
 private func launchSnapshot(_ id: String) -> ExactFileSnapshot { try! ExactFileSnapshot(path: "/A/\(id)", exists: false) }
 
-@Test func launchPresentationCoversSelectedAndUnselectedFiveAgentRows() {
+@Test func launchPresentationCoversSelectedAndUnselectedFourAgentRows() {
     let inspections = AgentID.allCases.map { AgentConnectionInspection(agentID: $0.rawValue, state: $0 == .opencode ? .invalid : .healthyOwned, hasRecordedTarget: true, exactTargetSnapshot: launchSnapshot($0.rawValue)) }
     let rows = AgentLaunchOutcomeCoordinator.present(inspections: inspections, selectedAgentIDs: ["claude", "codex"], outcomes: ["codex": .succeeded(changedVendorBytes: true)], codexTrust: .trusted)
     #expect(rows.first(where: { $0.agentID == "claude" })?.state == .connected)
     #expect(rows.first(where: { $0.agentID == "codex" })?.state == .connected)
-    for id in ["cursor", "opencode", "copilot"] {
+    for id in ["opencode", "copilot"] {
         #expect(rows.first(where: { $0.agentID == id })?.disposition == .intentionallyDisconnected)
     }
 }
@@ -31,11 +31,11 @@ private func launchSnapshot(_ id: String) -> ExactFileSnapshot { try! ExactFileS
 
 @Test func selectedRepairAndAbsentRestartButInvalidAndFailuresAreActionable() {
     let agents = AgentID.allCases
-    let inspections = agents.map { AgentConnectionInspection(agentID: $0.rawValue, state: $0 == .opencode ? .invalid : ($0 == .cursor ? .absent : .repairableOwned), hasRecordedTarget: false, exactTargetSnapshot: launchSnapshot($0.rawValue)) }
+    let inspections = agents.map { AgentConnectionInspection(agentID: $0.rawValue, state: $0 == .opencode ? .invalid : ($0 == .copilot ? .absent : .repairableOwned), hasRecordedTarget: false, exactTargetSnapshot: launchSnapshot($0.rawValue)) }
     let outcomes = Dictionary(uniqueKeysWithValues: agents.map { ($0.rawValue, AgentLaunchHelperOutcome.succeeded(changedVendorBytes: true)) })
     let rows = AgentLaunchOutcomeCoordinator.present(inspections: inspections, selectedAgentIDs: Set(agents.map(\.rawValue)), outcomes: outcomes, codexTrust: .trusted)
     #expect(rows.first(where: { $0.agentID == "opencode" })?.state == .actionNeeded)
-    #expect(rows.first(where: { $0.agentID == "cursor" })?.details == ["Restart sessions that were already open."])
+    #expect(rows.first(where: { $0.agentID == "copilot" })?.details == ["Restart sessions that were already open."])
 }
 
 @Test func exactRefusalUsesDescriptorBoundaryAndPreservesForeignReplacementB() {

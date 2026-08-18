@@ -24,6 +24,149 @@ import Testing
     #expect(storage.load(id: id)?.eventObservedAt == 200)
 }
 
+@Test func lateCopilotSessionStartCannotDowngradeWorkingPrompt() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+    let payload = HookPayload(sessionId: "copilot-late-start", cwd: "/work/app")
+    let id = hookUpdaterID("copilot-late-start", agent: .copilot)
+
+    try HookSessionUpdater.apply(
+        event: "UserPromptSubmit", payload: payload, agent: .copilot, agentPID: nil,
+        observedAt: Date(timeIntervalSince1970: 100), storage: storage
+    )
+    try HookSessionUpdater.apply(
+        event: "SessionStart", payload: payload, agent: .copilot, agentPID: nil,
+        observedAt: Date(timeIntervalSince1970: 200), storage: storage
+    )
+
+    let record = try #require(storage.load(id: id))
+    #expect(record.state == .working)
+    #expect(record.lastEvent == "UserPromptSubmit")
+    #expect(record.eventObservedAt == 100)
+}
+
+@Test func lateSessionStartRetainsClaudeAndCodexProductionBehavior() throws {
+    for agent in [AgentID.claude, .codex] {
+        let directory = hookUpdaterTempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = SessionStorage(directory: directory)
+        let sessionID = "late-start-\(agent.rawValue)"
+        let payload = HookPayload(sessionId: sessionID, cwd: "/work/app")
+        let id = hookUpdaterID(sessionID, agent: agent)
+
+        try HookSessionUpdater.apply(
+            event: "UserPromptSubmit", payload: payload, agent: agent, agentPID: nil,
+            observedAt: Date(timeIntervalSince1970: 100), storage: storage
+        )
+        try HookSessionUpdater.apply(
+            event: "SessionStart", payload: payload, agent: agent, agentPID: nil,
+            observedAt: Date(timeIntervalSince1970: 200), storage: storage
+        )
+
+        let record = try #require(storage.load(id: id))
+        #expect(record.state == .idle)
+        #expect(record.lastEvent == "SessionStart")
+        #expect(record.eventObservedAt == 200)
+    }
+}
+
+@Test func permissionRequestPreservesClaudeAndCodexProductionBehavior() throws {
+    for agent in [AgentID.claude, .codex] {
+        let directory = hookUpdaterTempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = SessionStorage(directory: directory)
+        let sessionID = "permission-\(agent.rawValue)"
+        let payload = HookPayload(sessionId: sessionID, cwd: "/work/app")
+        let id = hookUpdaterID(sessionID, agent: agent)
+
+        try HookSessionUpdater.apply(
+            event: "UserPromptSubmit", payload: payload, agent: agent, agentPID: nil,
+            observedAt: Date(timeIntervalSince1970: 100), storage: storage
+        )
+        try HookSessionUpdater.apply(
+            event: "PermissionRequest", payload: payload, agent: agent, agentPID: nil,
+            observedAt: Date(timeIntervalSince1970: 200), storage: storage
+        )
+
+        let record = try #require(storage.load(id: id))
+        #expect(record.state == .working)
+        #expect(record.lastEvent == "UserPromptSubmit")
+        #expect(record.eventObservedAt == 100)
+    }
+}
+
+@Test func copilotPermissionAndQuestionWaitsAreIdle() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+    let payload = HookPayload(sessionId: "copilot-input", cwd: "/work/app")
+    let id = hookUpdaterID("copilot-input", agent: .copilot)
+
+    try HookSessionUpdater.apply(
+        event: "UserPromptSubmit", payload: payload, agent: .copilot, agentPID: nil,
+        observedAt: Date(timeIntervalSince1970: 100), storage: storage
+    )
+    try HookSessionUpdater.apply(
+        event: "PermissionRequest", payload: payload, agent: .copilot, agentPID: nil,
+        observedAt: Date(timeIntervalSince1970: 200), storage: storage
+    )
+    #expect(storage.load(id: id)?.state == .idle)
+
+    try HookSessionUpdater.apply(
+        event: "PostToolUse", payload: payload, agent: .copilot, agentPID: nil,
+        observedAt: Date(timeIntervalSince1970: 300), storage: storage
+    )
+    try HookSessionUpdater.apply(
+        event: "PreToolUse",
+        payload: HookPayload(
+            sessionId: "copilot-input", cwd: "/work/app", toolName: "ask_user"
+        ),
+        agent: .copilot,
+        agentPID: nil,
+        observedAt: Date(timeIntervalSince1970: 400),
+        storage: storage
+    )
+
+    let waiting = try #require(storage.load(id: id))
+    #expect(waiting.state == .idle)
+    #expect(waiting.lastEvent == "PreToolUse")
+
+    try HookSessionUpdater.apply(
+        event: "PostToolUse", payload: payload, agent: .copilot, agentPID: nil,
+        observedAt: Date(timeIntervalSince1970: 500), storage: storage
+    )
+    #expect(storage.load(id: id)?.state == .working)
+}
+
+@Test func openCodeInputRequestAndReplyToggleIdleAndWorking() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+    let payload = HookPayload(sessionId: "opencode-input", cwd: "/work/app")
+    let id = hookUpdaterID("opencode-input", agent: .opencode)
+
+    try HookSessionUpdater.apply(
+        event: "UserPromptSubmit", payload: payload, agent: .opencode, agentPID: nil,
+        observedAt: Date(timeIntervalSince1970: 100), storage: storage
+    )
+    try HookSessionUpdater.apply(
+        event: "UserInputRequested", payload: payload, agent: .opencode, agentPID: nil,
+        observedAt: Date(timeIntervalSince1970: 200), storage: storage
+    )
+    #expect(storage.load(id: id)?.state == .idle)
+
+    try HookSessionUpdater.apply(
+        event: "UserInputResolved", payload: payload, agent: .opencode, agentPID: nil,
+        observedAt: Date(timeIntervalSince1970: 300), storage: storage
+    )
+
+    let resumed = try #require(storage.load(id: id))
+    #expect(resumed.state == .working)
+    #expect(resumed.lastEvent == "UserInputResolved")
+    #expect(resumed.eventObservedAt == 300)
+}
+
 @Test func staleWorkingEventCannotRecreateSessionAfterNewerEndAcrossStorageInstances() throws {
     let directory = hookUpdaterTempDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -373,7 +516,7 @@ import Testing
     let sessions = root.appendingPathComponent("never-created", isDirectory: true)
 
     try HookSessionUpdater.apply(
-        event: "PermissionRequest",
+        event: "SomeFutureEvent",
         payload: HookPayload(sessionId: "no-op", cwd: "/work/app"),
         agent: .codex,
         agentPID: nil,

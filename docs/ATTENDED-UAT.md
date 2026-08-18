@@ -84,7 +84,7 @@ the app does not reconnect a Codex integration that the user explicitly
 disconnected, does not recheck Claude as a side effect, and does not create a
 timer or repeated refresh while the app remains active.
 
-## Five-agent hook lifecycle matrix — not run by automation
+## Four-agent hook lifecycle matrix — not run by automation
 
 This is an attended release gate, not evidence collected by this repository.
 Do **not** run it against an unbacked-up local configuration, and do not record
@@ -157,29 +157,20 @@ lifecycle events and two simultaneous distinct `agent_id` values; each remains
 Working until its own `SubagentStop`. Where the documented permission lifecycle
 is observed, it preserves the existing Working state.
 
-### Cursor desktop Agent and Cursor CLI
-
-Record installed versions separately and exercise all six ordinary mapped events
-on each surface. Exercise `subagentStart`/`subagentStop`, including an async
-child that survives parent `stop`. Permission-wait UAT is **N/A — no documented
-supported hook**. Do not claim parity for a surface or version that was not
-exercised.
-
 ### OpenCode
 
-Test only a stable 1.x local CLI/app runtime. Record whether
-`permission.updated`/`permission.replied` (v1.18.3) and/or the current
-`permission.asked` were observed; these permission observations are ignored for
-the two-state decision. Send duplicate `session.status: idle` and `session.idle`
-edges and confirm both remain idempotent.
+Test only a stable 1.x local CLI/app runtime. Confirm permission requests and
+questions become Idle, while permission replies, answered questions, and
+rejected questions return to Working. Send duplicate `session.status: idle`
+and `session.idle` edges and confirm both remain idempotent.
 
 ### GitHub Copilot CLI
 
-Confirm selected hooks remain silent and exit zero. Exercise `ErrorOccurred`
-with the tested CLI version: `recoverable: true` must preserve the prior state,
-while `recoverable: false` must become Idle. Permission-wait UAT is **N/A for
-v0.6** because Let It Brew deliberately does not install Copilot's documented
-decision-capable `PermissionRequest` hook.
+Confirm selected hooks remain silent and exit zero. Exercise permission prompts
+and question tools and confirm they become Idle; a later `PostToolUse` for the
+completed question returns to Working. Exercise `ErrorOccurred` with the tested
+CLI version: `recoverable: true` must preserve the prior state, while
+`recoverable: false` must become Idle.
 
 At the end of each pass, complete the exact-target recovery and verification
 above for the registry and every selected configuration target. This matrix never
@@ -204,7 +195,7 @@ Then record:
 
 - the candidate commit and SHA-256 of the candidate app executable;
 - the Dev bundle ID and the app's signing identity;
-- whether each Claude, Codex, Cursor, OpenCode, and Copilot user target exists;
+- whether each Claude, Codex, OpenCode, and Copilot user target exists;
   every resolved target path; a byte-for-byte backup of every existing file; and
   each file's pre-test SHA-256; and
 - affirmative absence of the Dev daemon registration and process.

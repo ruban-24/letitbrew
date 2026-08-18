@@ -39,7 +39,6 @@ final class RecordingUninstallEnvironment: UninstallEnvironment, @unchecked Send
     func unregisterDaemon() async -> Result<Void, UninstallFailure> { await perform(.unregisterDaemon) }
     func removeClaudeHooks() async -> Result<Void, UninstallFailure> { await perform(.removeClaudeHooks) }
     func removeCodexHooks() async -> Result<Void, UninstallFailure> { await perform(.removeCodexHooks) }
-    func removeCursorHooks() async -> Result<Void, UninstallFailure> { await perform(.removeCursorHooks) }
     func removeOpenCodeHooks() async -> Result<Void, UninstallFailure> { await perform(.removeOpenCodeHooks) }
     func removeCopilotHooks() async -> Result<Void, UninstallFailure> { await perform(.removeCopilotHooks) }
     func disableLaunchAtLogin() async -> Result<Void, UninstallFailure> { await perform(.disableLaunchAtLogin) }
@@ -90,7 +89,7 @@ func makeFailure(_ step: UninstallStep) -> UninstallFailure {
 
     #expect(coordinator.state == .blocked(makeFailure(.reconcileDaemon), offersDiagnostic: false))
     let removalSteps: Set<UninstallStep> = [
-        .unregisterDaemon, .removeClaudeHooks, .removeCodexHooks, .removeCursorHooks,
+        .unregisterDaemon, .removeClaudeHooks, .removeCodexHooks,
         .removeOpenCodeHooks, .removeCopilotHooks,
         .disableLaunchAtLogin, .deleteUserData, .clearPreferences, .trashBundle,
     ]
@@ -136,7 +135,6 @@ func makeFailure(_ step: UninstallStep) -> UninstallFailure {
         .unregisterDaemon,
         .removeClaudeHooks,
         .removeCodexHooks,
-        .removeCursorHooks,
         .removeOpenCodeHooks,
         .removeCopilotHooks,
         .disableLaunchAtLogin,
@@ -161,7 +159,6 @@ func makeFailure(_ step: UninstallStep) -> UninstallFailure {
         .reconcileDaemon,
         .removeClaudeHooks,
         .removeCodexHooks,
-        .removeCursorHooks,
         .removeOpenCodeHooks,
         .removeCopilotHooks,
         .disableLaunchAtLogin,
@@ -237,7 +234,6 @@ func makeFailure(_ step: UninstallStep) -> UninstallFailure {
         .unregisterDaemon,
         .removeClaudeHooks,
         .removeCodexHooks,
-        .removeCursorHooks,
         .removeOpenCodeHooks,
         .removeCopilotHooks,
         .disableLaunchAtLogin,

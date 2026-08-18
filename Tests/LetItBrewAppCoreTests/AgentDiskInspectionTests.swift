@@ -11,7 +11,6 @@ private func generatedBytes(_ agent: AgentID) -> Data {
     switch agent {
     case .claude: return try! ClaudeHooks.install(into: nil, cliPath: "/letitbrew")
     case .codex: return try! CodexHooks.install(into: nil, cliPath: "/letitbrew")
-    case .cursor: return try! CursorHooks.install(into: nil, cliPath: "/letitbrew")
     case .opencode: return try! OpenCodePlugin.install(into: nil, cliPath: "/letitbrew")
     case .copilot: return try! CopilotHooks.install(into: nil, cliPath: "/letitbrew")
     }
@@ -49,7 +48,7 @@ func diskInspectionClassifiesRepairableOwnedBytesForEveryAdapter(agent: AgentID)
     #expect(result.state == .repairableOwned)
 }
 
-@Test(arguments: [AgentID.claude, .codex, .cursor, .copilot])
+@Test(arguments: [AgentID.claude, .codex, .copilot])
 func diskInspectionRejectsMalformedJSONForEveryJSONAdapter(agent: AgentID) {
     let target = URL(fileURLWithPath: "/invalid/\(agent.rawValue)")
     let result = AgentDiskInspection.inspect(agent: agent, registry: .valid(nil), defaultTarget: target, helperPath: "/letitbrew") { _, _ in

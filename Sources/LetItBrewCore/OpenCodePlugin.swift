@@ -39,9 +39,9 @@ public enum OpenCodePlugin {
 
     /// Generates the dependency-free ESM plugin. The helper path is encoded as
     /// a JSON string, which is also a valid JavaScript string literal. Tagged
-    /// OpenCode v1.18.3 defines `permission.updated` and `permission.replied`;
-    /// `permission.asked` is retained as forward compatibility with current
-    /// plugin documentation, without claiming it was a v1.18.3 event.
+    /// OpenCode v1 exposes permission and question request/reply events. A
+    /// request becomes Idle; every reply resumes Working because control has
+    /// returned to the agent, regardless of the person's answer.
     private static func generatedPlugin(cliPath: String) throws -> Data {
         guard cliPath.hasPrefix("/") else { throw RelativeCLIPath(cliPath) }
         let encodedPath = try JSONEncoder().encode(cliPath)
@@ -93,8 +93,25 @@ public enum OpenCodePlugin {
               if (
                 event?.type === "permission.updated" ||
                 event?.type === "permission.asked" ||
-                event?.type === "permission.replied"
-              ) return
+                event?.type === "permission.v2.asked"
+              ) {
+                await emit("PermissionRequest", sessionID, cwd)
+              }
+              if (
+                event?.type === "permission.replied" ||
+                event?.type === "permission.v2.replied"
+              ) {
+                await emit("UserInputResolved", sessionID, cwd)
+              }
+              if (event?.type === "question.asked") {
+                await emit("UserInputRequested", sessionID, cwd)
+              }
+              if (
+                event?.type === "question.replied" ||
+                event?.type === "question.rejected"
+              ) {
+                await emit("UserInputResolved", sessionID, cwd)
+              }
             } catch {}
           },
         })

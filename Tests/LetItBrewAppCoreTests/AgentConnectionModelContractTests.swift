@@ -21,7 +21,7 @@ private func methodBody(_ source: String, named name: String) -> String {
     return ""
 }
 
-@Test func modelUsesExplicitFiveAgentConnectionOrchestration() throws {
+@Test func modelUsesExplicitCatalogConnectionOrchestration() throws {
     let source = try sourceFile("Sources/LetItBrewApp/LetItBrewAppModel.swift")
     #expect(source.contains("connectedAgentIDsV2"))
     #expect(source.contains("AgentID.allCases.map"))

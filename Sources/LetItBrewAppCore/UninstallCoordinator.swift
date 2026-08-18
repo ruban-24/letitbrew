@@ -8,7 +8,6 @@ public enum UninstallStep: String, CaseIterable, Equatable, Sendable {
     case unregisterDaemon
     case removeClaudeHooks
     case removeCodexHooks
-    case removeCursorHooks
     case removeOpenCodeHooks
     case removeCopilotHooks
     case disableLaunchAtLogin
@@ -24,7 +23,7 @@ public enum UninstallStep: String, CaseIterable, Equatable, Sendable {
         switch self {
         case .releaseHolds, .reconcileDaemon, .unregisterDaemon:
             true
-        case .removeClaudeHooks, .removeCodexHooks, .removeCursorHooks,
+        case .removeClaudeHooks, .removeCodexHooks,
              .removeOpenCodeHooks, .removeCopilotHooks, .disableLaunchAtLogin,
              .deleteUserData, .clearPreferences, .trashBundle:
             false
@@ -69,7 +68,6 @@ public protocol UninstallEnvironment: AnyObject, Sendable {
     func unregisterDaemon() async -> Result<Void, UninstallFailure>
     func removeClaudeHooks() async -> Result<Void, UninstallFailure>
     func removeCodexHooks() async -> Result<Void, UninstallFailure>
-    func removeCursorHooks() async -> Result<Void, UninstallFailure>
     func removeOpenCodeHooks() async -> Result<Void, UninstallFailure>
     func removeCopilotHooks() async -> Result<Void, UninstallFailure>
     func disableLaunchAtLogin() async -> Result<Void, UninstallFailure>
@@ -149,7 +147,6 @@ public final class UninstallCoordinator {
         let bestEffort: [() async -> Result<Void, UninstallFailure>] = [
             environment.removeClaudeHooks,
             environment.removeCodexHooks,
-            environment.removeCursorHooks,
             environment.removeOpenCodeHooks,
             environment.removeCopilotHooks,
             environment.disableLaunchAtLogin,

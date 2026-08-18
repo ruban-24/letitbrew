@@ -68,7 +68,7 @@ import Testing
     let absentConfigured = try ExactFileSnapshot(path: configured.path, exists: false)
     for (agent, registry, target, expectedRecorded, snapshot) in [
         (AgentID.claude, AgentDiskRegistry.valid(try .init(targets: [.claude: recorded.path])), recorded, true, absentRecorded),
-        (AgentID.cursor, AgentDiskRegistry.valid(nil), configured, false, absentConfigured),
+        (AgentID.copilot, AgentDiskRegistry.valid(nil), configured, false, absentConfigured),
     ] {
         var registryReads = 0
         var targetReads: [(URL, Bool, AgentID)] = []

@@ -95,7 +95,7 @@ import Testing
 }
 
 @Test func hundredConcurrentSessionsRoundRobinEverySupportedAgentAndHoldTheSystem() async throws {
-    let directory = try pressureTempDirectory(label: "five-agent-hundred")
+    let directory = try pressureTempDirectory(label: "four-agent-hundred")
     defer { try? FileManager.default.removeItem(at: directory) }
 
     let records = try await writeConcurrentSessions(
@@ -106,7 +106,7 @@ import Testing
 
     #expect(records.count == 100)
     #expect(Set(records.map(\.tool)) == Set(AgentID.allCases.map(\.rawValue)))
-    #expect(Dictionary(grouping: records, by: \.tool).values.allSatisfy { $0.count == 20 })
+    #expect(Dictionary(grouping: records, by: \.tool).values.allSatisfy { $0.count == 25 })
     let decision = decide(
         sessions: records,
         now: Date(timeIntervalSince1970: 2_000),
@@ -280,7 +280,7 @@ import Testing
     #expect(storage.loadAll().allSatisfy { $0.state == .idle })
 }
 
-@Test func disconnectedFifthAgentStaysStoredButCannotHoldTheSystem() async throws {
+@Test func disconnectedCatalogAgentStaysStoredButCannotHoldTheSystem() async throws {
     let directory = try pressureTempDirectory(label: "visibility")
     defer { try? FileManager.default.removeItem(at: directory) }
     let storage = SessionStorage(directory: directory)
@@ -321,7 +321,7 @@ import Testing
 }
 
 @Test func childSessionsRemainIndependentOfSiblingAndParentStops() throws {
-    for (agentIndex, agent) in [AgentID.claude, .codex, .cursor].enumerated() {
+    for (agentIndex, agent) in [AgentID.claude, .codex].enumerated() {
         let directory = try pressureTempDirectory(label: "children-\(agent.rawValue)")
         defer { try? FileManager.default.removeItem(at: directory) }
         let storage = SessionStorage(directory: directory)
@@ -330,9 +330,11 @@ import Testing
         let childB = HookRecordID(agent: agent, parentID: parent, childID: "child-b")!.encoded
         let parentID = HookRecordID(agent: agent, parentID: parent)!.encoded
         for child in ["child-a", "child-b"] {
-            let payload = agent == .cursor
-                ? HookPayload(sessionId: parent, parentConversationId: parent, subagentId: child, cwd: "/private/tmp/pressure/children")
-                : HookPayload(sessionId: parent, agentId: child, cwd: "/private/tmp/pressure/children")
+            let payload = HookPayload(
+                sessionId: parent,
+                agentId: child,
+                cwd: "/private/tmp/pressure/children"
+            )
             try HookSessionUpdater.apply(
                 event: "SubagentStart",
                 payload: payload,
@@ -343,9 +345,11 @@ import Testing
             )
         }
 
-        let stoppedChild = agent == .cursor
-            ? HookPayload(sessionId: parent, parentConversationId: parent, subagentId: "child-a", cwd: "/private/tmp/pressure/children")
-            : HookPayload(sessionId: parent, agentId: "child-a", cwd: "/private/tmp/pressure/children")
+        let stoppedChild = HookPayload(
+            sessionId: parent,
+            agentId: "child-a",
+            cwd: "/private/tmp/pressure/children"
+        )
         try HookSessionUpdater.apply(
             event: "SubagentStop",
             payload: stoppedChild,

@@ -144,7 +144,7 @@ private func visibilitySession(
 }
 
 @Test func everySupportedAgentReconnectsAndUnknownNeedsExplicitSelection() {
-    let all = ["claude", "codex", "cursor", "opencode", "copilot"]
+    let all = ["claude", "codex", "opencode", "copilot"]
     let raw = all.map { visibilitySession(id: "\($0)-work", tool: $0) } + [visibilitySession(id: "unknown", tool: "custom")]
     for id in all {
         #expect(AgentSessionVisibilityPolicy.visibleSessions(from: raw, connectedAgentIDs: [id]).map(\.tool) == [id])

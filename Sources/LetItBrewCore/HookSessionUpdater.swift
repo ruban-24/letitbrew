@@ -11,6 +11,7 @@ public enum HookSessionUpdater {
     ) throws {
         guard let sessionID = payload.recordID(agent: agent, event: event) else { return }
         guard let effect = HookReducer.reduce(
+            agent: agent,
             event: event,
             toolName: payload.toolName,
             notificationType: payload.notificationType,
@@ -25,6 +26,15 @@ public enum HookSessionUpdater {
         ) { previous in
             if let previousObservedAt = previous?.eventObservedAt,
                previousObservedAt > observedAt.timeIntervalSince1970 {
+                return .keep
+            }
+
+            // Copilot may run its independent hook commands out of lifecycle
+            // order. A delayed SessionStart is still a creation edge, not
+            // evidence that an already-working prompt became idle.
+            if agent == .copilot,
+               event == "SessionStart",
+               previous?.state == .working {
                 return .keep
             }
 

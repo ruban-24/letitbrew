@@ -100,7 +100,7 @@ event may be missed; it does not bypass the app's battery, thermal, pause, power
 or daemon safety gates and is not evidence that the hold changed.
 
 The deterministic automated pressure harness qualifies 1, 10, 15, 50, and 100
-round-robin sessions across all five agents. It covers independent record
+round-robin sessions across all four agents. It covers independent record
 identity, old-event/new-event ordering, selected-agent visibility, child-session
 isolation, aggregate hold release only after the final Working session becomes
 Idle, corrupt-record isolation, grouping, and presentation.
@@ -183,15 +183,15 @@ the closed-lid preference reads off.
 
 ## Hook installation
 
-The five adapters are deliberately narrow and user-scoped: Claude Code uses
+The four adapters are deliberately narrow and user-scoped: Claude Code uses
 `~/.claude/settings.json`; Codex uses `~/.codex/hooks.json` or
-`$CODEX_HOME/hooks.json`; Cursor uses `~/.cursor/hooks.json`; OpenCode writes
-its one global plugin at `~/.config/opencode/plugins/letitbrew.js` or
+`$CODEX_HOME/hooks.json`; OpenCode writes its one global plugin at
+`~/.config/opencode/plugins/letitbrew.js` or
 `$OPENCODE_CONFIG_DIR/plugins/letitbrew.js`; and GitHub Copilot CLI uses
 `~/.copilot/hooks/letitbrew.json` or `$COPILOT_HOME/hooks/letitbrew.json`.
-The four JSON markers are adapter-specific and frozen: Claude uses
-`__letitbrew_hook`, Codex `__letitbrew_codex_hook`, Cursor
-`__letitbrew_cursor_hook`, and Copilot `__letitbrew_copilot_hook`. OpenCode owns
+The three JSON markers are adapter-specific and frozen: Claude uses
+`__letitbrew_hook`, Codex `__letitbrew_codex_hook`, and Copilot
+`__letitbrew_copilot_hook`. OpenCode owns
 only its named plugin. The versioned registry at
 `~/Library/Application Support/LetItBrew/agent-hook-targets.json` records the
 exact selected target, so later environment changes cannot redirect an owned
@@ -209,9 +209,8 @@ Three constraints shape that code:
   preserved, although JSON adapters may reserialize formatting.
 
 Claude requires workspace trust before its hooks run. Codex additionally
-requires an explicit `/hooks` trust step; Let It Brew cannot approve it. Cursor
-maps desktop Agent and local CLI events through its user hooks. OpenCode is
-limited to its stable 1.x local runtime and preserves unrelated plugins.
+requires an explicit `/hooks` trust step; Let It Brew cannot approve it.
+OpenCode is limited to its stable 1.x local runtime and preserves unrelated plugins.
 Copilot's observational `ErrorOccurred` hook maps an explicit
 `recoverable: false` payload to Idle. Recoverable or malformed error payloads
 preserve the prior state because the same turn may continue. Let It Brew does

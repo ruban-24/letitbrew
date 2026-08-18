@@ -7,7 +7,7 @@
 **Your Mac sleeps. Your agent dies. Let It Brew fixes that.**
 
 A macOS menu-bar app that holds your Mac awake while a local Claude Code,
-Codex, Cursor, OpenCode, or GitHub Copilot CLI session is actually working —
+Codex, OpenCode, or GitHub Copilot CLI session is actually working —
 and lets it sleep the moment the work stops.
 
 [![Download](https://img.shields.io/github/v/release/ruban-24/letitbrew?label=Download%20DMG&color=E8912D)](https://github.com/ruban-24/letitbrew/releases/latest)
@@ -43,12 +43,12 @@ Nothing to remember to switch off.
 
 | | **Let It Brew** | Caffeine | Amphetamine |
 |---|---|---|---|
-| **Best for** | Local Claude Code, Codex, Cursor, OpenCode, and GitHub Copilot CLI work that should keep your Mac awake automatically | A simple manual keep-awake switch | Timers, schedules, and triggers |
-| **Understands active agent work** | ✅ Yes — five supported local agents | ❌ No | ❌ No |
+| **Best for** | Local Claude Code, Codex, OpenCode, and GitHub Copilot CLI work that should keep your Mac awake automatically | A simple manual keep-awake switch | Timers, schedules, and triggers |
+| **Understands active agent work** | ✅ Yes — four supported local agents | ❌ No | ❌ No |
 | **Releases when agent work stops** | ✅ Yes — automatically | ❌ No — manual switch or timer | ❌ No — ends with its session or trigger |
 | **Closed lid — with charger** | ✅ Yes | ❌ No | ✅ Yes |
 | **Closed lid — without charger** | ✅ Yes | ❌ No | ❌ No |
-| **Agent-specific integration** | ✅ Claude Code, Codex, Cursor, OpenCode, and GitHub Copilot CLI | ❌ None | ❌ None |
+| **Agent-specific integration** | ✅ Claude Code, Codex, OpenCode, and GitHub Copilot CLI | ❌ None | ❌ None |
 
 Full breakdown at
 [letitbrew.app/compare](https://letitbrew.app/compare/let-it-brew-vs-caffeine-vs-amphetamine).
@@ -87,7 +87,7 @@ its privileged closed-lid service from any other location.
 
 Requires macOS 14 or later. Universal binary, Apple silicon and Intel.
 
-On first launch, all five agent rows are optional and disconnected. Open
+On first launch, all four agent rows are optional and disconnected. Open
 **Settings → Agents** and choose **Connect** for each local agent you want Let
 It Brew to follow; no agent configuration is changed before that choice. An
 upgrade from a pre-v0.6 release carries forward only Let It Brew's previously
@@ -102,7 +102,7 @@ step — see [Agent connections](#agent-connections).
 | **Your Mac can sleep** | No observed local agent is Working; Idle sessions are hidden. |
 | **Let It Brew is paused** | Sessions are still observed, but Let It Brew owns no hold. |
 
-Each session row names Claude Code, Codex, Cursor, OpenCode, or GitHub Copilot
+Each session row names Claude Code, Codex, OpenCode, or GitHub Copilot
 CLI, then shows the project folder, how long that session has spent actively
 Working, and its current state. **Working** rows are visible and may keep the
 Mac awake, subject to pause, battery, thermal, and other safety gates. **Idle**
@@ -128,13 +128,12 @@ state. They are not separate permission, approval, or input session states.
 
 ## Supported agents
 
-Let It Brew supports these five local lifecycle-hook integrations:
+Let It Brew supports these four local lifecycle-hook integrations:
 
 | Agent | Local surfaces | Connection |
 |---|---|---|
 | Claude Code | CLI and local desktop code sessions | Lifecycle hooks after workspace trust |
 | Codex | CLI and local app sessions | Lifecycle hooks plus Codex trust approval |
-| Cursor | Local desktop Agent and local CLI | Cursor user hooks |
 | OpenCode | Stable 1.x local CLI/app runtime | Global OpenCode plugin |
 | GitHub Copilot CLI | Local CLI | Copilot user hooks |
 
@@ -151,8 +150,8 @@ detection, transcript parsing, or fallback session discovery. If a terminal
 event is missing, a record can remain **Working** until the existing 12-hour
 stale-record backstop; **Stop Tracking** releases that session immediately.
 
-Unsupported surfaces include Cursor Tab and Cloud, the Copilot cloud agent,
-remotely hosted OpenCode runtimes, remote or SSH sessions, unrelated editor,
+Unsupported surfaces include the Copilot cloud agent, remotely hosted OpenCode
+runtimes, remote or SSH sessions, unrelated editor,
 project, team, and enterprise hook scopes. Let It Brew cannot keep a Mac awake
 for work it cannot see.
 
@@ -181,7 +180,7 @@ sounds, or badges.
 ## Settings
 
 - **General** — Launch at Login and the closed-lid option.
-- **Agents** — optional Claude Code, Codex, Cursor, OpenCode, and GitHub
+- **Agents** — optional Claude Code, Codex, OpenCode, and GitHub
   Copilot CLI rows with connection state, **Check Again**, **Connect**, and
   per-agent **Disconnect** in that row's overflow menu.
 - **Safety** — battery, thermal, and closed-lid explanations and controls.
@@ -198,7 +197,7 @@ upgrades preserve whatever you already chose.
 
 Agent connections are explicit. On a fresh install, choose **Connect** in
 **Settings → Agents** for the local agents you want Let It Brew to follow:
-Claude Code, Codex, Cursor, OpenCode, and GitHub Copilot CLI. Let It Brew then
+Claude Code, Codex, OpenCode, and GitHub Copilot CLI. Let It Brew then
 adds only its own hook entries (or its one owned OpenCode plugin), repairs only
 its own drift, and preserves unrelated configuration. Malformed, unreadable,
 foreign, or unowned configuration is left alone and reported as **Action
@@ -259,7 +258,6 @@ confirmation, downloads the release DMG and checksum.
 | `~/Library/Application Support/LetItBrew/agent-hook-targets.json` | Versioned registry of the exact user-scoped targets Let It Brew owns; it prevents a later environment change from redirecting a selected connection. |
 | `~/.claude/settings.json` | Claude Code user settings; only Let It Brew-owned hook entries are changed after Connect. |
 | `~/.codex/hooks.json` | Default Codex hook file when `CODEX_HOME` is unset. When `CODEX_HOME` is present, Let It Brew uses `<CODEX_HOME>/hooks.json`. |
-| `~/.cursor/hooks.json` | Cursor's user-scoped hook file; project, team, and enterprise scopes are not touched. |
 | `~/.config/opencode/plugins/letitbrew.js` | Default OpenCode plugin path when `OPENCODE_CONFIG_DIR` is unset. When `OPENCODE_CONFIG_DIR` is present, Let It Brew uses `<OPENCODE_CONFIG_DIR>/plugins/letitbrew.js`. Its value selects one explicit config directory; other plugin locations are not searched or changed. |
 | `~/.copilot/hooks/letitbrew.json` | Default GitHub Copilot CLI hook file when `COPILOT_HOME` is unset. When `COPILOT_HOME` is present, Let It Brew uses `<COPILOT_HOME>/hooks/letitbrew.json`. Project, team, and enterprise scopes are not touched. |
 
@@ -267,7 +265,7 @@ confirmation, downloads the release DMG and checksum.
 
 Open **Settings → About** and choose **Uninstall Let It Brew…**.
 
-Let It Brew disconnects Claude Code, Codex, Cursor, OpenCode, and GitHub
+Let It Brew disconnects Claude Code, Codex, OpenCode, and GitHub
 Copilot CLI, turns off Launch at Login, stops and unregisters its privileged
 background service, deletes its settings and session records, and moves itself
 to the Trash. It restores the exact `SleepDisabled` value that existed before
@@ -361,12 +359,11 @@ on GitHub Releases is the only channel.
 
 ### Scope
 
-**Which agents does it support?** Claude Code, Codex, Cursor, OpenCode, and
+**Which agents does it support?** Claude Code, Codex, OpenCode, and
 GitHub Copilot CLI. See [Supported agents](#supported-agents).
 
-**Does it work with Cursor or other editor-embedded agents?** Yes for local
-Cursor hooks. Let It Brew also supports local OpenCode and GitHub Copilot CLI
-hooks. It does not observe remote, cloud, SSH, or unrelated hook scopes.
+Let It Brew supports local OpenCode and GitHub Copilot CLI hooks. It does not
+observe remote, cloud, SSH, or unrelated hook scopes.
 
 **What do I need to run it?** macOS 14 or later, on Apple silicon or Intel —
 Let It Brew ships as a universal binary.
@@ -399,7 +396,7 @@ Release history and known limitations live in
 [SECURITY.md](SECURITY.md).
 
 Let It Brew is an independent project, not affiliated with or endorsed by the
-owners of the supported agents or Apple. Claude, Claude Code, Codex, Cursor,
+owners of the supported agents or Apple. Claude, Claude Code, Codex,
 OpenCode, GitHub Copilot CLI, and macOS are trademarks of their respective
 owners.
 

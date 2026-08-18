@@ -48,7 +48,7 @@ extension LetItBrewAppModel: UninstallEnvironment {
         case .failed(let detail):
             return failure(
                 .reconcileDaemon,
-                "Let It Brew is still holding this Mac awake and could not safely hand back the sleep setting. Nothing was removed.",
+                "Let It Brew could not safely confirm that its background service released the Mac's sleep setting. Restart your Mac, reopen Let It Brew, and try uninstalling again. Nothing was removed.",
                 detail.message
             )
         }
@@ -101,10 +101,6 @@ extension LetItBrewAppModel: UninstallEnvironment {
             agentName: "Codex",
             step: .removeCodexHooks
         )
-    }
-
-    func removeCursorHooks() async -> Result<Void, UninstallFailure> {
-        await removeHooks(agentID: "cursor", agentName: "Cursor", step: .removeCursorHooks)
     }
 
     func removeOpenCodeHooks() async -> Result<Void, UninstallFailure> {

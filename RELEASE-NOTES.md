@@ -16,7 +16,7 @@ against the SHA-256 published with the release.
 
 New:
 
-- Claude Code, Codex, Cursor, OpenCode, and GitHub Copilot CLI use owned,
+- Claude Code, Codex, OpenCode, and GitHub Copilot CLI use owned,
   hook-only lifecycle integrations.
 - Agent connections are explicit: choose **Connect** in Settings to install an
   owned hook integration, and **Disconnect** to remove it.

@@ -12,7 +12,7 @@ it is still present**. Deleting the app first strands a registered service with
 no owner, and your Mac may keep a modified sleep setting.
 
 1. In **Settings → Agents**, use each connected agent's `…` menu to
-   **Disconnect**. Do this for Claude Code, Codex, Cursor, OpenCode, and GitHub
+   **Disconnect**. Do this for Claude Code, Codex, OpenCode, and GitHub
    Copilot CLI when connected. Disconnect removes only Let It Brew-owned JSON
    entries, or only the owned `letitbrew.js` OpenCode plugin; it does not remove
    any foreign hook entry, plugin, project, team, or enterprise configuration.

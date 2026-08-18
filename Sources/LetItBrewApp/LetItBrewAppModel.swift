@@ -1148,7 +1148,6 @@ final class LetItBrewAppModel: ObservableObject {
         switch agent {
         case .claude: ClaudeHooks.settingsURL(home: home)
         case .codex: CodexHooks.hooksURL(home: home, environment: environment)
-        case .cursor: CursorHooks.settingsURL(home: home)
         case .opencode: OpenCodePlugin.pluginURL(home: home, environment: environment)
         case .copilot: CopilotHooks.hooksURL(home: home, environment: environment)
         }
@@ -1221,7 +1220,6 @@ final class LetItBrewAppModel: ObservableObject {
         switch agent {
         case .claude: configured = ClaudeHooks.settingsURL(home: home)
         case .codex: configured = CodexHooks.hooksURL(home: home, environment: environment)
-        case .cursor: configured = CursorHooks.settingsURL(home: home)
         case .opencode: configured = OpenCodePlugin.pluginURL(home: home, environment: environment)
         case .copilot: configured = CopilotHooks.hooksURL(home: home, environment: environment)
         }
@@ -1239,23 +1237,29 @@ final class LetItBrewAppModel: ObservableObject {
     ) -> ExactDiskObservation {
         do {
             let capture = try ExactFileCapture.capture(at: target)
-            let report: HookInstallReport
-            switch agent {
-            case .claude: _ = try ClaudeHooks.remove(from: capture.data); report = ClaudeHooks.report(for: capture.data, cliPath: cliPath)
-            case .codex: _ = try CodexHooks.remove(from: capture.data); report = CodexHooks.report(for: capture.data, cliPath: cliPath)
-            case .cursor: _ = try CursorHooks.remove(from: capture.data); report = CursorHooks.report(for: capture.data, cliPath: cliPath)
-            case .opencode: _ = try OpenCodePlugin.remove(from: capture.data); report = OpenCodePlugin.report(for: capture.data, cliPath: cliPath)
-            case .copilot: _ = try CopilotHooks.remove(from: capture.data); report = CopilotHooks.report(for: capture.data, cliPath: cliPath)
+            let inspected = AgentExactDiskInspection.inspect(
+                agent: agent,
+                snapshot: capture.snapshot,
+                data: capture.data,
+                helperPath: cliPath
+            )
+            let disk: DiskHookInspection = switch inspected.inspection {
+            case .absent:
+                .absent
+            case .healthyOwned:
+                .healthy
+            case .repairableOwned:
+                .needsConnection(details: inspected.report.map(hookReportDetails) ?? [])
+            case .invalid:
+                .invalid(details: AgentConfigRecoveryGuidance.details(
+                    agentName: agent.displayName,
+                    path: target.path
+                ))
             }
-            let disk: DiskHookInspection = !capture.snapshot.exists || report.isAbsent
-                ? .absent : report.isHealthy ? .healthy : .needsConnection(details: hookReportDetails(report))
-            let inspection: AgentExactPreparation.Inspection = switch disk {
-            case .absent: .absent
-            case .healthy: .healthyOwned
-            case .needsConnection: .repairableOwned
-            case .invalid: .invalid
-            }
-            return ExactDiskObservation(core: .init(snapshot: capture.snapshot, inspection: inspection), disk: disk)
+            return ExactDiskObservation(
+                core: .init(snapshot: inspected.snapshot, inspection: inspected.inspection),
+                disk: disk
+            )
         } catch {
             let snapshot = try! ExactFileSnapshot(path: target.standardizedFileURL.path, exists: false)
             let details = AgentConfigRecoveryGuidance.details(agentName: agent.displayName, path: target.path)
@@ -1562,7 +1566,7 @@ final class LetItBrewAppModel: ObservableObject {
         // The remaining integrations share the exact helper protocol. They
         // deliberately do not probe whether a vendor executable is installed:
         // hook configuration is local and independent of that discovery.
-        for agent in [AgentID.cursor, .opencode, .copilot] where agentIDs.contains(agent.rawValue) {
+        for agent in [AgentID.opencode, .copilot] where agentIDs.contains(agent.rawValue) {
             if disconnected.contains(agent.rawValue) {
                 health.append(AgentHookHealth(id: agent.rawValue, name: agent.displayName, state: .actionNeeded, details: ["Disconnected. Choose Connect to use this agent with Let It Brew."], disposition: .intentionallyDisconnected))
                 continue

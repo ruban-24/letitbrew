@@ -83,15 +83,15 @@ import Testing
     ))?.title == "Finish closed-lid setup")
 }
 
-@Test func sessionRowsAndRepositorySummaryUseAllFiveCatalogNames() throws {
+@Test func sessionRowsAndRepositorySummaryUseAllFourCatalogNames() throws {
     let now = Date(timeIntervalSince1970: 10_000)
-    let ids = ["claude", "codex", "cursor", "opencode", "copilot"]
+    let ids = ["claude", "codex", "opencode", "copilot"]
     let rows = MenuSessionPresentationPolicy.rows(from: ids.enumerated().map { index, id in
         input(id: id, tool: id, repositoryPath: "/work/all", updatedAt: now.addingTimeInterval(TimeInterval(-index)))
     }, now: now)
-    #expect(rows.map(\.toolName) == ["Claude Code", "Codex", "Cursor", "OpenCode", "GitHub Copilot CLI"])
+    #expect(rows.map(\.toolName) == ["Claude Code", "Codex", "OpenCode", "GitHub Copilot CLI"])
     let summary = try #require(MenuRepositoryPresentationPolicy.groups(from: rows).first?.summaryText)
-    #expect(summary == "1 Claude Code · 1 Codex · 1 Cursor · 1 OpenCode · 1 GitHub Copilot CLI")
+    #expect(summary == "1 Claude Code · 1 Codex · 1 OpenCode · 1 GitHub Copilot CLI")
 }
 
 @Test func sessionRowsKeepOnlyWorkingInputs() {

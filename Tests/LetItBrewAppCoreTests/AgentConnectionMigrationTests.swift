@@ -19,18 +19,18 @@ private func migrationSnapshot() -> ExactFileSnapshot {
 
 @Test func migrationFiltersUnknownAuthoritativeValuesWithoutLegacyFallback() {
     let result = AgentConnectionMigration.migrate(
-        persisted: .values(["cursor", "unknown"]), legacyDisconnected: [],
+        persisted: .values(["opencode", "unknown"]), legacyDisconnected: [],
         inspections: [AgentConnectionInspection(agentID: "claude", state: .healthyOwned, hasRecordedTarget: false, exactTargetSnapshot: migrationSnapshot())],
         legacyMigratableAgentIDs: ["claude", "codex"]
     )
     #expect(!result.consultedLegacy)
-    #expect(result.decision.selectedAgentIDs == ["cursor"])
+    #expect(result.decision.selectedAgentIDs == ["opencode"])
 }
 
 @Test(arguments: [
     AgentPersistedSelection.missing,
     .values([]),
-    .values(["cursor"]),
+    .values(["opencode"]),
     .values(["unknown"]),
     .malformed,
 ])

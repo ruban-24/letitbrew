@@ -14,7 +14,7 @@ case "install":
         exit(runInstall())
     }
     guard arguments.count == 2, let agent = AgentID(rawValue: arguments[1]) else {
-        FileHandle.standardError.write(Data("Usage: letitbrew install [claude|codex|cursor|opencode|copilot]\n".utf8))
+        FileHandle.standardError.write(Data("Usage: letitbrew install [claude|codex|opencode|copilot]\n".utf8))
         exit(1)
     }
     exit(runInstall(agents: [agent]))
@@ -23,7 +23,7 @@ case "uninstall":
         exit(runUninstall())
     }
     guard arguments.count == 2, let agent = AgentID(rawValue: arguments[1]) else {
-        FileHandle.standardError.write(Data("Usage: letitbrew uninstall [claude|codex|cursor|opencode|copilot]\n".utf8))
+        FileHandle.standardError.write(Data("Usage: letitbrew uninstall [claude|codex|opencode|copilot]\n".utf8))
         exit(1)
     }
     exit(runUninstall(agents: [agent]))
@@ -46,9 +46,9 @@ default:
     letitbrew - keep your Mac awake while AI agents work
 
     Usage:
-      letitbrew install [claude|codex|cursor|opencode|copilot]
+      letitbrew install [claude|codex|opencode|copilot]
                               install hooks for all agents, or one agent
-      letitbrew uninstall [claude|codex|cursor|opencode|copilot]
+      letitbrew uninstall [claude|codex|opencode|copilot]
                               remove hooks for all agents, or one agent
       letitbrew doctor         report install health per event
       letitbrew watch          hold the Mac awake while agents work

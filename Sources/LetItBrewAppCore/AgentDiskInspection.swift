@@ -43,6 +43,54 @@ public struct AgentDiskInspectionResult: Equatable, Sendable {
     }
 }
 
+/// Classifies one descriptor-captured target for the app's exact preparation
+/// handoff. Absence must be decided before adapter ownership validation:
+/// OpenCode correctly refuses to remove a missing whole-file plugin, while a
+/// missing plugin is nevertheless the valid first-connect state.
+public enum AgentExactDiskInspection {
+    public struct Result: Equatable, Sendable {
+        public let snapshot: ExactFileSnapshot
+        public let inspection: AgentExactPreparation.Inspection
+        public let report: HookInstallReport?
+
+        public init(
+            snapshot: ExactFileSnapshot,
+            inspection: AgentExactPreparation.Inspection,
+            report: HookInstallReport?
+        ) {
+            self.snapshot = snapshot
+            self.inspection = inspection
+            self.report = report
+        }
+    }
+
+    public static func inspect(
+        agent: AgentID,
+        snapshot: ExactFileSnapshot,
+        data: Data?,
+        helperPath: String
+    ) -> Result {
+        guard snapshot.exists == (data != nil) else {
+            return Result(snapshot: snapshot, inspection: .invalid, report: nil)
+        }
+        guard let data else {
+            return Result(snapshot: snapshot, inspection: .absent, report: nil)
+        }
+        do {
+            let report = try AgentDiskInspection.report(
+                agent: agent,
+                data: data,
+                helperPath: helperPath
+            )
+            let inspection: AgentExactPreparation.Inspection = report.isAbsent
+                ? .absent : report.isHealthy ? .healthyOwned : .repairableOwned
+            return Result(snapshot: snapshot, inspection: inspection, report: report)
+        } catch {
+            return Result(snapshot: snapshot, inspection: .invalid, report: nil)
+        }
+    }
+}
+
 /// Pure, one-target configuration classification used by the app model.  It
 /// does not launch a vendor process, enumerate a directory, or write bytes.
 public enum AgentDiskInspection {
@@ -89,7 +137,7 @@ public enum AgentDiskInspection {
         }
     }
 
-    private static func report(agent: AgentID, data: Data, helperPath: String) throws -> HookInstallReport {
+    fileprivate static func report(agent: AgentID, data: Data, helperPath: String) throws -> HookInstallReport {
         switch agent {
         case .claude:
             _ = try ClaudeHooks.install(into: data, cliPath: helperPath)
@@ -97,9 +145,6 @@ public enum AgentDiskInspection {
         case .codex:
             _ = try CodexHooks.install(into: data, cliPath: helperPath)
             return CodexHooks.report(for: data, cliPath: helperPath)
-        case .cursor:
-            _ = try CursorHooks.install(into: data, cliPath: helperPath)
-            return CursorHooks.report(for: data, cliPath: helperPath)
         case .opencode:
             _ = try OpenCodePlugin.install(into: data, cliPath: helperPath)
             return OpenCodePlugin.report(for: data, cliPath: helperPath)

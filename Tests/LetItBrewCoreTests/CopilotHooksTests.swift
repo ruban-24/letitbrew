@@ -6,13 +6,11 @@ private func copilotObject(_ data: Data) throws -> [String: Any] {
     try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
 }
 
-@Test func copilotUsesOnlyObservationalLifecycleEvents() {
+@Test func copilotTracksPermissionWaitAndResumeEdgesWithoutDecisionOutput() {
     #expect(CopilotHooks.events == [
-        "SessionStart", "UserPromptSubmit", "PostToolUse", "ErrorOccurred", "Stop",
-        "SessionEnd",
+        "SessionStart", "UserPromptSubmit", "PermissionRequest", "PreToolUse", "PostToolUse",
+        "Notification", "ErrorOccurred", "Stop", "SessionEnd",
     ])
-    #expect(!CopilotHooks.events.contains("PreToolUse"))
-    #expect(!CopilotHooks.events.contains("PermissionRequest"))
 }
 
 @Test func copilotHomeRelocatesTheUserHookFile() {

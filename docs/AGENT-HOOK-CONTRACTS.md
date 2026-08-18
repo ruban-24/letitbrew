@@ -4,7 +4,7 @@
 
 Let It Brew observes local lifecycle hooks only. It does not enumerate agent
 processes, inspect CPU use, search for installed executables, parse conversations,
-or read Claude/Codex/Cursor/OpenCode/Copilot prompt and response content.
+or read Claude/Codex/OpenCode/Copilot prompt and response content.
 
 ## Claude Code
 
@@ -46,33 +46,6 @@ or read Claude/Codex/Cursor/OpenCode/Copilot prompt and response content.
   Working. Permission waits preserve prior state.
 - Non-managed hooks must be reviewed and trusted in Codex before they run.
 
-## Cursor local desktop and CLI
-
-- User config managed by Let It Brew: `~/.cursor/hooks.json`. Cursor also has
-  other project/team/enterprise hook scopes; Let It Brew does not mutate them.
-- Sources: https://cursor.com/docs/hooks,
-  https://cursor.com/docs/reference/third-party-hooks, and
-  https://cursor.com/changelog/cli-jan-16-2026
-- Desktop mapping: `sessionStart`→SessionStart,
-  `beforeSubmitPrompt`→UserPromptSubmit, `preToolUse`→PreToolUse,
-  `postToolUse`→PostToolUse, `subagentStart`→SubagentStart,
-  `subagentStop`→SubagentStop, `stop`→Stop, `sessionEnd`→SessionEnd.
-- Cursor CLI documents hooks for session start/end, prompt submission, and
-  stop. The tool and subagent mappings above are documented desktop inputs,
-  not supported CLI observations until UAT establishes them.
-- Cursor desktop and Cursor CLI are separate validation surfaces. Desktop
-  documentation does not prove CLI event parity. Release UAT must exercise and
-  record every selected event independently on both surfaces, including the
-  tested Cursor versions. Connection or configuration ownership does not prove
-  that either surface emitted every mapped event.
-- `conversation_id` is the stable session ID for ordinary events;
-  `session_id` is accepted for session lifecycle events.
-- `parent_conversation_id` plus `subagent_id` identifies an independent
-  Cursor subagent, including asynchronous subagents that outlive a parent turn.
-- Cursor has no documented permission-request lifecycle event. The prior
-  state remains unchanged until a later hook establishes a transition.
-- Cursor Tab and Cloud Agents are out of scope.
-
 ## OpenCode stable 1.x
 
 - Default plugin: `~/.config/opencode/plugins/letitbrew.js`.
@@ -85,10 +58,11 @@ or read Claude/Codex/Cursor/OpenCode/Copilot prompt and response content.
 - Mapping: `session.created`→SessionStart; `session.status` busy/retry→
   UserPromptSubmit; `session.status` idle and `session.idle`→Stop;
   `session.deleted`→SessionEnd.
-- The tagged v1.18.3 SDK types define `permission.updated` and
-  `permission.replied`; current docs also define `permission.asked`. All three
-  preserve prior state. UAT must record which spellings were actually observed
-  for the tested OpenCode version; no runtime-emission claim is made until then.
+- `permission.updated`, `permission.asked`, and `permission.v2.asked` map to
+  PermissionRequest and Idle. `permission.replied` and
+  `permission.v2.replied` return the session to Working for every reply.
+- `question.asked` maps to Idle. `question.replied` and `question.rejected`
+  return the session to Working.
 - OpenCode v2 beta is not claimed by this release.
 
 ## GitHub Copilot CLI
@@ -96,13 +70,17 @@ or read Claude/Codex/Cursor/OpenCode/Copilot prompt and response content.
 - Config: `~/.copilot/hooks/letitbrew.json`, relocated by `COPILOT_HOME`.
 - Sources: https://docs.github.com/en/copilot/reference/hooks-reference and
   https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/use-hooks
-- Use PascalCase compatibility events for snake_case payloads:
-  SessionStart, UserPromptSubmit, PostToolUse, ErrorOccurred, Stop, SessionEnd.
+- Use PascalCase compatibility events for snake_case payloads: SessionStart,
+  UserPromptSubmit, PermissionRequest, PreToolUse, PostToolUse, Notification,
+  ErrorOccurred, Stop, and SessionEnd.
+- PermissionRequest becomes Idle. PreToolUse becomes Idle for `ask_user`,
+  `ask_user_question`, and `AskUserQuestion`; other tools become Working.
+  PostToolUse returns a completed question to Working. Notification becomes
+  Idle for `permission_prompt` and `elicitation_dialog`.
 - `ErrorOccurred` is observational and its output is not processed. A payload
   with `recoverable: false` maps to Idle; `true`, missing, or malformed
   recoverability preserves the prior state so a continuing turn stays Working.
-- Do not install `PreToolUse` or `PermissionRequest`: both can make permission
-  decisions. The selected observational events are sufficient for Working/Idle
-  only if the generated command is silent and unconditionally exits zero;
-  execution tests must prove both properties before release.
+- The generated command discards hook output and unconditionally exits zero,
+  so Let It Brew observes these events without allowing, denying, or blocking
+  Copilot actions; execution tests prove both properties before release.
 - Copilot cloud agent is out of scope.

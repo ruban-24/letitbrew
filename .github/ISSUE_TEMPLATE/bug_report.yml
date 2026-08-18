@@ -57,8 +57,6 @@ body:
         - Claude Desktop Code
         - Codex CLI
         - Codex app
-        - Cursor desktop Agent
-        - Cursor CLI
         - OpenCode stable 1.x
         - GitHub Copilot CLI
         - Let It Brew only
