@@ -202,6 +202,7 @@ struct MenuBarContentView: View {
                         case .session(let session, _):
                             SessionRowView(
                                 session: session.session,
+                                groupedProject: item.groupedProject,
                                 shortID: item.shortSessionID,
                                 onStopTracking: { stopTracking(session.session) }
                             )
@@ -384,6 +385,7 @@ private struct RepositoryGroupRowView: View {
 
 private struct SessionRowView: View {
     let session: MenuSessionPresentation
+    let groupedProject: String?
     let shortID: String?
     let onStopTracking: () -> Void
 
@@ -436,12 +438,14 @@ private struct SessionRowView: View {
     }
 
     private var primaryText: String {
-        guard let shortID else { return session.project }
-        return "\(session.toolName) · \(shortID)"
+        guard let groupedProject else { return session.project }
+        return "\(session.toolName) · \(groupedProject)"
     }
 
     private var secondaryText: String {
-        shortID == nil ? "\(session.toolName) · \(session.stateText)" : session.stateText
+        groupedProject == nil
+            ? "\(session.toolName) · \(session.stateText)"
+            : session.stateText
     }
 
     private var accessibilityLabel: String {
@@ -469,12 +473,15 @@ struct AgentLogo: View {
                     .interpolation(.high)
                     .scaledToFit()
             case "opencode":
-                Image("OpenCodeAgent")
-                    .resizable()
-                    .interpolation(.high)
-                    .scaledToFill()
-                    .scaleEffect(3)
-                    .clipped()
+                ZStack {
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(Color.black.opacity(0.86))
+                    Image("OpenCodeAgent")
+                        .resizable()
+                        .interpolation(.high)
+                        .scaledToFit()
+                        .padding(3)
+                }
             case "copilot":
                 Image("CopilotAgent")
                     .resizable()

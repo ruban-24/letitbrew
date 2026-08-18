@@ -78,9 +78,12 @@ public enum AgentConnectionMessagePolicy {
         operationMessage: String?,
         connections: [AgentConnectionMessageInput]
     ) -> String? {
-        guard let operationMessage,
-              operationMessage.hasPrefix("Connected ")
-        else { return operationMessage }
+        guard let operationMessage else {
+            return connections.contains {
+                $0.disposition == .intentionallyDisconnected
+            } ? "Disconnected agents are hidden and do not keep this Mac awake." : nil
+        }
+        guard operationMessage.hasPrefix("Connected ") else { return operationMessage }
 
         let attention = connections.filter {
             AgentSetupAttentionPolicy.needsAttention(
@@ -88,7 +91,9 @@ public enum AgentConnectionMessagePolicy {
                 disposition: $0.disposition
             )
         }
-        guard !attention.isEmpty else { return operationMessage }
+        guard !attention.isEmpty else {
+            return "Restart existing agent sessions to start tracking them."
+        }
 
         let ready = connections.filter {
             $0.state == .connected && $0.disposition == .managed

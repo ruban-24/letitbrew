@@ -85,7 +85,7 @@ public enum AgentLaunchOutcomeCoordinator {
                 return .init(agentID: id, state: state, details: details(for: state), disposition: .managed)
             default:
                 switch outcomes[id] ?? .failed("Let It Brew did not receive a preparation result.") {
-                case .succeeded(let changed):
+                case .succeeded:
                     let state: AgentConnectionState
                     if agent == .codex {
                         guard let codexTrust else {
@@ -95,7 +95,7 @@ public enum AgentLaunchOutcomeCoordinator {
                         state = AgentConnectionPolicy.state(configuration: .healthy, codexTrust: codexTrust)
                     } else { state = .connected }
                     return .init(agentID: id, state: state,
-                                 details: state == .connected && changed ? ["Restart sessions that were already open."] : details(for: state), disposition: .managed)
+                                 details: details(for: state), disposition: .managed)
                 case .failed(let message):
                     return .init(agentID: id, state: .actionNeeded,
                                  details: [message], disposition: .managed)

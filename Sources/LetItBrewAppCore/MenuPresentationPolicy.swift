@@ -98,6 +98,14 @@ public enum MenuRepositoryLayoutItem: Identifiable, Equatable, Sendable {
         }
     }
 
+    public var groupedProject: String? {
+        switch self {
+        case .header: nil
+        case .session(let item, let displaysShortID):
+            displaysShortID ? item.session.project : nil
+        }
+    }
+
     public var isSession: Bool {
         if case .session = self { return true }
         return false

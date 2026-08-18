@@ -1190,15 +1190,22 @@ final class LetItBrewAppModel: ObservableObject {
                     cwd: home, appVersion: appVersion
                 ) }
             )
-            return AgentLaunchOutcomeCoordinator.present(
+            let rows = AgentLaunchOutcomeCoordinator.present(
                 inspections: inspections,
                 selectedAgentIDs: selectedAgentIDs,
                 outcomes: outcomes,
                 codexTrust: codexTrust
             )
+            let requiresRestart = rows.contains { row in
+                guard row.state == .connected,
+                      case .succeeded(changedVendorBytes: true) = outcomes[row.agentID]
+                else { return false }
+                return true
+            }
+            return (rows, requiresRestart)
         }
         Task { [weak self] in
-            let rows = await work.value
+            let (rows, requiresRestart) = await work.value
             guard let self, connectedAgentIDs == selectedAgentIDs else { return }
             let byID = Dictionary(uniqueKeysWithValues: rows.map { ($0.agentID, $0) })
             agentHooks = agentHooks.map { health in
@@ -1207,6 +1214,9 @@ final class LetItBrewAppModel: ObservableObject {
                     id: health.id, name: health.name, state: row.state,
                     details: row.details, disposition: row.disposition
                 )
+            }
+            if requiresRestart {
+                hookMessage = "Restart existing agent sessions to start tracking them."
             }
         }
     }
@@ -1441,8 +1451,7 @@ final class LetItBrewAppModel: ObservableObject {
                         ))
                     } else {
                         if presentation.changedVendorBytes { changedAgents.append("Claude Code") }
-                        var details = ["Local CLI and Desktop Code sessions"]
-                        if presentation.shouldRestartSessions { details.append("Restart sessions that were already open.") }
+                        let details = ["Local CLI and Desktop Code sessions"]
                         health.append(AgentHookHealth(id: "claude", name: "Claude Code", state: .connected, details: details))
                     }
                 case .needsConnection(let details):
@@ -1523,8 +1532,7 @@ final class LetItBrewAppModel: ObservableObject {
                     )
                     switch policy {
                     case .connected:
-                        var details = ["Local CLI and Codex app sessions"]
-                        if presentation.shouldRestartSessions { details.append("Restart sessions that were already open.") }
+                        let details = ["Local CLI and Codex app sessions"]
                         health.append(AgentHookHealth(
                             id: "codex", name: "Codex", state: .connected,
                             details: details
@@ -1583,7 +1591,7 @@ final class LetItBrewAppModel: ObservableObject {
             let presentation = AgentExactRefreshCoordinator.presentation(agent: agent, selectedTarget: preparation.selectedTarget ?? home, helperSucceeded: mutation.status == 0, finalInspection: preparation.finalInspection, changedVendorBytes: preparation.changedVendorBytes)
             if presentation.isConnected {
                 if presentation.changedVendorBytes { changedAgents.append(agent.displayName) }
-                health.append(AgentHookHealth(id: agent.rawValue, name: agent.displayName, state: .connected, details: presentation.shouldRestartSessions ? ["Restart sessions that were already open."] : []))
+                health.append(AgentHookHealth(id: agent.rawValue, name: agent.displayName, state: .connected, details: []))
             } else {
                 health.append(AgentHookHealth(id: agent.rawValue, name: agent.displayName, state: .couldNotConnect, details: connectionFailureDetails(mutation, fallback: ["Let It Brew could not prepare its \(agent.displayName) connection."])))
             }

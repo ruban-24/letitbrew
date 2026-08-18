@@ -49,13 +49,13 @@ private func launchSnapshot(_ id: String) -> ExactFileSnapshot { try! ExactFileS
     }
 }
 
-@Test func selectedRepairAndAbsentRestartButInvalidAndFailuresAreActionable() {
+@Test func selectedRepairAndAbsentLeaveRestartCopyToTheSharedNotice() {
     let agents = AgentID.allCases
     let inspections = agents.map { AgentConnectionInspection(agentID: $0.rawValue, state: $0 == .opencode ? .invalid : ($0 == .copilot ? .absent : .repairableOwned), hasRecordedTarget: false, exactTargetSnapshot: launchSnapshot($0.rawValue)) }
     let outcomes = Dictionary(uniqueKeysWithValues: agents.map { ($0.rawValue, AgentLaunchHelperOutcome.succeeded(changedVendorBytes: true)) })
     let rows = AgentLaunchOutcomeCoordinator.present(inspections: inspections, selectedAgentIDs: Set(agents.map(\.rawValue)), outcomes: outcomes, codexTrust: .trusted)
     #expect(rows.first(where: { $0.agentID == "opencode" })?.state == .actionNeeded)
-    #expect(rows.first(where: { $0.agentID == "copilot" })?.details == ["Restart sessions that were already open."])
+    #expect(rows.first(where: { $0.agentID == "copilot" })?.details == [])
 }
 
 @Test func exactRefusalUsesDescriptorBoundaryAndPreservesForeignReplacementB() {

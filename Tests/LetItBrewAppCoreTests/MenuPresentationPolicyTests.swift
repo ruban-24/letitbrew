@@ -250,6 +250,26 @@ import Testing
     #expect(expanded[1].shortSessionID == "5279876d")
 }
 
+@Test func groupedSessionTitleUsesTheFolderInsteadOfAnInternalID() throws {
+    let now = Date(timeIntervalSince1970: 10_000)
+    let rows = MenuSessionPresentationPolicy.rows(from: [
+        input(
+            id: "v1|8:opencode|session-one", tool: "opencode", project: "sandbox",
+            repositoryPath: "/Users/me/Documents/Github.nosync/sandbox", updatedAt: now
+        ),
+        input(
+            id: "another-session", tool: "codex", project: "sandbox",
+            repositoryPath: "/Users/me/Documents/Github.nosync/sandbox",
+            updatedAt: now.addingTimeInterval(-1)
+        ),
+    ], now: now)
+    let group = try #require(MenuRepositoryPresentationPolicy.groups(from: rows).first)
+    let expanded = MenuRepositoryLayoutPolicy.items(for: group, isExpanded: true)
+
+    #expect(expanded[1].groupedProject == "sandbox")
+    #expect(expanded[1].shortSessionID == "v1|8:ope")
+}
+
 @Test func repositoryLayoutItemIDsStayStableWhenActiveTimeChanges() throws {
     let now = Date(timeIntervalSince1970: 10_000)
     let original = try #require(group(

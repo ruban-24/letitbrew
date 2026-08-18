@@ -83,3 +83,33 @@ import Testing
         connections: connections
     ) == "Disconnected Codex.")
 }
+
+@Test func disconnectedAgentsProduceOneSharedNotice() {
+    let connections = ["Claude Code", "Codex", "OpenCode", "GitHub Copilot CLI"].map {
+        AgentConnectionMessageInput(
+            name: $0,
+            state: .actionNeeded,
+            disposition: .intentionallyDisconnected
+        )
+    }
+
+    #expect(AgentConnectionMessagePolicy.displayedMessage(
+        operationMessage: nil,
+        connections: connections
+    ) == "Disconnected agents are hidden and do not keep this Mac awake.")
+}
+
+@Test func successfulConnectionUsesOneSharedRestartNotice() {
+    let connections = ["Claude Code", "Codex", "OpenCode", "GitHub Copilot CLI"].map {
+        AgentConnectionMessageInput(
+            name: $0,
+            state: .connected,
+            disposition: .managed
+        )
+    }
+
+    #expect(AgentConnectionMessagePolicy.displayedMessage(
+        operationMessage: "Connected Claude Code and Codex. Restart agent sessions that were already open.",
+        connections: connections
+    ) == "Restart existing agent sessions to start tracking them.")
+}
