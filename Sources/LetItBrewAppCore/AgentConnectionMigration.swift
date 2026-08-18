@@ -9,36 +9,24 @@ public enum AgentPersistedSelection: Equatable, Sendable {
     case malformed
 }
 
-public struct AgentConnectionMigrationResult: Equatable, Sendable {
-    public let decision: AgentLaunchConnectionDecision
-    public let consultedLegacy: Bool
-    public init(decision: AgentLaunchConnectionDecision, consultedLegacy: Bool) {
-        self.decision = decision
-        self.consultedLegacy = consultedLegacy
-    }
-}
-
 public enum AgentConnectionMigration {
     public static func migrate(
         persisted: AgentPersistedSelection,
         legacyDisconnected: Set<String>,
         inspections: [AgentConnectionInspection],
         legacyMigratableAgentIDs: Set<String>
-    ) -> AgentConnectionMigrationResult {
+    ) -> AgentLaunchConnectionDecision {
         let missing = persisted == .missing
         let selection: [String]? = switch persisted {
         case .missing: nil
         case .values(let values): values
         case .malformed: []
         }
-        return .init(
-            decision: AgentLaunchConnectionPolicy.decision(
-                persistedSelection: selection,
-                legacyDisconnected: missing ? legacyDisconnected : [],
-                inspections: inspections,
-                legacyMigratableAgentIDs: missing ? legacyMigratableAgentIDs : []
-            ),
-            consultedLegacy: missing
+        return AgentLaunchConnectionPolicy.decision(
+            persistedSelection: selection,
+            legacyDisconnected: missing ? legacyDisconnected : [],
+            inspections: inspections,
+            legacyMigratableAgentIDs: missing ? legacyMigratableAgentIDs : []
         )
     }
 

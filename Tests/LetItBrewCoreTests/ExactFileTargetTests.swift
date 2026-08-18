@@ -323,16 +323,6 @@ private enum DescriptorTestFailure: Error { case parentSync }
     }
 }
 
-@Test func ordinaryTargetsPreserveProductionParentSymlinkCompatibility() throws {
-    let root = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: root) }
-    let realParent = root.appendingPathComponent("real"); try FileManager.default.createDirectory(at: realParent, withIntermediateDirectories: true)
-    let final = realParent.appendingPathComponent("settings.json"); try Data("{}".utf8).write(to: final)
-    let linkedParent = root.appendingPathComponent("linked")
-    try FileManager.default.createSymbolicLink(at: linkedParent, withDestinationURL: realParent)
-    let ordinary = ExactFileTarget.ordinary(linkedParent.appendingPathComponent("settings.json"))
-    #expect(try ordinary.capture().data == Data("{}".utf8))
-}
-
 @Test func descriptorAbsentAppearanceSurvivesExclusivePublish() throws {
     let root = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: root) }
     let file = root.appendingPathComponent("target"); let target = try DirectoryAnchor.openNoFollow(at: root).target(atAbsoluteURL: file)

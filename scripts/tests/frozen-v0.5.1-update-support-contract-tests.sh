@@ -5,8 +5,8 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && /bin/pwd -P)"
-# shellcheck source=fixtures/v0.5.1-update-support-contract.sh
-source "$SCRIPT_DIR/fixtures/v0.5.1-update-support-contract.sh"
+# shellcheck source=../lib-v0.5.1-update-support-contract.sh
+source "$SCRIPT_DIR/../lib-v0.5.1-update-support-contract.sh"
 
 TEST_ROOT="$(/usr/bin/mktemp -d /private/tmp/letitbrew-v051-update-support-contract.XXXXXX)"
 TESTS=0

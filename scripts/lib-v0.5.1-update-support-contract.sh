@@ -1,10 +1,5 @@
-# Frozen v0.5.1 UpdateSupport inventory predicate.
-#
-# This is test data derived from v0.5.1's
-# scripts/verify-artifact.sh signed-update-support block. Keep it hermetic:
-# direct-distribution tests must not fetch or inspect repository history in
-# order to prove that a current candidate remains installable by v0.5.1.
-
+# Frozen v0.5.1 UpdateSupport inventory predicate, used by both focused tests
+# and the actual release-build verification path.
 v051_update_support_contract_accepts() {
     local app="${1:-}" support_dir support_count support support_path support_mode
 

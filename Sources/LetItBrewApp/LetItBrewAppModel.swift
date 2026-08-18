@@ -82,7 +82,6 @@ private enum DiskHookInspection: Sendable {
 
 private struct ExactTargetSelection {
     let recordedTarget: String?
-    let configuredTarget: URL
     let firstConnectResolvedTarget: URL
 }
 
@@ -1125,13 +1124,12 @@ final class LetItBrewAppModel: ObservableObject {
                 selectedTarget: inspected.target
             )
         }
-        let migration = AgentConnectionMigration.migrate(
+        let decision = AgentConnectionMigration.migrate(
             persisted: persisted,
             legacyDisconnected: Set(defaults.stringArray(forKey: Keys.disconnectedAgents) ?? []),
             inspections: inspections,
             legacyMigratableAgentIDs: [AgentID.claude.rawValue, AgentID.codex.rawValue]
         )
-        let decision = migration.decision
         AgentConnectionMigration.persist(
             decision.selectedAgentIDs,
             writeV2: { defaults.set($0, forKey: Keys.connectedAgentIDsV2) },
@@ -1159,50 +1157,57 @@ final class LetItBrewAppModel: ObservableObject {
     private func runLaunchPreparations() {
         let preparations = launchPreparations
         let inspections = launchInspections
+        let selectedAgentIDs = connectedAgentIDs
         launchPreparations = []
         let executable = helperURL.path
-        let outcomes = AgentLaunchOutcomeCoordinator.execute(
-            preparations,
-            runRecorded: { agentID in
-                let result = Self.runHelper(at: executable, arguments: ["install", agentID])
-                return result.status == 0
-                    ? .succeeded(changedVendorBytes: true)
-                    : .failed(result.output)
-            },
-            runExact: { preparation in
-                let input = try? JSONEncoder().encode(preparation)
-                let result = Self.runHelper(
-                    at: executable,
-                    arguments: ["prepare-exact", preparation.agent.rawValue],
-                    input: input
-                )
-                return result.status == 0
-                    ? .succeeded(changedVendorBytes: preparation.expectedState != .healthyOwned)
-                    : .failed(result.output)
-            }
-        )
-        let codexTrust = AgentLaunchTrustCoordinator.selectedCodexTrust(
-            selectedAgentIDs: connectedAgentIDs,
-            inspections: inspections,
-            inspect: { target in LiveCodexHookTrustInspection.inspect(
-                executableURL: CodexExecutableLocator.locate(), hooksURL: target,
-                cwd: FileManager.default.homeDirectoryForCurrentUser,
-                appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development"
-            ) }
-        )
-        let rows = AgentLaunchOutcomeCoordinator.present(
-            inspections: inspections,
-            selectedAgentIDs: connectedAgentIDs,
-            outcomes: outcomes,
-            codexTrust: codexTrust
-        )
-        let byID = Dictionary(uniqueKeysWithValues: rows.map { ($0.agentID, $0) })
-        agentHooks = agentHooks.map { health in
-            guard let row = byID[health.id] else { return health }
-            return AgentHookHealth(
-                id: health.id, name: health.name, state: row.state,
-                details: row.details, disposition: row.disposition
+        let codexExecutable = CodexExecutableLocator.locate()
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development"
+        let work = Task.detached {
+            let outcomes = AgentLaunchOutcomeCoordinator.execute(
+                preparations,
+                runRecorded: { agentID in
+                    let result = Self.runHelper(at: executable, arguments: ["install", agentID])
+                    return result.status == 0 ? .succeeded(changedVendorBytes: true) : .failed(result.output)
+                },
+                runExact: { preparation in
+                    let input = try? JSONEncoder().encode(preparation)
+                    let result = Self.runHelper(
+                        at: executable,
+                        arguments: ["prepare-exact", preparation.agent.rawValue],
+                        input: input
+                    )
+                    return result.status == 0
+                        ? .succeeded(changedVendorBytes: preparation.expectedState != .healthyOwned)
+                        : .failed(result.output)
+                }
             )
+            let codexTrust = AgentLaunchOutcomeCoordinator.selectedCodexTrust(
+                selectedAgentIDs: selectedAgentIDs,
+                inspections: inspections,
+                inspect: { target in LiveCodexHookTrustInspection.inspect(
+                    executableURL: codexExecutable, hooksURL: target,
+                    cwd: home, appVersion: appVersion
+                ) }
+            )
+            return AgentLaunchOutcomeCoordinator.present(
+                inspections: inspections,
+                selectedAgentIDs: selectedAgentIDs,
+                outcomes: outcomes,
+                codexTrust: codexTrust
+            )
+        }
+        Task { [weak self] in
+            let rows = await work.value
+            guard let self, connectedAgentIDs == selectedAgentIDs else { return }
+            let byID = Dictionary(uniqueKeysWithValues: rows.map { ($0.agentID, $0) })
+            agentHooks = agentHooks.map { health in
+                guard let row = byID[health.id] else { return health }
+                return AgentHookHealth(
+                    id: health.id, name: health.name, state: row.state,
+                    details: row.details, disposition: row.disposition
+                )
+            }
         }
     }
 
@@ -1225,7 +1230,6 @@ final class LetItBrewAppModel: ObservableObject {
         }
         return ExactTargetSelection(
             recordedTarget: registry?.targets[agent],
-            configuredTarget: configured,
             firstConnectResolvedTarget: agent == .opencode
                 ? configured
                 : configured.resolvingSymlinksInPath().standardizedFileURL
@@ -1280,7 +1284,6 @@ final class LetItBrewAppModel: ObservableObject {
             let result = try AgentExactRefreshCoordinator.run(
                 agent: agent,
                 recordedTarget: selection.recordedTarget,
-                configuredTarget: selection.configuredTarget,
                 firstConnectResolvedTarget: selection.firstConnectResolvedTarget,
                 inspect: { target in
                     let observation = exactDiskObservation(agent: agent, target: target, cliPath: cliPath)
@@ -1767,11 +1770,11 @@ final class LetItBrewAppModel: ObservableObject {
         _ snapshot: LetItBrewSnapshot,
         connectedAgentIDs: Set<String>
     ) {
-        let tracking = AgentSessionVisibilityPipeline.apply(
-            sessions: snapshot.sessions,
-            connectedAgentIDs: connectedAgentIDs,
-            suppressions: sessionTrackingSuppressions
+        let visible = AgentSessionVisibilityPolicy.visibleSessions(
+            from: snapshot.sessions,
+            connectedAgentIDs: connectedAgentIDs
         )
+        let tracking = SessionTrackingPolicy.applying(sessionTrackingSuppressions, to: visible)
         if tracking.suppressions != sessionTrackingSuppressions {
             sessionTrackingSuppressions = tracking.suppressions
             saveSessionTrackingSuppressions()

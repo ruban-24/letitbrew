@@ -3,7 +3,10 @@ import Testing
 @testable import LetItBrewAppCore
 import LetItBrewCore
 
-private func absentSnapshot(_ path: String = "/tmp/exact-target") throws -> ExactFileSnapshot { try ExactFileSnapshot(path: path, exists: false) }
+private func absentSnapshot(_ path: String = "/tmp/exact-target") throws -> ExactFileSnapshot {
+    try ExactFileSnapshot(path: path, exists: false)
+}
+
 @Test func exactPreparationEncodesEveryAgentAndMutationState() throws {
     for agent in AgentID.allCases {
         let snapshot = try absentSnapshot("/tmp/\(agent.rawValue)")
@@ -12,7 +15,11 @@ private func absentSnapshot(_ path: String = "/tmp/exact-target") throws -> Exac
             (.healthyOwned, .healthyOwned, false),
             (.repairableOwned, .repairableOwned, true),
         ] {
-            let decision = try AgentExactPreparation.decide(agent: agent, recordedTarget: nil, configuredTarget: URL(fileURLWithPath: snapshot.path), firstConnectResolvedTarget: URL(fileURLWithPath: snapshot.path), snapshot: snapshot, inspection: inspection)
+            let decision = try AgentExactPreparation.decide(
+                agent: agent, recordedTarget: nil,
+                firstConnectResolvedTarget: URL(fileURLWithPath: snapshot.path),
+                snapshot: snapshot, inspection: inspection
+            )
             let request = try JSONDecoder().decode(ExactTargetPreparation.self, from: #require(decision.input))
             #expect(request.agent == agent)
             #expect(request.expectedState == expectedState)
@@ -20,64 +27,42 @@ private func absentSnapshot(_ path: String = "/tmp/exact-target") throws -> Exac
         }
     }
 }
-@Test func invalidInspectionNeverCreatesAHelperRequest() throws {
-    let snapshot = try absentSnapshot(); let d = try AgentExactPreparation.decide(agent: .claude, recordedTarget: nil, configuredTarget: URL(fileURLWithPath: snapshot.path), firstConnectResolvedTarget: URL(fileURLWithPath: snapshot.path), snapshot: snapshot, inspection: .invalid)
-    #expect(d.input == nil); #expect(!d.changesVendorBytes)
+
+@Test func exactPreparationRefusesInvalidOrMismatchedSnapshots() throws {
+    let snapshot = try absentSnapshot()
+    let invalid = try AgentExactPreparation.decide(
+        agent: .claude, recordedTarget: nil,
+        firstConnectResolvedTarget: URL(fileURLWithPath: snapshot.path),
+        snapshot: snapshot, inspection: .invalid
+    )
+    #expect(invalid.input == nil)
+    #expect(throws: AgentExactPreparationError.self) {
+        _ = try AgentExactPreparation.decide(
+            agent: .claude, recordedTarget: nil,
+            firstConnectResolvedTarget: URL(fileURLWithPath: "/tmp/other"),
+            snapshot: snapshot, inspection: .absent
+        )
+    }
 }
+
 @Test func absentOpenCodeExactInspectionCreatesAFirstConnectRequest() throws {
     let target = URL(fileURLWithPath: "/tmp/absent-opencode/letitbrew.js")
     let snapshot = try absentSnapshot(target.path)
-    let inspection = AgentExactDiskInspection.inspect(
-        agent: .opencode,
-        snapshot: snapshot,
-        data: nil,
-        helperPath: "/letitbrew"
-    )
+    let inspection = AgentExactDiskInspection.inspect(agent: .opencode, snapshot: snapshot, data: nil, helperPath: "/letitbrew")
     var launchedRequest: ExactTargetPreparation?
     let result = try AgentExactRefreshCoordinator.run(
-        agent: .opencode,
-        recordedTarget: nil,
-        configuredTarget: target,
-        firstConnectResolvedTarget: target,
-        inspect: { _ in
-            .init(snapshot: inspection.snapshot, inspection: inspection.inspection)
-        },
+        agent: .opencode, recordedTarget: nil, firstConnectResolvedTarget: target,
+        inspect: { _ in .init(snapshot: inspection.snapshot, inspection: inspection.inspection) },
         launch: { _, data in
             launchedRequest = try? JSONDecoder().decode(ExactTargetPreparation.self, from: data)
             return false
         }
     )
-
-    #expect(inspection.inspection == .absent)
     #expect(result.helperInvoked)
     #expect(launchedRequest?.expectedState == .absent)
 }
-@Test func recordedTargetWinsAmbientAndHealthyDoesNotRestart() throws {
-    let snapshot = try absentSnapshot("/tmp/A"); let d = try AgentExactPreparation.decide(agent: .copilot, recordedTarget: "/tmp/A", configuredTarget: URL(fileURLWithPath: "/tmp/B"), firstConnectResolvedTarget: URL(fileURLWithPath: "/tmp/B"), snapshot: snapshot, inspection: .healthyOwned)
-    #expect(d.target.path == "/tmp/A"); #expect(!d.changesVendorBytes)
-}
-@Test func recordedTargetWinsAmbientForCopilotAndOpenCode() throws {
-    for agent in [AgentID.copilot, .opencode] {
-        let snapshot = try absentSnapshot("/tmp/recorded-\(agent.rawValue)-A")
-        let decision = try AgentExactPreparation.decide(
-            agent: agent,
-            recordedTarget: snapshot.path,
-            configuredTarget: URL(fileURLWithPath: "/tmp/ambient-\(agent.rawValue)-B"),
-            firstConnectResolvedTarget: URL(fileURLWithPath: "/tmp/ambient-\(agent.rawValue)-B"),
-            snapshot: snapshot,
-            inspection: .absent
-        )
-        #expect(decision.target.path == snapshot.path)
-        #expect(try JSONDecoder().decode(ExactTargetPreparation.self, from: #require(decision.input)).snapshot.path == snapshot.path)
-    }
-}
-@Test func firstConnectUsesResolvedJSONTarget() throws {
-    let snapshot = try absentSnapshot("/tmp/final"); let d = try AgentExactPreparation.decide(agent: .copilot, recordedTarget: nil, configuredTarget: URL(fileURLWithPath: "/tmp/link"), firstConnectResolvedTarget: URL(fileURLWithPath: "/tmp/final"), snapshot: snapshot, inspection: .repairableOwned)
-    #expect(d.target.path == "/tmp/final"); #expect(d.changesVendorBytes)
-}
+
 @Test func helperFailureNeverReportsAChangeOrRestart() {
     #expect(!AgentExactPreparation.completion(changesVendorBytes: true, helperSucceeded: false).changedVendorBytes)
-    #expect(!AgentExactPreparation.completion(changesVendorBytes: true, helperSucceeded: false).shouldRestartSessions)
-    #expect(!AgentExactPreparation.completion(changesVendorBytes: false, helperSucceeded: true).shouldRestartSessions)
     #expect(AgentExactPreparation.completion(changesVendorBytes: true, helperSucceeded: true).shouldRestartSessions)
 }

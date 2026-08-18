@@ -243,7 +243,7 @@ func makeFailure(_ step: UninstallStep) -> UninstallFailure {
     ])
 }
 
-@Test @MainActor func aFailedBestEffortStepIsReportedAndTeardownContinues() async {
+@Test @MainActor func aFailedHookRemovalRetainsRecoveryDataAndBundleForRetry() async {
     let environment = RecordingUninstallEnvironment()
     let coordinator = UninstallCoordinator(environment: environment)
 
@@ -252,9 +252,17 @@ func makeFailure(_ step: UninstallStep) -> UninstallFailure {
     environment.calls.removeAll()
     await coordinator.confirm()
 
-    #expect(coordinator.state == .report(leftovers: [makeFailure(.removeCodexHooks)]))
-    #expect(environment.calls.contains(.clearPreferences))
-    #expect(environment.calls.contains(.trashBundle))
+    guard case .report(let leftovers) = coordinator.state else {
+        Issue.record("Expected a report state.")
+        return
+    }
+    #expect(leftovers.map(\.step) == [.removeCodexHooks, .trashBundle])
+    #expect(environment.calls.contains(.removeOpenCodeHooks))
+    #expect(environment.calls.contains(.removeCopilotHooks))
+    #expect(!environment.calls.contains(.disableLaunchAtLogin))
+    #expect(!environment.calls.contains(.deleteUserData))
+    #expect(!environment.calls.contains(.clearPreferences))
+    #expect(!environment.calls.contains(.trashBundle))
 }
 
 @Test @MainActor func aFailedTrashStillFinishesAndIsReported() async {

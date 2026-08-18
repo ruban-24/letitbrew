@@ -1,3 +1,4 @@
+import Foundation
 import LetItBrewCore
 
 public enum AgentLaunchHelperOutcome: Equatable, Sendable {
@@ -23,12 +24,31 @@ public enum AgentLaunchOutcomeCoordinator {
         runExact: (ExactTargetPreparation) -> AgentLaunchHelperOutcome
     ) -> [String: AgentLaunchHelperOutcome] {
         var outcomes: [String: AgentLaunchHelperOutcome] = [:]
-        AgentLaunchPreparationRunner.run(
-            preparations,
-            runRecorded: { id in outcomes[id] = runRecorded(id) },
-            runExact: { request in outcomes[request.agent.rawValue] = runExact(request) }
-        )
+        for preparation in preparations {
+            switch preparation {
+            case .recordedTarget(let id):
+                outcomes[id] = runRecorded(id)
+            case .exactTarget(let id, let state, let snapshot):
+                guard let agent = AgentID(rawValue: id),
+                      let request = try? ExactTargetPreparation(agent: agent, snapshot: snapshot, expectedState: state)
+                else { continue }
+                outcomes[id] = runExact(request)
+            }
+        }
         return outcomes
+    }
+
+    public static func selectedCodexTrust(
+        selectedAgentIDs: Set<String>,
+        inspections: [AgentConnectionInspection],
+        inspect: (URL) -> CodexHookTrustResult
+    ) -> CodexHookTrustResult? {
+        guard selectedAgentIDs.contains(AgentID.codex.rawValue),
+              let codex = inspections.first(where: { $0.agentID == AgentID.codex.rawValue }),
+              codex.state != .invalid,
+              let target = codex.selectedTarget
+        else { return nil }
+        return inspect(target)
     }
 
     public static func present(

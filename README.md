@@ -217,9 +217,9 @@ own entries and persists across relaunches. Claude Code needs the selected
 workspace to trust the installed hook. Codex needs the `/hooks` trust approval.
 Copilot's observational `ErrorOccurred` hook releases Working only when its
 documented `recoverable` value is false; recoverable or malformed error payloads
-preserve the prior state. Let It Brew does not install Copilot's decision-capable
-`PreToolUse` or `PermissionRequest` hooks. Installed hooks remain silent and
-exit zero.
+preserve the prior state. Let It Brew installs silent `PreToolUse` and
+`PermissionRequest` lifecycle hooks only to observe session state. They exit zero
+and cannot approve, deny, or block Copilot actions.
 OpenCode's
 `OPENCODE_CONFIG_DIR`, when set, is additive: Let It Brew adds its owned global
 plugin at that selected directory and does not replace standard config roots or

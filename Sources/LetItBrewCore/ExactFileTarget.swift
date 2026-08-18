@@ -85,7 +85,6 @@ public struct ExactFileTarget {
     public let displayPath: String
     private let root: DirectoryAnchor?
     private let relative: [String]?
-    public static func ordinary(_ url: URL) -> ExactFileTarget { ExactFileTarget(displayPath: url.standardizedFileURL.path, root: nil, relative: nil) }
     fileprivate init(displayPath: String, root: DirectoryAnchor?, relative: [String]?) { self.displayPath = displayPath; self.root = root; self.relative = relative }
     public func capture(hooks: TraversalRaceHooks = TraversalRaceHooks()) throws -> CapturedExactFile {
         if let root, let relative {
@@ -106,11 +105,9 @@ public struct ExactFileTarget {
         guard fd >= 0 else { throw ExactFileSnapshotError.unreadable(displayPath) }
         return try CapturedExactFile.captureFromParent(target: self, parent: BoundParent(taking: OwnedFD(taking: fd)), name: url.lastPathComponent, displayPath: displayPath)
     }
-    /// Resolves only final-name JSON links beneath an anchored test root.  The
+    /// Resolves only final-name JSON links beneath an anchored root.  The
     /// link identity brackets `readlinkat`, and every destination is fed back
     /// through the same structural anchor rather than a pathname prefix check.
-    /// An ordinary production target deliberately keeps Foundation's existing
-    /// user-facing symlink semantics in the command layer.
     public func resolvingAnchoredFinalSymlink(maximumHops: Int = 32) throws -> ExactFileTarget {
         guard let root, relative != nil else { return self }
         var current = self; var hops = 0

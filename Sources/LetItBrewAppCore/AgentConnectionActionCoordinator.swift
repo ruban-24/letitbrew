@@ -10,7 +10,7 @@ public struct AgentConnectionHelperCompletion: Equatable, Sendable {
 public enum AgentConnectionActionCoordinator {
     public static func perform(_ action: AgentConnectionAction, id: String, selected: Set<String>, persist: (Set<String>) -> Void, refreshVisibility: (Set<String>) -> Void, launchHelper: (AgentConnectionAction, String) -> Void) {
         guard AgentID(rawValue: id) != nil else { return }
-        let next = action == .connect ? AgentConnectionSelectionPolicy.selecting(id, in: selected) : AgentConnectionSelectionPolicy.deselecting(id, from: selected)
+        let next = action == .connect ? selected.union([id]) : selected.subtracting([id])
         persist(next); refreshVisibility(next); launchHelper(action, id)
     }
 

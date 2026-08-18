@@ -75,28 +75,6 @@ public struct ExactFileSnapshot: Codable, Equatable, Sendable {
                       sha256: try c.decodeIfPresent(String.self, forKey: .sha256))
     }
 
-    public static func capture(at url: URL) throws -> ExactFileSnapshot {
-        let path = url.standardizedFileURL.path
-        guard path.hasPrefix("/") else { throw ExactFileSnapshotError.invalidPath(path) }
-        let fd = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
-        if fd < 0 {
-            if errno == ENOENT { return try ExactFileSnapshot(path: path, exists: false) }
-            throw ExactFileSnapshotError.unreadable(path)
-        }
-        defer { close(fd) }
-        var info = stat()
-        guard fstat(fd, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG else { throw ExactFileSnapshotError.notRegular(path) }
-        let bytes = try readExactFileBytes(from: fd, expectedSize: info.st_size, path: path)
-        var after = stat()
-        guard fstat(fd, &after) == 0, info.st_dev == after.st_dev, info.st_ino == after.st_ino,
-              info.st_size == after.st_size, info.st_mtimespec.tv_sec == after.st_mtimespec.tv_sec,
-              info.st_mtimespec.tv_nsec == after.st_mtimespec.tv_nsec else { throw ExactFileSnapshotError.changed(path) }
-        return try ExactFileSnapshot(path: path, exists: true, deviceID: Int64(info.st_dev), inode: UInt64(info.st_ino), byteCount: Int64(info.st_size), modificationSeconds: Int64(info.st_mtimespec.tv_sec), modificationNanoseconds: Int64(info.st_mtimespec.tv_nsec), sha256: SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined())
-    }
-
-    public func verify() throws {
-        guard try ExactFileSnapshot.capture(at: URL(fileURLWithPath: path)) == self else { throw ExactFileSnapshotError.changed(path) }
-    }
 }
 
 struct AnyExactCodingKey: CodingKey {

@@ -23,7 +23,7 @@ public protocol SleepWatchdogLaunching: AnyObject, Sendable {
 /// A record the root loop leaves inside its exclusive lease directory the
 /// instant it takes on the responsibility of restoring `pmset disablesleep`,
 /// written BEFORE it ever writes the setting. A debt held only in a shell
-/// variable dies with the loop — on disk, a later run (or Task 15's
+/// variable dies with the loop — on disk, a later run (or the
 /// `doctor`) can find it and act.
 public struct SleepWatchdogDebt: Equatable, Sendable {
     /// The app run that requested this engagement. Informational only —
@@ -109,7 +109,7 @@ public enum SleepWatchdogDebtStatus: Equatable, Sendable {
 /// Reads a lease and classifies it against watchdog-loop liveness. Kept
 /// separate from `OsascriptSleepWatchdog` because only the root loop itself
 /// ever writes to or removes the lease; this side only ever reads it, and
-/// never overwrites or deletes anything — repair, if any, is Task 15's job.
+/// never overwrites or deletes anything — repair belongs to the watchdog.
 public enum SleepWatchdogDebtCheck {
     public static func status(
         at leaseURL: URL,

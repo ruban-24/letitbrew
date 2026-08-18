@@ -19,6 +19,47 @@ public enum CopilotHooks {
     /// Frozen ownership marker for commands in `~/.copilot/hooks/letitbrew.json`.
     public static let marker = "__letitbrew_copilot_hook"
 
+    private static func isOwnedEntry(_ entry: Any) -> Bool {
+        ((entry as? [String: Any])?["bash"] as? String)?
+            .hasSuffix(HookFile.ownershipComment(marker: marker)) ?? false
+    }
+
+    private static func sweepOwnedEntries(_ hooks: [String: Any]) -> [String: Any] {
+        var result = hooks
+        for (event, value) in hooks {
+            guard let entries = value as? [Any] else { continue }
+            let retained = entries.filter { !isOwnedEntry($0) }
+            guard retained.count != entries.count else { continue }
+            if retained.isEmpty { result.removeValue(forKey: event) }
+            else { result[event] = retained }
+        }
+        return result
+    }
+
+    private static func reportOwnedEntries(
+        hooks: [String: Any]?, cliPath: String
+    ) -> HookInstallReport {
+        var report = HookInstallReport()
+        let expectedEvents = Set(events)
+        guard let hooks else { report.missing = expectedEvents; return report }
+        for (event, value) in hooks {
+            guard let entries = value as? [Any] else { continue }
+            let owned = entries.filter(isOwnedEntry)
+            guard !owned.isEmpty else { continue }
+            guard expectedEvents.contains(event) else { report.orphaned.insert(event); continue }
+            if owned.count > 1 { report.duplicated.insert(event) }
+            else if let command = (owned[0] as? [String: Any])?["bash"] as? String,
+                    command == (try? hookCommand(event: event, cliPath: cliPath)) {
+                report.healthy.insert(event)
+            } else { report.stale.insert(event) }
+        }
+        report.missing = expectedEvents
+            .subtracting(report.healthy)
+            .subtracting(report.stale)
+            .subtracting(report.duplicated)
+        return report
+    }
+
     /// The complete v0.6.0 Copilot lifecycle surface. These are intentionally
     /// PascalCase because they are Copilot CLI's source event names.
     public static let events = [
@@ -115,9 +156,7 @@ public enum CopilotHooks {
         var root = try parseRoot(data)
         try requireSupportedVersion(root)
         let existingHooks = try hooksDictionary(root)
-        var hooks = FlatHookFile.sweep(
-            existingHooks, marker: marker, commandKey: "bash"
-        )
+        var hooks = sweepOwnedEntries(existingHooks)
 
         for event in events {
             var entries = (hooks[event] as? [Any]) ?? []
@@ -141,9 +180,7 @@ public enum CopilotHooks {
         var root = try parseRoot(data)
         try requireSupportedVersion(root)
         let existingHooks = try hooksDictionary(root)
-        let hooks = FlatHookFile.sweep(
-            existingHooks, marker: marker, commandKey: "bash"
-        )
+        let hooks = sweepOwnedEntries(existingHooks)
 
         root["version"] = 1
         if hooks.isEmpty {
@@ -164,14 +201,6 @@ public enum CopilotHooks {
             return try hooksDictionary(root)
         }()
 
-        return FlatHookFile.report(
-            hooks: hooks,
-            events: events,
-            marker: marker,
-            commandKey: "bash",
-            expectedCommand: { event in
-                (try? hookCommand(event: event, cliPath: cliPath)) ?? ""
-            }
-        )
+        return reportOwnedEntries(hooks: hooks, cliPath: cliPath)
     }
 }

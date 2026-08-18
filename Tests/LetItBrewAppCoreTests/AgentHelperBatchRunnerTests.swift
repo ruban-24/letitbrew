@@ -44,13 +44,6 @@ private func helperStub() throws -> URL {
     #expect(results[1].output == "handled codex")
 }
 
-@Test func selectionHelpersArePureAndTask10OwnsEffectOrdering() {
-    let connected = AgentConnectionSelectionPolicy.selecting("codex", in: ["claude"])
-    let disconnected = AgentConnectionSelectionPolicy.deselecting("claude", from: connected)
-    #expect(connected == ["claude", "codex"])
-    #expect(disconnected == ["codex"])
-}
-
 @Test func disconnectCompletionHasOnlyTerminalPerAgentFollowUps() {
     let results = [
         AgentHelperOperationResult(

@@ -37,6 +37,7 @@ def violations(text: str) -> list[str]:
     errors: list[str] = []
     patterns = {
         "/dev/fd": r"/dev/fd",
+        "unanchored ExactFileTarget": r"ExactFileTarget\s*\.\s*ordinary\s*\(",
         "Data contentsOf": r"Data\s*\(\s*contentsOf\s*:",
         "Data write(to:)": r"\.write\s*\(\s*to\s*:",
         "FileManager mutation": r"FileManager\s*\.\s*default\s*\.\s*(?:createDirectory|removeItem|moveItem|replaceItem)\s*\(",

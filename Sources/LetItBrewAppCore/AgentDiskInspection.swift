@@ -32,15 +32,6 @@ public struct AgentDiskInspectionResult: Equatable, Sendable {
         self.diagnostic = diagnostic
         self.usedRecordedTarget = usedRecordedTarget
     }
-
-    public var launchInspection: AgentConnectionInspection {
-        .init(
-            agentID: "",
-            state: state,
-            hasRecordedTarget: usedRecordedTarget,
-            exactTargetSnapshot: snapshot
-        )
-    }
 }
 
 /// Classifies one descriptor-captured target for the app's exact preparation

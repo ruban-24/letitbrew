@@ -5,6 +5,8 @@ set -uo pipefail
 RELEASE_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && /bin/pwd -P)"
 # shellcheck source=lib-direct-distribution.sh
 source "$RELEASE_SCRIPT_DIR/lib-direct-distribution.sh"
+# shellcheck source=lib-v0.5.1-update-support-contract.sh
+source "$RELEASE_SCRIPT_DIR/lib-v0.5.1-update-support-contract.sh"
 
 release_build_security_identities() {
     /usr/bin/security find-identity -v -p codesigning
@@ -21,7 +23,15 @@ release_build_xcodebuild() {
 }
 
 release_build_verify() {
-    "$RELEASE_SCRIPT_DIR/verify-artifact.sh" "$1" --release
+    "$RELEASE_SCRIPT_DIR/verify-artifact.sh" "$1" --release &&
+        release_build_verify_v051_compatibility "$1"
+}
+
+release_build_verify_v051_compatibility() {
+    v051_update_support_contract_accepts "$1" || {
+        release_error "exported app is incompatible with the v0.5.1 UpdateSupport inventory contract."
+        return 1
+    }
 }
 
 release_build_ditto() {

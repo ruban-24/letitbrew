@@ -75,6 +75,13 @@ public enum CodexHooks {
         "SubagentStart", "SubagentStop", "Stop", "SessionEnd",
     ]
 
+    /// The app-server reports the same installed events with a lowercase
+    /// initial. Derive the trust contract from the writer's complete list so
+    /// install and runtime verification cannot drift apart.
+    public static let appServerEvents = Set(events.map { event in
+        event.prefix(1).lowercased() + event.dropFirst()
+    })
+
     public static let fallbackCLIPath = ClaudeHooks.fallbackCLIPath
 
     /// Shown in the UI after installing: hooks are inert until approved.

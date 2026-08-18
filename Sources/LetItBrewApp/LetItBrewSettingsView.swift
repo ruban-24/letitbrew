@@ -286,7 +286,7 @@ struct LetItBrewSettingsView: View {
             Button("Uninstall", role: .destructive) { model.confirmUninstall() }
             Button("Cancel", role: .cancel) { model.cancelUninstall() }
         } message: {
-            Text("This disconnects Claude Code and Codex, stops Let It Brew's background service, removes its settings and session records, and moves Let It Brew to the Trash.")
+            Text("This disconnects all connected agent integrations, stops Let It Brew's background service, removes its settings and session records, and moves Let It Brew to the Trash.")
         }
     }
 

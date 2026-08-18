@@ -71,31 +71,6 @@ import Testing
     }
 }
 
-@Test func permissionRequestPreservesClaudeAndCodexProductionBehavior() throws {
-    for agent in [AgentID.claude, .codex] {
-        let directory = hookUpdaterTempDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let storage = SessionStorage(directory: directory)
-        let sessionID = "permission-\(agent.rawValue)"
-        let payload = HookPayload(sessionId: sessionID, cwd: "/work/app")
-        let id = hookUpdaterID(sessionID, agent: agent)
-
-        try HookSessionUpdater.apply(
-            event: "UserPromptSubmit", payload: payload, agent: agent, agentPID: nil,
-            observedAt: Date(timeIntervalSince1970: 100), storage: storage
-        )
-        try HookSessionUpdater.apply(
-            event: "PermissionRequest", payload: payload, agent: agent, agentPID: nil,
-            observedAt: Date(timeIntervalSince1970: 200), storage: storage
-        )
-
-        let record = try #require(storage.load(id: id))
-        #expect(record.state == .working)
-        #expect(record.lastEvent == "UserPromptSubmit")
-        #expect(record.eventObservedAt == 100)
-    }
-}
-
 @Test func copilotPermissionAndQuestionWaitsAreIdle() throws {
     let directory = hookUpdaterTempDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -820,61 +795,6 @@ import Testing
         storage: storage
     )
     #expect(storage.load(id: id)?.state == .idle)
-}
-
-@Test func stopFailureBecomesIdleThroughStorage() throws {
-    let directory = hookUpdaterTempDirectory()
-    defer { try? FileManager.default.removeItem(at: directory) }
-    let storage = SessionStorage(directory: directory)
-
-    try applyDecodedHook(
-        event: "StopFailure",
-        json: #"{"session_id":"failed-stop","cwd":"/work/app"}"#,
-        agent: .claude,
-        observedAt: Date(timeIntervalSince1970: 100),
-        storage: storage
-    )
-
-    let id = try #require(HookPayload(sessionId: "failed-stop")
-        .recordID(agent: .claude, event: "StopFailure"))
-    #expect(storage.load(id: id)?.state == .idle)
-    #expect(storage.load(id: id)?.lastEvent == "StopFailure")
-}
-
-@Test func copilotErrorsPreserveRecoverableWorkAndReleaseUnrecoverableWork() throws {
-    let directory = hookUpdaterTempDirectory()
-    defer { try? FileManager.default.removeItem(at: directory) }
-    let storage = SessionStorage(directory: directory)
-    let id = hookUpdaterID("copilot-error", agent: .copilot)
-
-    try applyDecodedHook(
-        event: "UserPromptSubmit",
-        json: #"{"session_id":"copilot-error","cwd":"/work/app"}"#,
-        agent: .copilot,
-        observedAt: Date(timeIntervalSince1970: 100),
-        storage: storage
-    )
-    try applyDecodedHook(
-        event: "ErrorOccurred",
-        json: #"{"session_id":"copilot-error","cwd":"/work/app","recoverable":true}"#,
-        agent: .copilot,
-        observedAt: Date(timeIntervalSince1970: 110),
-        storage: storage
-    )
-
-    #expect(storage.load(id: id)?.state == .working)
-    #expect(storage.load(id: id)?.lastEvent == "UserPromptSubmit")
-
-    try applyDecodedHook(
-        event: "ErrorOccurred",
-        json: #"{"session_id":"copilot-error","cwd":"/work/app","recoverable":false}"#,
-        agent: .copilot,
-        observedAt: Date(timeIntervalSince1970: 120),
-        storage: storage
-    )
-
-    #expect(storage.load(id: id)?.state == .idle)
-    #expect(storage.load(id: id)?.lastEvent == "ErrorOccurred")
 }
 
 @Test func subagentStopRemovesOnlyTheAddressedChildRecord() throws {

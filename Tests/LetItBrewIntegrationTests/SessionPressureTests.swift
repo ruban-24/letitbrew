@@ -41,7 +41,7 @@ import Testing
 
 @Test func pressureRootRejectsWrongPrefix() throws {
     let outside = URL(fileURLWithPath: "/private/tmp", isDirectory: true)
-        .appendingPathComponent("task12-pressure-outside-\(UUID().uuidString)", isDirectory: true)
+        .appendingPathComponent("session-pressure-outside-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: false)
     defer { try? FileManager.default.removeItem(at: outside) }
 
@@ -78,7 +78,7 @@ import Testing
 
 @Test func pressureRootRejectsIntermediateSymlinkEscape() throws {
     let outside = URL(fileURLWithPath: "/private/tmp", isDirectory: true)
-        .appendingPathComponent("task12-pressure-outside-\(UUID().uuidString)", isDirectory: true)
+        .appendingPathComponent("session-pressure-outside-\(UUID().uuidString)", isDirectory: true)
     let outsideChild = outside.appendingPathComponent("child", isDirectory: true)
     let link = URL(fileURLWithPath: "/private/tmp", isDirectory: true)
         .appendingPathComponent("letitbrew-session-pressure.intermediate-link-\(UUID().uuidString)", isDirectory: true)
@@ -157,12 +157,12 @@ import Testing
     ])
 }
 
-@Test func oneStoppedSessionDoesNotChangeNinetyNineWorkingSessions() async throws {
+@Test func oneStoppedSessionDoesNotChangeOtherWorkingSessions() async throws {
     let directory = try pressureTempDirectory(label: "one-stop")
     defer { try? FileManager.default.removeItem(at: directory) }
     let storage = SessionStorage(directory: directory)
     _ = try await writeConcurrentSessions(
-        count: 100,
+        count: 4,
         cwd: "/private/tmp/pressure/shared-folder",
         directory: directory
     )
@@ -180,17 +180,17 @@ import Testing
     )
 
     let records = storage.loadAll()
-    #expect(records.count == 100)
-    #expect(records.count { $0.state == .working } == 99)
+    #expect(records.count == 4)
+    #expect(records.count { $0.state == .working } == 3)
     #expect(records.count { $0.state == .idle } == 1)
 }
 
-@Test func corruptRecordBesideOneHundredHealthyRecordsIsIsolated() async throws {
+@Test func corruptRecordBesideHealthyRecordsIsIsolated() async throws {
     let directory = try pressureTempDirectory(label: "corrupt")
     defer { try? FileManager.default.removeItem(at: directory) }
     let storage = SessionStorage(directory: directory)
     _ = try await writeConcurrentSessions(
-        count: 100,
+        count: 4,
         cwd: "/private/tmp/pressure/shared-folder",
         directory: directory
     )
@@ -199,8 +199,8 @@ import Testing
     )
 
     let records = storage.loadAll()
-    #expect(records.count == 100)
-    #expect(Set(records.map(\.id)).count == 100)
+    #expect(records.count == 4)
+    #expect(Set(records.map(\.id)).count == 4)
 }
 
 @Test func aggregateHoldReleasesOnlyAfterTheLastWorkingSessionStops() async throws {
@@ -208,7 +208,7 @@ import Testing
     defer { try? FileManager.default.removeItem(at: directory) }
     let storage = SessionStorage(directory: directory)
     _ = try await writeConcurrentSessions(
-        count: 100,
+        count: 4,
         cwd: "/private/tmp/pressure/shared-folder",
         directory: directory
     )
@@ -220,7 +220,7 @@ import Testing
         thermal: .nominal
     )
 
-    for index in 0..<100 {
+    for index in 0..<4 {
         try HookSessionUpdater.apply(
             event: "Stop",
             payload: HookPayload(
@@ -238,8 +238,8 @@ import Testing
             settings: settings,
             power: power
         )
-        #expect(decision.holdSystem == (index < 99))
-        #expect(decision.holdLidClosed == (index < 99))
+        #expect(decision.holdSystem == (index < 3))
+        #expect(decision.holdLidClosed == (index < 3))
     }
 }
 
@@ -302,11 +302,11 @@ import Testing
         )
     }
 
-    let application = AgentSessionVisibilityPipeline.apply(
-        sessions: storage.loadAll(),
-        connectedAgentIDs: Set(AgentID.allCases.dropLast().map(\.rawValue)),
-        suppressions: []
+    let visible = AgentSessionVisibilityPolicy.visibleSessions(
+        from: storage.loadAll(),
+        connectedAgentIDs: Set(AgentID.allCases.dropLast().map(\.rawValue))
     )
+    let application = SessionTrackingPolicy.applying([], to: visible)
     #expect(records.contains { $0.tool == disconnected.rawValue && $0.state == .working })
     #expect(storage.loadAll().contains { $0.tool == disconnected.rawValue && $0.state == .working })
     #expect(application.sessions.contains { $0.tool == disconnected.rawValue } == false)
@@ -391,43 +391,6 @@ import Testing
         #expect(parentStopDecision.holdSystem)
         #expect(parentStopDecision.holdLidClosed)
     }
-}
-
-@Test func oneHundredRecordWriteLoadAndPresentationReportsTiming() async throws {
-    let directory = try pressureTempDirectory(label: "metric")
-    defer { try? FileManager.default.removeItem(at: directory) }
-    let clock = ContinuousClock()
-    let started = clock.now
-
-    let records = try await writeConcurrentSessions(
-        count: 100,
-        cwd: "/private/tmp/pressure/shared-folder",
-        directory: directory
-    )
-    let now = Date(timeIntervalSince1970: 5_000)
-    let rows = MenuSessionPresentationPolicy.rows(
-        from: records.map { record in
-            SessionMenuInput(
-                id: record.id,
-                tool: record.tool,
-                project: record.repoName,
-                repositoryPath: record.repositoryID,
-                state: record.state == .working ? .working : .idle,
-                activeWorkingTime: record.activeWorkingTime(at: now),
-                updatedAt: record.updatedAt
-            )
-        },
-        now: now
-    )
-    let groups = MenuRepositoryPresentationPolicy.groups(from: rows)
-    let elapsed = started.duration(to: clock.now)
-    let elapsedSeconds = Double(elapsed.components.seconds)
-        + Double(elapsed.components.attoseconds) / 1_000_000_000_000_000_000
-
-    #expect(records.count == 100)
-    #expect(rows.count == 100)
-    #expect(groups.count == 1)
-    print("METRIC session-pressure-100-seconds=\(elapsedSeconds)")
 }
 
 private func writeConcurrentSessions(

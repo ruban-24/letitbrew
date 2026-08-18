@@ -13,9 +13,6 @@ source "$SCRIPT_DIR/create-release-dmg.sh"
 source "$SCRIPT_DIR/notarize-release.sh"
 # shellcheck source=../lib-power-baseline.sh
 source "$SCRIPT_DIR/lib-power-baseline.sh"
-# shellcheck source=fixtures/v0.5.1-update-support-contract.sh
-source "$SCRIPT_DIR/tests/fixtures/v0.5.1-update-support-contract.sh"
-
 TEST_VERSION="$(release_project_value "$SCRIPT_DIR/../project.yml" MARKETING_VERSION)"
 TEST_BUILD="$(release_project_value "$SCRIPT_DIR/../project.yml" CURRENT_PROJECT_VERSION)"
 ORIGINAL_RELEASE_BUILD_VERIFY_DETAILS="$(declare -f release_build_verify_release_details)"
@@ -117,14 +114,6 @@ make_four_file_update_support() {
     /bin/chmod 644 "$support_dir/lib-power-baseline.sh"
 }
 
-frozen_v051_inventory_accepts_current_layout() {
-    v051_update_support_contract_accepts "$1"
-}
-
-frozen_v051_inventory_rejects_fifth_entry() {
-    ! v051_update_support_contract_accepts "$1"
-}
-
 normal_verifier_runs_legal_then_full_gates() {
     local app="$1" transcript="$TEST_ROOT/normal-verifier-transcript"
     LETITBREW_VERIFY_ARTIFACT_LEGAL_ONLY=1 "$SCRIPT_DIR/verify-artifact.sh" "$app" >"$transcript" 2>&1 || true
@@ -214,15 +203,7 @@ v051_four_file_app="$TEST_ROOT/v051-four-file/Let It Brew.app"
 make_fake_app "$v051_four_file_app"
 make_four_file_update_support "$v051_four_file_app"
 expect_true "frozen v0.5.1 exact-four predicate accepts the current inventory" \
-    frozen_v051_inventory_accepts_current_layout "$v051_four_file_app"
-
-v051_five_file_app="$TEST_ROOT/v051-five-file/Let It Brew.app"
-make_fake_app "$v051_five_file_app"
-make_four_file_update_support "$v051_five_file_app"
-printf '#!/bin/bash\n' >"$v051_five_file_app/Contents/Resources/UpdateSupport/verify-legal-resources.sh"
-/bin/chmod 755 "$v051_five_file_app/Contents/Resources/UpdateSupport/verify-legal-resources.sh"
-expect_true "frozen v0.5.1 exact-four predicate rejects a fifth update support entry" \
-    frozen_v051_inventory_rejects_fifth_entry "$v051_five_file_app"
+    release_build_verify_v051_compatibility "$v051_four_file_app"
 
 expect_true "frozen v0.5.1 predicate works without Git from an unrelated caller cwd" \
     frozen_v051_contract_runs_without_git_or_cwd

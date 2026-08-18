@@ -31,9 +31,22 @@ if [ -n "$task_number_paths" ]; then
     fail "tracked filenames must describe product behavior, not internal task numbers: ${task_number_paths}"
 fi
 
-legacy_task_number=8
-if git grep -IqEi "(^|[^[:alnum:]])task[[:space:]_-]*${legacy_task_number}([^[:alnum:]]|$)" -- ':!scripts/tests/public-source-tests.sh'; then
+if git grep -IqEi '(^|[^[:alnum:]])task[[:space:]_-]*[0-9]+([^[:alnum:]]|$)' -- ':!scripts/tests/public-source-tests.sh'; then
     fail "tracked source still contains an internal task-number reference from development"
+fi
+
+for agent in 'Claude Code' Codex OpenCode 'GitHub Copilot CLI'; do
+    if ! grep -Fq "$agent" README.md; then
+        fail "README is missing supported agent: $agent"
+    fi
+done
+
+if git grep -Iqi 'Cursor' -- README.md Sources Tests; then
+    fail "current public source still mentions removed Cursor support"
+fi
+
+if git grep -Fq '"$HELPER" --version' -- scripts ':!scripts/tests/public-source-tests.sh'; then
+    fail "distribution scripts execute an unverified candidate helper"
 fi
 
 image_targets=$( {

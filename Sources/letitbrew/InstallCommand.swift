@@ -37,6 +37,7 @@ func resolvedCLIPath() -> String {
 /// read once here; selected test targets retain this anchor instead of being
 /// checked by path and reopened later.
 private final class CommandFilesystem {
+    let anchor: DirectoryAnchor
     let testHome: DirectoryAnchor?
     let homeURL: URL
     let adapterEnvironment: [String: String]
@@ -45,19 +46,22 @@ private final class CommandFilesystem {
         if let raw = environment["LETITBREW_TEST_HOME"] {
             guard !raw.isEmpty, raw.hasPrefix("/") else { throw UnsafeTarget(path: "LETITBREW_TEST_HOME must be an absolute path") }
             let anchor = try DirectoryAnchor.openNoFollow(at: URL(fileURLWithPath: raw).standardizedFileURL)
-            testHome = anchor; homeURL = anchor.displayURL; adapterEnvironment = [:]
+            self.anchor = anchor; testHome = anchor; homeURL = anchor.displayURL; adapterEnvironment = [:]
         } else {
+            anchor = try DirectoryAnchor.openNoFollow(at: URL(fileURLWithPath: "/"))
             testHome = nil; homeURL = FileManager.default.homeDirectoryForCurrentUser; adapterEnvironment = environment
         }
     }
 
-    func target(at url: URL) throws -> ExactFileTarget {
-        if let testHome { return try testHome.target(atAbsoluteURL: url) }
-        return .ordinary(url)
+    func target(at url: URL, resolvingParentSymlinks: Bool = false) throws -> ExactFileTarget {
+        let target = resolvingParentSymlinks && testHome == nil
+            ? url.deletingLastPathComponent().resolvingSymlinksInPath().appendingPathComponent(url.lastPathComponent)
+            : url
+        return try anchor.target(atAbsoluteURL: target)
     }
 
     func registryTarget() throws -> ExactFileTarget {
-        try target(at: homeURL.appendingPathComponent("Library/Application Support/LetItBrew/agent-hook-targets.json"))
+        try target(at: homeURL.appendingPathComponent("Library/Application Support/LetItBrew/agent-hook-targets.json"), resolvingParentSymlinks: true)
     }
 
     func recordedTarget(_ path: String) throws -> ExactFileTarget {
@@ -72,7 +76,7 @@ private final class CommandFilesystem {
         case .opencode: url = OpenCodePlugin.pluginURL(home: homeURL, environment: adapterEnvironment)
         case .copilot: url = CopilotHooks.hooksURL(home: homeURL, environment: adapterEnvironment)
         }
-        return try target(at: url)
+        return try target(at: url, resolvingParentSymlinks: true)
     }
 }
 
@@ -96,18 +100,8 @@ private func saveRegistry(_ registry: AgentInstallRegistry, basedOn capture: Cap
 /// Follow a user-owned JSON symlink exactly once at Connect, then record the
 /// final file.  A dangling link is not treated as an absent configuration.
 private func resolveJSONTarget(_ configured: ExactFileTarget, filesystem: CommandFilesystem) throws -> ExactFileTarget {
-    if filesystem.testHome != nil {
-        do { return try configured.resolvingAnchoredFinalSymlink() }
-        catch { throw DanglingSymlink(path: configured.displayPath) }
-    }
-    var current = URL(fileURLWithPath: configured.displayPath).standardizedFileURL; var hops = 0
-    while let destination = try? FileManager.default.destinationOfSymbolicLink(atPath: current.path) {
-        hops += 1; guard hops <= 32 else { throw DanglingSymlink(path: configured.displayPath) }
-        current = URL(fileURLWithPath: destination, relativeTo: current.deletingLastPathComponent()).standardizedFileURL
-    }
-    if hops > 0 && !FileManager.default.fileExists(atPath: current.path) { throw DanglingSymlink(path: configured.displayPath) }
-    current = current.resolvingSymlinksInPath().standardizedFileURL
-    return try filesystem.target(at: current)
+    do { return try configured.resolvingAnchoredFinalSymlink() }
+    catch { throw DanglingSymlink(path: configured.displayPath) }
 }
 
 private func selectedTarget(_ agent: AgentID, registry: AgentInstallRegistry, connect: Bool, filesystem: CommandFilesystem) throws -> ExactFileTarget {

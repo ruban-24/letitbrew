@@ -76,7 +76,7 @@ func runStatus(json: Bool) -> Int32 {
 }
 
 /// Message for `watch --lid-closed` refusing to start over a lease left by a
-/// provably dead watchdog loop (Task 15's fail-closed lease repair path: see
+/// provably dead watchdog loop (the fail-closed lease repair path: see
 /// `SleepWatchdogDebtCheck` — an owner that dies right after acquiring the
 /// lease must never silently block every future engagement, but it must also
 /// never be treated as clean without a human running `letitbrew repair`).

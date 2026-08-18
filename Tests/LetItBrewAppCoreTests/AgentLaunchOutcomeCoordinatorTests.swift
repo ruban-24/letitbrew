@@ -5,6 +5,26 @@ import Testing
 
 private func launchSnapshot(_ id: String) -> ExactFileSnapshot { try! ExactFileSnapshot(path: "/A/\(id)", exists: false) }
 
+@Test func launchTrustInspectsOnlyASelectedValidCodexTarget() {
+    let target = URL(fileURLWithPath: "/recorded/codex.json")
+    let inspection = AgentConnectionInspection(
+        agentID: "codex", state: .healthyOwned, hasRecordedTarget: true,
+        exactTargetSnapshot: launchSnapshot("codex"), selectedTarget: target
+    )
+    var inspected: [URL] = []
+    let unselected = AgentLaunchOutcomeCoordinator.selectedCodexTrust(
+        selectedAgentIDs: [], inspections: [inspection],
+        inspect: { inspected.append($0); return .trusted }
+    )
+    let selected = AgentLaunchOutcomeCoordinator.selectedCodexTrust(
+        selectedAgentIDs: ["codex"], inspections: [inspection],
+        inspect: { inspected.append($0); return .trusted }
+    )
+    #expect(unselected == nil)
+    #expect(selected == .trusted)
+    #expect(inspected == [target])
+}
+
 @Test func launchPresentationCoversSelectedAndUnselectedFourAgentRows() {
     let inspections = AgentID.allCases.map { AgentConnectionInspection(agentID: $0.rawValue, state: $0 == .opencode ? .invalid : .healthyOwned, hasRecordedTarget: true, exactTargetSnapshot: launchSnapshot($0.rawValue)) }
     let rows = AgentLaunchOutcomeCoordinator.present(inspections: inspections, selectedAgentIDs: ["claude", "codex"], outcomes: ["codex": .succeeded(changedVendorBytes: true)], codexTrust: .trusted)

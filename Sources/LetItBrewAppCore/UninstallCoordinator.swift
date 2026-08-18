@@ -144,18 +144,36 @@ public final class UninstallCoordinator {
             return
         }
 
-        let bestEffort: [() async -> Result<Void, UninstallFailure>] = [
+        let hookRemovals: [() async -> Result<Void, UninstallFailure>] = [
             environment.removeClaudeHooks,
             environment.removeCodexHooks,
             environment.removeOpenCodeHooks,
             environment.removeCopilotHooks,
+        ]
+
+        var leftovers: [UninstallFailure] = []
+        for operation in hookRemovals {
+            if case .failure(let failure) = await operation() {
+                leftovers.append(failure)
+            }
+        }
+        if !leftovers.isEmpty {
+            leftovers.append(UninstallFailure(
+                step: .trashBundle,
+                message: "Let It Brew was kept installed so hook removal can be retried.",
+                diagnostic: "Application bundle retained because one or more agent hooks could not be removed."
+            ))
+            state = .report(leftovers: leftovers)
+            return
+        }
+
+        let bestEffort: [() async -> Result<Void, UninstallFailure>] = [
             environment.disableLaunchAtLogin,
             environment.deleteUserData,
             environment.clearPreferences,
             environment.trashBundle,
         ]
 
-        var leftovers: [UninstallFailure] = []
         for operation in bestEffort {
             if case .failure(let failure) = await operation() {
                 leftovers.append(failure)
