@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reject non-descriptor Task 8 filesystem transport in InstallCommand.swift."""
+"""Reject pathname-based filesystem transport in the agent install command."""
 import re
 import sys
 from pathlib import Path
@@ -50,17 +50,17 @@ def violations(text: str) -> list[str]:
     # pathname mutation/reopen and must not be reintroduced, including across
     # formatting changes.
     if re.search(r"(?<![A-Za-z0-9_])open\s*\(", text):
-        errors.append("path-based open in Task 8 command flow")
+        errors.append("path-based open in agent install command flow")
     return errors
 
 
 def main() -> int:
     if len(sys.argv) != 2:
-        print("usage: check-task8-source-gate.py InstallCommand.swift", file=sys.stderr)
+        print("usage: check-agent-install-transport.py InstallCommand.swift", file=sys.stderr)
         return 2
     issues = violations(Path(sys.argv[1]).read_text())
     if issues:
-        print("TASK8_SOURCE_GATE_FAILED: " + "; ".join(issues), file=sys.stderr)
+        print("AGENT_INSTALL_TRANSPORT_GATE_FAILED: " + "; ".join(issues), file=sys.stderr)
         return 1
     return 0
 

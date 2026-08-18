@@ -26,6 +26,16 @@ for forbidden_file in claude.png codex.png; do
     fi
 done
 
+task_number_paths=$(git ls-files | grep -Ei '(^|/)[^/]*task[[:space:]_-]*[0-9]+[^/]*$' || true)
+if [ -n "$task_number_paths" ]; then
+    fail "tracked filenames must describe product behavior, not internal task numbers: ${task_number_paths}"
+fi
+
+legacy_task_number=8
+if git grep -IqEi "(^|[^[:alnum:]])task[[:space:]_-]*${legacy_task_number}([^[:alnum:]]|$)" -- ':!scripts/tests/public-source-tests.sh'; then
+    fail "tracked source still contains an internal task-number reference from development"
+fi
+
 image_targets=$( {
     sed -nE 's/.*<img[[:space:]][^>]*src="([^"]+)".*/\1/p' README.md
     sed -nE 's/.*!\[[^]]*\]\(([^)[:space:]]+)([[:space:]].*)?\).*/\1/p' README.md

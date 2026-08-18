@@ -15,12 +15,12 @@ ENTRY_SLEEP_DISABLED="$(agent_hook_test_read_sleepdisabled)" || { echo "FATAL: c
 # source gate beside the black-box contract so a future convenience reopen
 # cannot quietly reintroduce Foundation path I/O after target selection.
 INSTALL_SOURCE="$SCRIPT_DIR/../Sources/letitbrew/InstallCommand.swift"
-# This is intentionally a source gate as well as behavioral coverage: the
-# Task 8 command flow must not regress to fd pseudo-path transport, Foundation
-# path mutation, or URL AtomicFile compatibility overloads after selection.
-python3 "$SCRIPT_DIR/check-task8-source-gate.py" "$INSTALL_SOURCE"
-for fixture in "$SCRIPT_DIR"/fixtures/task8-multiline-*.swift; do
-  if python3 "$SCRIPT_DIR/check-task8-source-gate.py" "$fixture" >/dev/null 2>&1; then
+# This is intentionally a source gate as well as behavioral coverage: agent
+# installation must not regress to fd pseudo-path transport, Foundation path
+# mutation, or URL AtomicFile compatibility overloads after target selection.
+python3 "$SCRIPT_DIR/check-agent-install-transport.py" "$INSTALL_SOURCE"
+for fixture in "$SCRIPT_DIR"/fixtures/agent-install-transport-multiline-*.swift; do
+  if python3 "$SCRIPT_DIR/check-agent-install-transport.py" "$fixture" >/dev/null 2>&1; then
     echo "FATAL: source gate accepted $fixture" >&2; exit 1
   fi
 done
