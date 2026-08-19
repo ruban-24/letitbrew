@@ -4,16 +4,20 @@ public enum HookSessionUpdater {
     public static func apply(
         event: String,
         payload: HookPayload,
-        agentName: String,
+        agent: AgentID,
         agentPID: Int32?,
         observedAt: Date,
         storage: SessionStorage
     ) throws {
-        guard let sessionID = payload.sessionId, !sessionID.isEmpty else { return }
+        guard let sessionID = payload.recordID(agent: agent, event: event) else { return }
         guard let effect = HookReducer.reduce(
+            agent: agent,
             event: event,
             toolName: payload.toolName,
-            notificationType: payload.notificationType
+            notificationType: payload.notificationType,
+            source: payload.source,
+            hasBackgroundTasks: payload.hasBackgroundTasks,
+            errorRecoverable: payload.errorRecoverable
         ) else { return }
 
         try storage.mutate(
@@ -22,6 +26,15 @@ public enum HookSessionUpdater {
         ) { previous in
             if let previousObservedAt = previous?.eventObservedAt,
                previousObservedAt > observedAt.timeIntervalSince1970 {
+                return .keep
+            }
+
+            // Copilot may run its independent hook commands out of lifecycle
+            // order. A delayed SessionStart is still a creation edge, not
+            // evidence that an already-working prompt became idle.
+            if agent == .copilot,
+               event == "SessionStart",
+               previous?.state == .working {
                 return .keep
             }
 
@@ -36,7 +49,7 @@ public enum HookSessionUpdater {
                 )
                 return .replace(SessionRecord(
                     id: sessionID,
-                    tool: agentName,
+                    tool: agent.rawValue,
                     state: state,
                     detail: detail,
                     cwd: payload.cwd ?? FileManager.default.currentDirectoryPath,
@@ -50,10 +63,6 @@ public enum HookSessionUpdater {
                     ),
                     stateChangedAt: transition.changedAt,
                     stateTransitionID: transition.id,
-                    transcriptPath: SessionTimeline.transcriptPath(
-                        previous: previous,
-                        supplied: payload.transcriptPath
-                    ),
                     eventObservedAt: observedAt.timeIntervalSince1970
                 ))
             }

@@ -3,6 +3,7 @@
 # complete signed product before any installed bundle or service is touched.
 set -uo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && /bin/pwd -P)"
 APP="${1:?usage: verify-artifact.sh <Let It Brew.app> [--release]}"
 MODE="${2:-}"
 EXPECTED_TEAM="MV2UL94MDC"
@@ -29,6 +30,9 @@ check() {
     fi
 }
 note() { printf '     %s\n' "$*"; }
+
+# shellcheck source=lib-power-baseline.sh
+source "$SCRIPT_DIR/lib-power-baseline.sh"
 
 plist_value() {
     /usr/libexec/PlistBuddy -c "Print :$2" "$1" 2>/dev/null
@@ -89,6 +93,10 @@ for file in "$MAIN" "$DAEMON" "$HELPER" "$INFO_PLIST"; do
     check "$(basename "$file") present" test -f "$file"
     check "$(basename "$file") is not a symlink" test ! -L "$file"
 done
+
+echo
+echo "-- embedded legal resources --"
+baseline_verify_legal_resources "$APP" || fail=1
 check "main executable bit set" test -x "$MAIN"
 check "daemon executable bit set" test -x "$DAEMON"
 check "helper executable bit set" test -x "$HELPER"

@@ -1,4 +1,5 @@
 import Foundation
+import LetItBrewCore
 
 public enum MenuSessionState: Sendable {
     case working
@@ -97,6 +98,14 @@ public enum MenuRepositoryLayoutItem: Identifiable, Equatable, Sendable {
         }
     }
 
+    public var groupedProject: String? {
+        switch self {
+        case .header: nil
+        case .session(let item, let displaysShortID):
+            displaysShortID ? item.session.project : nil
+        }
+    }
+
     public var isSession: Bool {
         if case .session = self { return true }
         return false
@@ -134,11 +143,8 @@ public enum MenuSessionPresentationPolicy {
         let trimmedTool = tool.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTool.isEmpty else { return "Unknown agent" }
 
-        return switch trimmedTool.lowercased() {
-        case "claude": "Claude Code"
-        case "codex": "Codex"
-        default: trimmedTool.capitalized
-        }
+        return AgentID(rawValue: trimmedTool.lowercased())?.displayName
+            ?? trimmedTool.capitalized
     }
 
     private static func duration(_ interval: TimeInterval) -> String {
@@ -217,11 +223,7 @@ public enum MenuRepositoryPresentationPolicy {
     }
 
     private static func agentRank(_ name: String) -> Int {
-        switch name {
-        case "Codex": 0
-        case "Claude Code": 1
-        default: 2
-        }
+        AgentID.allCases.firstIndex { $0.displayName == name } ?? .max
     }
 
     private static func uniqueShortIDs(for ids: [String]) -> [String: String] {
@@ -382,16 +384,16 @@ public enum MenuHeaderDetailCopy {
 public struct MenuSetupAttentionInput: Equatable, Sendable {
     public let hasUpdateResult: Bool
     public let closedLidNeedsAttention: Bool
-    public let agentNames: [String]
+    public let connectedAgentCount: Int
 
     public init(
         hasUpdateResult: Bool,
         closedLidNeedsAttention: Bool,
-        agentNames: [String]
+        connectedAgentCount: Int
     ) {
         self.hasUpdateResult = hasUpdateResult
         self.closedLidNeedsAttention = closedLidNeedsAttention
-        self.agentNames = agentNames
+        self.connectedAgentCount = connectedAgentCount
     }
 }
 
@@ -416,27 +418,17 @@ public enum MenuSetupAttentionPolicy {
             )
         }
 
-        let agents = Array(Set(input.agentNames)).sorted()
-        if !input.closedLidNeedsAttention, agents.count == 1, let agent = agents.first {
-            return MenuSetupAttentionPresentation(
-                title: "Finish \(agent) setup",
-                detail: agent == "Codex"
-                    ? "Approve hooks to track Codex sessions"
-                    : "Complete the connection steps in Settings"
-            )
-        }
-
-        if input.closedLidNeedsAttention, agents.isEmpty {
+        if input.closedLidNeedsAttention {
             return MenuSetupAttentionPresentation(
                 title: "Finish closed-lid setup",
                 detail: "Complete the remaining step in Settings"
             )
         }
 
-        if input.closedLidNeedsAttention || !agents.isEmpty {
+        if input.connectedAgentCount == 0 {
             return MenuSetupAttentionPresentation(
-                title: "Finish Let It Brew setup",
-                detail: "Complete the remaining steps in Settings"
+                title: "Connect an agent",
+                detail: "Open Settings to connect your coding agent."
             )
         }
 

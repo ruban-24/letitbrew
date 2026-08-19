@@ -8,7 +8,8 @@ import Testing
 func managedCodexAttentionStatesRefreshAutomatically(state: AgentConnectionState) {
     #expect(CodexTrustAutoRefreshPolicy.shouldRefresh(
         state: state,
-        disposition: .managed
+        disposition: .managed,
+        isCodexSelected: true
     ))
 }
 
@@ -19,7 +20,8 @@ func managedCodexAttentionStatesRefreshAutomatically(state: AgentConnectionState
 func settledManagedCodexStatesDoNotRefreshAutomatically(state: AgentConnectionState) {
     #expect(!CodexTrustAutoRefreshPolicy.shouldRefresh(
         state: state,
-        disposition: .managed
+        disposition: .managed,
+        isCodexSelected: true
     ))
 }
 
@@ -34,8 +36,17 @@ func settledManagedCodexStatesDoNotRefreshAutomatically(state: AgentConnectionSt
         for disposition in dispositions {
             #expect(!CodexTrustAutoRefreshPolicy.shouldRefresh(
                 state: state,
-                disposition: disposition
+                disposition: disposition,
+                isCodexSelected: true
             ))
         }
     }
+}
+
+@Test func unselectedCodexNeverRefreshesOrReconnects() {
+    #expect(!CodexTrustAutoRefreshPolicy.shouldRefresh(
+        state: .actionNeeded,
+        disposition: .managed,
+        isCodexSelected: false
+    ))
 }

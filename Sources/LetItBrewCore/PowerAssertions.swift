@@ -4,7 +4,7 @@ import IOKit.pwr_mgt
 /// Holds the "prevent idle system sleep" assertion.
 ///
 /// Note this does **not** cover lid-closed sleep: clamshell sleep ignores
-/// power assertions entirely, which is why `SleepWatchdogLaunching` exists.
+/// power assertions entirely, which is why `OsascriptSleepWatchdog` exists.
 public protocol PowerAsserting: AnyObject, Sendable {
     /// Idempotent: safe to call every tick with the same value. Returns
     /// whether the assertion ends this call in the requested state — the

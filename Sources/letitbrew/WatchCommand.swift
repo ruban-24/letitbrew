@@ -2,10 +2,9 @@ import Darwin
 import Foundation
 import LetItBrewCore
 
-private func liveSessions(storage: SessionStorage, settings: Settings,
-                          now: Date) -> [SessionRecord] {
-    SessionStore.live(records: storage.loadAll(), now: now,
-                      ttl: settings.staleTTL, liveness: KillZeroLiveness())
+private func recentSessions(storage: SessionStorage, settings: Settings,
+                            now: Date) -> [SessionRecord] {
+    SessionStore.recent(records: storage.loadAll(), now: now, ttl: settings.staleTTL)
 }
 
 private func compactDuration(_ seconds: Int) -> String {
@@ -18,7 +17,7 @@ private func compactDuration(_ seconds: Int) -> String {
 func runStatus(json: Bool) -> Int32 {
     let settings = Settings()
     let now = Date()
-    let sessions = liveSessions(storage: SessionStorage(), settings: settings, now: now)
+    let sessions = recentSessions(storage: SessionStorage(), settings: settings, now: now)
     let decision = decide(sessions: sessions, now: now, settings: settings,
                           power: IOKitPowerSource().current())
 
@@ -77,7 +76,7 @@ func runStatus(json: Bool) -> Int32 {
 }
 
 /// Message for `watch --lid-closed` refusing to start over a lease left by a
-/// provably dead watchdog loop (Task 15's fail-closed lease repair path: see
+/// provably dead watchdog loop (the fail-closed lease repair path: see
 /// `SleepWatchdogDebtCheck` — an owner that dies right after acquiring the
 /// lease must never silently block every future engagement, but it must also
 /// never be treated as clean without a human running `letitbrew repair`).
@@ -147,7 +146,7 @@ func runWatch(lidClosed: Bool) -> Int32 {
 
     while true {
         let now = Date()
-        let sessions = liveSessions(storage: storage, settings: settings, now: now)
+        let sessions = recentSessions(storage: storage, settings: settings, now: now)
         let decision = decide(sessions: sessions, now: now, settings: settings,
                               power: powerSource.current())
 

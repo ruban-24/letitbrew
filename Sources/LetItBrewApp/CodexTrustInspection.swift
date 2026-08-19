@@ -18,13 +18,6 @@ enum CodexExecutableLocator {
 }
 
 enum LiveCodexHookTrustInspection {
-    /// Lower-camel names are what the supported app-server `hooks/list`
-    /// response returns; the hooks.json writer correctly uses PascalCase.
-    static let expectedEvents: Set<String> = [
-        "sessionStart", "userPromptSubmit", "preToolUse", "postToolUse",
-        "permissionRequest", "stop", "sessionEnd",
-    ]
-
     nonisolated static func inspect(
         executableURL: URL?,
         hooksURL: URL,
@@ -83,7 +76,7 @@ enum LiveCodexHookTrustInspection {
         else { return .couldNotVerify }
         return CodexHookTrust.classifyAppServerOutput(
             execution.output,
-            expectedEvents: expectedEvents,
+            expectedEvents: CodexHooks.appServerEvents,
             expectedSourcePath: hooksURL.path,
             ownershipSuffix: HookFile.ownershipComment(marker: CodexHooks.marker)
         )

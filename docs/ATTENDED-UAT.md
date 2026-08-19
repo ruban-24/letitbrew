@@ -14,6 +14,16 @@ If a safety or power test fails, stop with physical access to the Mac, preserve
 the original `SleepDisabled` baseline, record the exact reproduction, and stop
 using the affected feature until it is understood.
 
+## v0.6.0 final-candidate scope
+
+The v0.6.0 release record already contains full attended OpenCode and GitHub
+Copilot CLI lifecycle passes. Do not repeat those full matrices for the final
+signed artifact unless their adapter or installation code changes after the
+qualified source commit. The final universal Developer ID build still requires
+a short connection and Working/Idle smoke test for Claude Code, Codex, OpenCode,
+and GitHub Copilot CLI. Update, daemon recovery, fresh install, upgrade from
+v0.5.1, and uninstall remain separate signed-artifact gates.
+
 ## One-click update
 
 Run update UAT only from a Developer ID signed, release-verified install at the
@@ -84,6 +94,99 @@ the app does not reconnect a Codex integration that the user explicitly
 disconnected, does not recheck Claude as a side effect, and does not create a
 timer or repeated refresh while the app remains active.
 
+## Four-agent hook lifecycle matrix — not run by automation
+
+This is an attended release gate, not evidence collected by this repository.
+Do **not** run it against an unbacked-up local configuration, and do not record
+which vendors happen to be installed today. At execution time, record the exact
+installed vendor version. If a vendor is absent, mark that vendor's live UAT as
+not run and keep it as a release gate; do not replace it with process-detection
+or simulated evidence.
+
+### Exact-target preservation and recovery (required for every vendor)
+
+Before each vendor pass, resolve the selected user configuration target without
+replacing its lexical symlink and make a private `0700` evidence directory
+beneath `/private/tmp`. For each present final regular file, reserve a unique
+recovery **name in that file's same parent directory and filesystem**. Do the
+identical procedure for the exact registry
+`~/Library/Application Support/LetItBrew/agent-hook-targets.json`.
+
+For every present target and registry, record bytes and SHA-256, device/inode,
+mode, owner/group, flags, mtime and birthtime where available, ACLs, and extended
+attributes. `ctime` and link count are audit observations only: a same-directory
+rename can legitimately change them, so do not require impossible equality.
+Retain the original inode by atomically moving the original final file to a
+unique same-directory recovery name, then create a disposable test copy at the
+lexical target. Keep any lexical symlink unchanged. This lets Connect and
+Disconnect operate only on the disposable copy while the original inode remains
+recoverable.
+
+On normal cleanup, quit the Dev candidate, atomically move any test target to a
+unique same-directory quarantine name, then atomically rename the retained
+original recovery inode back to its lexical final target. Verify the recorded
+bytes, digest, device/inode, mode, ownership, flags, mtime/birthtime where
+available, ACLs, and xattrs. Apply this verification to the registry too. If a
+test or Mac crashes, do not reconnect or overwrite anything: with the candidate
+quit, perform that same quarantine-then-rename recovery before resuming normal
+use. Keep the quarantine file for diagnosis until the verification succeeds.
+
+For a truly absent target or registry, record absence rather than creating a
+placeholder or recovery inode. After the pass, quarantine any created test file
+and verify absence again. Do not promise inode identity for a file that did not
+exist before the pass.
+
+Choose explicit **Connect**, verify its healthy state, and record whether an
+existing session needs restart. For every pass use harmless work and verify:
+
+1. `SessionStart` is Idle; a prompt makes it Working; a stop makes it Idle; and
+   session end removes the record.
+2. The Working → Idle → Working sequence updates the row and open-lid hold
+   within two polls; removal releases it when it is the final Working record.
+3. **Disconnect** immediately hides that vendor's records and removes only the
+   owned configuration. Restore every backed-up target's exact bytes and
+   metadata after the pass, or remove a target only when true absence was
+   recorded before the pass.
+
+Run these vendor-specific additions rather than claiming untested parity:
+
+### Claude Code
+
+Verify untrusted-workspace holdback before workspace trust. Exercise
+`PreCompact`, `PostCompact`, and `SessionStart(source: compact)` as Working.
+Start two child `agent_id` values, stop one child only, and confirm the other
+remains Working. Confirm `StopFailure` becomes Idle and `Stop` remains Working
+while `background_tasks` is nonempty, then becomes Idle after a later empty
+Stop. Where the documented permission lifecycle is observed, it preserves the
+existing Working state.
+
+### Codex
+
+Verify `/hooks` trust approval before lifecycle observation. Exercise compact
+lifecycle events and two simultaneous distinct `agent_id` values; each remains
+Working until its own `SubagentStop`. Where the documented permission lifecycle
+is observed, it preserves the existing Working state.
+
+### OpenCode
+
+Test only a stable 1.x local CLI/app runtime. Confirm permission requests and
+questions become Idle, while permission replies, answered questions, and
+rejected questions return to Working. Send duplicate `session.status: idle`
+and `session.idle` edges and confirm both remain idempotent.
+
+### GitHub Copilot CLI
+
+Confirm selected hooks remain silent and exit zero. Exercise permission prompts
+and question tools and confirm they become Idle; a later `PostToolUse` for the
+completed question returns to Working. Exercise `ErrorOccurred` with the tested
+CLI version: `recoverable: true` must preserve the prior state, while
+`recoverable: false` must become Idle.
+
+At the end of each pass, complete the exact-target recovery and verification
+above for the registry and every selected configuration target. This matrix never
+permits live process detection, CPU detection, or transcript parsing as a
+substitute for a lifecycle hook.
+
 ## Concurrent Working sessions and adaptive menu
 
 Run this only with an isolated, signed Dev candidate. Do not install, launch, or
@@ -92,27 +195,25 @@ do not approve or register the Dev background service, and confirm
 `com.ruban24.letitbrew.dev.daemon` is absent before, during, and after the run.
 This is an open-lid assertion and menu test; it must not change `SleepDisabled`.
 
-Before connecting either agent, create a unique private backup directory with
-`mktemp -d /private/tmp/LetItBrew-UAT.XXXXXX` and require mode `0700`. Resolve
-each existing Claude and Codex config symlink to its target without replacing
-the symlink. Preserve the target's bytes and metadata in the backup directory
-(for example, with `ditto`). Record true absence separately; do not create a
+Before connecting any agent, follow **Exact-target preservation and recovery**
+above for every selected target and registry. Do not use `ditto` or another
+copy as restoration evidence: the retained same-directory original inode is the
+only restore authority. Record true absence separately; do not create a
 placeholder backup for an absent config.
 
 Then record:
 
 - the candidate commit and SHA-256 of the candidate app executable;
 - the Dev bundle ID and the app's signing identity;
-- whether `~/.claude/settings.json` exists; the resolved Codex hooks path
-  (`$CODEX_HOME/hooks.json` when `CODEX_HOME` is set, otherwise
-  `~/.codex/hooks.json`); a byte-for-byte backup of every existing file; and
+- whether each Claude, Codex, OpenCode, and Copilot user target exists;
+  every resolved target path; a byte-for-byte backup of every existing file; and
   each file's pre-test SHA-256; and
 - affirmative absence of the Dev daemon registration and process.
 
 Use one newly created disposable root beneath `/private/tmp`, with two
-same-named project folders at different full paths. Start about two Claude Code
-sessions and two or three Codex sessions for use in those folders; begin the
-matrix with all sessions in the first full path. Use only harmless test work. Do
+same-named project folders at different full paths. Start sessions from the
+connected agents for use in those folders; begin the matrix with all sessions in
+the first full path. Use only harmless test work. Do
 not inspect, copy, screenshot, or include notification prose, prompts, responses,
 reasoning, tool details, or final assistant text in the evidence; record only
 structural events, counts, hold state, and menu/accessibility observations. Each
@@ -153,8 +254,9 @@ Record these visual and accessibility results during the matrix:
   the exact recorded display selection and verify the restoration;
 - accordion: at most one repository expanded, with disclosure state announced;
 - alignment: grouped children have the same logo, text, and timer columns as a
-  flat row, with no indentation, and colliding eight-character ID prefixes
-  lengthen until each visible short ID is unique; and
+  flat row, with no indentation; visible rows show the agent and project folder,
+  while colliding eight-character ID prefixes lengthen until each accessibility
+  label's short ID is unique; and
 - VoiceOver: group labels include the full folder path, session count, agent
   summary, and expanded/collapsed state; child labels include agent, full folder
   path, short ID, Working state, and accumulated active time; disclosure and
@@ -162,13 +264,12 @@ Record these visual and accessibility results during the matrix:
 
 At cleanup, quit the Dev app and end the test sessions before removing only the
 exact disposable root. Unless the user explicitly approves retaining the
-validated Let It Brew-owned hooks, restore each existing config's resolved target
-from its byte-and-metadata-preserved backup without replacing its symlink. Remove
-a newly created config only when preflight recorded true absence. Recompute each
-target's SHA-256 and require exact equality with its pre-test hash, then remove
-only the exact backup directory. Finally record the visible Working count as zero,
-the open-lid assertion as absent, and the Dev daemon registration and process as
-absent throughout.
+validated Let It Brew-owned hooks, use the quarantine-then-atomic-rename
+procedure above to restore each retained original target and registry inode
+without replacing a lexical symlink. Quarantine a newly created config only when
+preflight recorded true absence. Finally record the visible Working count as
+zero, the open-lid assertion as absent, and the Dev daemon registration and
+process as absent throughout.
 
 ## Uninstall
 

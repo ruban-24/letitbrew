@@ -2,6 +2,14 @@ import Testing
 import Foundation
 @testable import LetItBrewCore
 
+@Test func appServerTrustEventsCoverEveryInstalledCodexHook() {
+    #expect(CodexHooks.appServerEvents == Set([
+        "sessionStart", "userPromptSubmit", "preToolUse", "postToolUse",
+        "permissionRequest", "preCompact", "postCompact", "subagentStart",
+        "subagentStop", "stop", "sessionEnd",
+    ]))
+}
+
 private func object(_ data: Data) throws -> [String: Any] {
     try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
 }
@@ -17,7 +25,9 @@ private func object(_ data: Data) throws -> [String: Any] {
     // order — is what actually encodes the edge, and needs no element
     // access at all.
     #expect(CodexHooks.events == ["SessionStart", "UserPromptSubmit", "PreToolUse",
-                                  "PostToolUse", "PermissionRequest", "Stop", "SessionEnd"])
+                                  "PostToolUse", "PermissionRequest", "PreCompact",
+                                  "PostCompact", "SubagentStart", "SubagentStop", "Stop",
+                                  "SessionEnd"])
 }
 
 @Test func topLevelHasOnlyDescriptionAndHooks() throws {
@@ -127,7 +137,8 @@ private func object(_ data: Data) throws -> [String: Any] {
     let command = try CodexHooks.hookCommand(event: "Stop", cliPath: "/opt/letitbrew")
     #expect(command.contains(CodexHooks.marker))
     #expect(!command.contains(ClaudeHooks.marker))
-    #expect(command.contains("hook Stop"))
+    #expect(command.contains("hook codex Stop"))
+    #expect(command.contains(">/dev/null 2>&1"))
     #expect(command.contains(": #"))
 }
 
@@ -246,7 +257,7 @@ private func object(_ data: Data) throws -> [String: Any] {
     #expect(!command.contains("/old/letitbrew"))
 }
 
-// MARK: - Data-loss hardening (Task 7's twin defects, re-verified for Codex)
+// MARK: - Data-loss hardening
 
 /// Requires exactly one group under `event` and exactly one entry inside it,
 /// and that the entry is ours. Cardinality pinned with `try #require` before
@@ -282,7 +293,7 @@ private func requireSoleOwnedEntry(
 }
 
 @Test func rootLevelMalformationsThrowThroughInstallRemoveAndAreAbsentInReport() {
-    // The defect Task 7 shipped twice: treating a read failure, or a file
+    // Treating a read failure, or a file
     // that exists but isn't the shape expected, as "no file yet" and
     // atomically replacing the user's file with a hooks-only object. An
     // empty file is frequently a partial/interrupted write, exactly the

@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import LetItBrewAppCore
+@testable import LetItBrewCore
 
 private func helperStub() throws -> URL {
     let directory = FileManager.default.temporaryDirectory
@@ -43,52 +44,6 @@ private func helperStub() throws -> URL {
     #expect(results[1].output == "handled codex")
 }
 
-@Test func successfulDisconnectsPersistIndependently() {
-    let results = [
-        AgentHelperOperationResult(
-            agentID: "claude", status: -1, output: "timed out", timedOut: true
-        ),
-        AgentHelperOperationResult(
-            agentID: "codex", status: 0, output: "", timedOut: false
-        ),
-    ]
-
-    let persisted = AgentDisconnectPersistence.mergingSuccessful(
-        results, into: ["already-disconnected"]
-    )
-
-    #expect(persisted == ["already-disconnected", "codex"])
-}
-
-@Test func everyRequestedDisconnectIntentPersistsRegardlessOfHelperOutcome() {
-    let persisted = AgentDisconnectPersistence.recordingIntent(
-        for: ["claude", "codex"],
-        into: ["already-disconnected"]
-    )
-
-    #expect(persisted == ["already-disconnected", "claude", "codex"])
-}
-
-@Test func recordedDisconnectIntentSuppressesAutomaticMutationUntilConnectClearsIt() {
-    let intents = AgentDisconnectPersistence.recordingIntent(
-        for: ["claude", "codex"],
-        into: []
-    )
-
-    #expect(!AgentAutomaticConnectionPolicy.mayMutate(
-        agentID: "claude", recordedDisconnectIntents: intents
-    ))
-    let afterConnect = AgentDisconnectPersistence.clearingIntent(
-        for: "claude", from: intents
-    )
-    #expect(AgentAutomaticConnectionPolicy.mayMutate(
-        agentID: "claude", recordedDisconnectIntents: afterConnect
-    ))
-    #expect(!AgentAutomaticConnectionPolicy.mayMutate(
-        agentID: "codex", recordedDisconnectIntents: afterConnect
-    ))
-}
-
 @Test func disconnectCompletionHasOnlyTerminalPerAgentFollowUps() {
     let results = [
         AgentHelperOperationResult(
@@ -103,4 +58,18 @@ private func helperStub() throws -> URL {
         .markDisconnected(agentID: "claude"),
         .showFailure(results[1]),
     ])
+}
+
+@Test func allFourAgentsAreAttemptedOnceAfterAMiddleFailure() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let helper = directory.appendingPathComponent("helper.sh")
+    try Data("#!/bin/sh\n[ \"$2\" = \"opencode\" ] && exit 7\nprintf '%s' \"$2\"\n".utf8).write(to: helper)
+    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: helper.path)
+    let ids = AgentID.allCases.map(\.rawValue)
+    let results = AgentHelperBatchRunner.run(executableURL: helper, command: "uninstall", agentIDs: ids, timeout: 5)
+    #expect(results.map(\.agentID) == ids)
+    #expect(results.filter(\.succeeded).map(\.agentID) == ["claude", "codex", "copilot"])
+    #expect(results.first(where: { $0.agentID == "opencode" })?.status == 7)
 }

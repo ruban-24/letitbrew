@@ -53,48 +53,45 @@ import Testing
         == "No agents are working")
 }
 
-@Test func setupAttentionNamesASingleProblemAndFallsBackForMultipleSteps() {
+@Test func popupConnectionAttentionAppearsOnlyAtZeroConnectedAgents() {
     #expect(MenuSetupAttentionPolicy.presentation(for: MenuSetupAttentionInput(
         hasUpdateResult: false,
         closedLidNeedsAttention: false,
-        agentNames: ["Codex"]
+        connectedAgentCount: 0
     )) == MenuSetupAttentionPresentation(
-        title: "Finish Codex setup",
-        detail: "Approve hooks to track Codex sessions"
+        title: "Connect an agent",
+        detail: "Open Settings to connect your coding agent."
     ))
 
     #expect(MenuSetupAttentionPolicy.presentation(for: MenuSetupAttentionInput(
         hasUpdateResult: false,
-        closedLidNeedsAttention: true,
-        agentNames: []
-    )) == MenuSetupAttentionPresentation(
-        title: "Finish closed-lid setup",
-        detail: "Complete the remaining step in Settings"
-    ))
+        closedLidNeedsAttention: false,
+        connectedAgentCount: 1
+    )) == nil)
+}
 
-    #expect(MenuSetupAttentionPolicy.presentation(for: MenuSetupAttentionInput(
-        hasUpdateResult: false,
-        closedLidNeedsAttention: true,
-        agentNames: ["Codex"]
-    )) == MenuSetupAttentionPresentation(
-        title: "Finish Let It Brew setup",
-        detail: "Complete the remaining steps in Settings"
-    ))
-
+@Test func updateAndClosedLidWarningsRemainIndependent() {
     #expect(MenuSetupAttentionPolicy.presentation(for: MenuSetupAttentionInput(
         hasUpdateResult: true,
         closedLidNeedsAttention: true,
-        agentNames: ["Codex"]
-    )) == MenuSetupAttentionPresentation(
-        title: "Review update result",
-        detail: "Open Settings to see what changed"
-    ))
-
+        connectedAgentCount: 0
+    ))?.title == "Review update result")
     #expect(MenuSetupAttentionPolicy.presentation(for: MenuSetupAttentionInput(
         hasUpdateResult: false,
-        closedLidNeedsAttention: false,
-        agentNames: []
-    )) == nil)
+        closedLidNeedsAttention: true,
+        connectedAgentCount: 0
+    ))?.title == "Finish closed-lid setup")
+}
+
+@Test func sessionRowsAndRepositorySummaryUseAllFourCatalogNames() throws {
+    let now = Date(timeIntervalSince1970: 10_000)
+    let ids = ["claude", "codex", "opencode", "copilot"]
+    let rows = MenuSessionPresentationPolicy.rows(from: ids.enumerated().map { index, id in
+        input(id: id, tool: id, repositoryPath: "/work/all", updatedAt: now.addingTimeInterval(TimeInterval(-index)))
+    }, now: now)
+    #expect(rows.map(\.toolName) == ["Claude Code", "Codex", "OpenCode", "GitHub Copilot CLI"])
+    let summary = try #require(MenuRepositoryPresentationPolicy.groups(from: rows).first?.summaryText)
+    #expect(summary == "1 Claude Code · 1 Codex · 1 OpenCode · 1 GitHub Copilot CLI")
 }
 
 @Test func sessionRowsKeepOnlyWorkingInputs() {
@@ -175,7 +172,7 @@ import Testing
 
     #expect(group.id == "/Users/me/code/letitbrew")
     #expect(group.project == "letitbrew")
-    #expect(group.summaryText == "2 Codex · 1 Claude Code")
+    #expect(group.summaryText == "1 Claude Code · 2 Codex")
     #expect(group.sessionCountText == "3 working")
     #expect(group.sessions.map(\.shortID) == ["5279876d", "94eea3c2", "a211c7f4"])
 }
@@ -199,7 +196,7 @@ import Testing
     ))
 
     #expect(single.sessionCountText == "1 working")
-    #expect(mixed.summaryText == "1 Codex · 1 Claude Code · 1 Alpha · 1 Zeta")
+    #expect(mixed.summaryText == "1 Claude Code · 1 Codex · 1 Alpha · 1 Zeta")
 }
 
 @Test func repositoryGroupsUseFullPathsSortByNewestActivityAndExtendShortIDCollisions() {
@@ -219,7 +216,7 @@ import Testing
 
     #expect(groups.map(\.id) == ["/work/one/app", "/work/three/app", "/work/two/app"])
     #expect(groups[0].sessions.map(\.shortID) == ["abcdef12-o", "abcdef12-t"])
-    #expect(groups[0].summaryText == "1 Codex · 1 Claude Code")
+    #expect(groups[0].summaryText == "1 Claude Code · 1 Codex")
 }
 
 @Test func repositoryLayoutUsesFlatRowsForOneSessionAndExpandedChildrenForManySessions() throws {
@@ -251,6 +248,26 @@ import Testing
         .session("94eea3c2-added"),
     ])
     #expect(expanded[1].shortSessionID == "5279876d")
+}
+
+@Test func groupedSessionTitleUsesTheFolderInsteadOfAnInternalID() throws {
+    let now = Date(timeIntervalSince1970: 10_000)
+    let rows = MenuSessionPresentationPolicy.rows(from: [
+        input(
+            id: "v1|8:opencode|session-one", tool: "opencode", project: "sandbox",
+            repositoryPath: "/Users/me/Documents/Github.nosync/sandbox", updatedAt: now
+        ),
+        input(
+            id: "another-session", tool: "codex", project: "sandbox",
+            repositoryPath: "/Users/me/Documents/Github.nosync/sandbox",
+            updatedAt: now.addingTimeInterval(-1)
+        ),
+    ], now: now)
+    let group = try #require(MenuRepositoryPresentationPolicy.groups(from: rows).first)
+    let expanded = MenuRepositoryLayoutPolicy.items(for: group, isExpanded: true)
+
+    #expect(expanded[1].groupedProject == "sandbox")
+    #expect(expanded[1].shortSessionID == "v1|8:ope")
 }
 
 @Test func repositoryLayoutItemIDsStayStableWhenActiveTimeChanges() throws {

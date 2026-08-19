@@ -78,7 +78,7 @@ conversation. Apple describes the credential and ticket workflow in
 
 Choose a new release workspace beneath `/private/tmp`. The build number remains
 part of app metadata, evidence ZIPs, and the manifest; the final public
-DMG name is stable by marketing version, for example `LetItBrew-0.3.0.dmg`.
+DMG name is stable by marketing version: `LetItBrew-<version>.dmg`.
 
 ```sh
 letitbrew_version="$(awk -F': ' '/^[[:space:]]+MARKETING_VERSION:/ { gsub(/\"/, \"\", $2); print $2; exit }' project.yml)"
@@ -136,8 +136,8 @@ all FUNC, SAFE, and DIST gates pass, publish the final stapled
 `LetItBrew-<version>.dmg`, its final `LetItBrew-<version>-SHA256SUMS`, and the
 byte-identical `LetItBrew.dmg` website alias from the release workspace. The
 stable GitHub Release must identify the same version/build
-and link the source commit, MIT License, release notes, SHA-256, and
-[GitHub Issues](https://github.com/ruban-24/letitbrew/issues).
+and link the source commit, Apache License 2.0, NOTICE, trademark policy,
+release notes, SHA-256, and [GitHub Issues](https://github.com/ruban-24/letitbrew/issues).
 
 Download the DMG back through GitHub Releases rather than testing the local
 upload source. Record the release URL, downloaded SHA-256, exact source commit,

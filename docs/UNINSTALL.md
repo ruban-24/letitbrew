@@ -12,7 +12,10 @@ it is still present**. Deleting the app first strands a registered service with
 no owner, and your Mac may keep a modified sleep setting.
 
 1. In **Settings → Agents**, use each connected agent's `…` menu to
-   **Disconnect**. This removes only Let It Brew-owned hook entries.
+   **Disconnect**. Do this for Claude Code, Codex, OpenCode, and GitHub
+   Copilot CLI when connected. Disconnect removes only Let It Brew-owned JSON
+   entries, or only the owned `letitbrew.js` OpenCode plugin; it does not remove
+   any foreign hook entry, plugin, project, team, or enterprise configuration.
 2. Turn off Launch at Login.
 3. Turn off the closed-lid option, choose **Pause Let It Brew**, and confirm the
    popover reads **Let It Brew is paused**.

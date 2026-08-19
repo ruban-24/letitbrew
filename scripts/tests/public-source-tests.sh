@@ -26,6 +26,29 @@ for forbidden_file in claude.png codex.png; do
     fi
 done
 
+task_number_paths=$(git ls-files | grep -Ei '(^|/)[^/]*task[[:space:]_-]*[0-9]+[^/]*$' || true)
+if [ -n "$task_number_paths" ]; then
+    fail "tracked filenames must describe product behavior, not internal task numbers: ${task_number_paths}"
+fi
+
+if git grep -IqEi '(^|[^[:alnum:]])task[[:space:]_-]*[0-9]+([^[:alnum:]]|$)' -- ':!scripts/tests/public-source-tests.sh'; then
+    fail "tracked source still contains an internal task-number reference from development"
+fi
+
+for agent in 'Claude Code' Codex OpenCode 'GitHub Copilot CLI'; do
+    if ! grep -Fq "$agent" README.md; then
+        fail "README is missing supported agent: $agent"
+    fi
+done
+
+if git grep -Iqi 'Cursor' -- README.md Sources Tests; then
+    fail "current public source still mentions removed Cursor support"
+fi
+
+if git grep -Fq '"$HELPER" --version' -- scripts ':!scripts/tests/public-source-tests.sh'; then
+    fail "distribution scripts execute an unverified candidate helper"
+fi
+
 image_targets=$( {
     sed -nE 's/.*<img[[:space:]][^>]*src="([^"]+)".*/\1/p' README.md
     sed -nE 's/.*!\[[^]]*\]\(([^)[:space:]]+)([[:space:]].*)?\).*/\1/p' README.md
@@ -41,16 +64,44 @@ for image_target in $image_targets; do
     fi
 done
 
-if ! grep -qE '^[[:space:]]+MARKETING_VERSION: 0\.5\.1$' project.yml; then
-    fail "project.yml MARKETING_VERSION is not 0.5.1"
+if ! grep -qE '^[[:space:]]+MARKETING_VERSION: 0\.6\.0$' project.yml; then
+    fail "project.yml MARKETING_VERSION is not 0.6.0"
 fi
 
-if ! grep -qE '^[[:space:]]+CURRENT_PROJECT_VERSION: 20$' project.yml; then
-    fail "project.yml CURRENT_PROJECT_VERSION is not 20"
+if ! grep -qE '^[[:space:]]+CURRENT_PROJECT_VERSION: 21$' project.yml; then
+    fail "project.yml CURRENT_PROJECT_VERSION is not 21"
 fi
 
-if ! grep -Fq 'print("letitbrew 0.5.1")' Sources/letitbrew/main.swift; then
-    fail "letitbrew --version source is not 0.5.1"
+if ! grep -Fq 'print("letitbrew 0.6.0")' Sources/letitbrew/main.swift; then
+    fail "letitbrew --version source is not 0.6.0"
+fi
+
+if [ "$(/usr/bin/grep -m 1 -v '^$' LICENSE)" != "                                 Apache License" ] \
+    || ! grep -Fq "Version 2.0, January 2004" LICENSE; then
+    fail "LICENSE is not the Apache License 2.0 canonical header"
+fi
+
+if [ -e LICENSES/MIT-v0.5.1-and-earlier.txt ] || [ -L LICENSES/MIT-v0.5.1-and-earlier.txt ]; then
+    fail "current source snapshot must not carry the historical MIT license file"
+fi
+
+if ! grep -Fq "Copyright 2026 Ruban" NOTICE 2>/dev/null \
+    || ! grep -Fq "TRADEMARKS.md" NOTICE 2>/dev/null; then
+    fail "NOTICE lacks the required Ruban attribution or trademark-policy link"
+fi
+
+if ! grep -Fq "Apache-2.0" README.md \
+    || ! grep -Fq "v0.6.0 and later" README.md; then
+    fail "README license boundary is incomplete"
+fi
+
+if grep -Fq 'v0.5.1 and earlier' README.md RELEASE-NOTES.md \
+    || grep -Fq 'LICENSES/MIT-v0.5.1-and-earlier.txt' README.md RELEASE-NOTES.md; then
+    fail "current documentation must not make a historical MIT license claim or reference"
+fi
+
+if ! grep -Fq "By contributing, you agree that your contribution is licensed under Apache License 2.0 and that you have the right to submit it." CONTRIBUTING.md; then
+    fail "CONTRIBUTING.md does not state Apache 2.0 inbound terms"
 fi
 
 if grep -qi 'GitHub pre-release' SIGNING.md; then

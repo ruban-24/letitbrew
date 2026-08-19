@@ -90,3 +90,16 @@ private func mixedOwnershipFile() throws -> Data {
     #expect(HookFile.isOurs(codexEntry, marker: CodexHooks.marker))
     #expect(!HookFile.isOurs(codexEntry, marker: ClaudeHooks.marker))
 }
+
+@Test func everyAgentOwnershipMarkerIsUniqueAndNonOverlapping() {
+    let markers = [
+        ClaudeHooks.marker, CodexHooks.marker, CopilotHooks.marker,
+        OpenCodePlugin.marker,
+    ]
+    #expect(Set(markers).count == 4)
+    for marker in markers {
+        #expect(markers.filter { $0 != marker }.allSatisfy {
+            !marker.contains($0) && !$0.contains(marker)
+        })
+    }
+}

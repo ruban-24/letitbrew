@@ -37,17 +37,22 @@ jobs:
       - name: Show Swift version
         run: swift --version
 
+      - name: Build Swift package
+        run: swift build
+
+      - name: Test agent hook baseline seam
+        run: scripts/tests/agent-hook-baseline-tests.sh
+
+      - name: Test agent hook contracts
+        env:
+          LETITBREW_TEST_AGENT_HOOK_SLEEP_DISABLED_BASELINE: "0"
+        run: scripts/test-agent-hook-contracts.sh .build/debug/letitbrew
+
       - name: Run Swift tests
         env:
           CLANG_MODULE_CACHE_PATH: /private/tmp/LetItBrewCI-ClangCache
           SWIFTPM_MODULECACHE_OVERRIDE: /private/tmp/LetItBrewCI-SwiftPMCache
         run: swift test --no-parallel
-
-      - name: Run optimized Codex rollout tests
-        env:
-          CLANG_MODULE_CACHE_PATH: /private/tmp/LetItBrewCI-ReleaseClangCache
-          SWIFTPM_MODULECACHE_OVERRIDE: /private/tmp/LetItBrewCI-ReleaseSwiftPMCache
-        run: swift test -c release --filter CodexActiveSessionObserverTests
 
       - name: Test installed-app release scripts with isolated fixtures
         run: scripts/tests/upgrade-transaction-tests.sh

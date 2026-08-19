@@ -2,85 +2,99 @@ import Testing
 import Foundation
 @testable import LetItBrewCore
 
-private struct FakeLiveness: ProcessLiveness {
-    var alive: Set<Int32>
-    func isAlive(pid: Int32) -> Bool { alive.contains(pid) }
+private func record(
+    _ id: String,
+    tool: String = "claude",
+    pid: Int32? = nil,
+    ageSeconds: TimeInterval,
+    now: Date
+) -> SessionRecord {
+    SessionRecord(
+        id: id, tool: tool, state: .working, detail: nil, cwd: "/tmp/\(id)",
+        pid: pid, updatedAt: now.addingTimeInterval(-ageSeconds)
+    )
 }
 
-private func record(_ id: String, pid: Int32?, ageSeconds: TimeInterval,
-                    now: Date, state: SessionState = .working) -> SessionRecord {
-    SessionRecord(id: id, tool: "claude", state: state, detail: nil, cwd: "/tmp/\(id)",
-                  pid: pid, updatedAt: now.addingTimeInterval(-ageSeconds))
+@Test func recentSessionsUseOnlyHookAgeAndIgnoreLegacyPID() {
+    let now = Date(timeIntervalSince1970: 1_000)
+    let live = record("v1|6:claude|4:live|0:", pid: 999_999, ageSeconds: 10, now: now)
+    let stale = record("v1|6:claude|5:stale|0:", ageSeconds: 43_201, now: now)
+
+    #expect(SessionStore.recent(
+        records: [stale, live], now: now, ttl: 43_200
+    ).map(\.id) == ["v1|6:claude|4:live|0:"])
 }
 
-@Test func keepsSessionsWhoseProcessIsAlive() {
-    let now = Date()
-    let records = [record("a", pid: 100, ageSeconds: 10, now: now)]
-    let live = SessionStore.live(records: records, now: now, ttl: 43_200,
-                                 liveness: FakeLiveness(alive: [100]))
-    #expect(live.map(\.id) == ["a"])
+@Test func recentUsesAStrictNonnegativeAgeWindow() {
+    let now = Date(timeIntervalSince1970: 1_000)
+    let ttl: TimeInterval = 60
+    let cases: [(String, TimeInterval, Bool)] = [
+        ("zero", 0, true),
+        ("exact-ttl", ttl, false),
+        ("future", -1, false),
+    ]
+
+    for (name, age, expected) in cases {
+        let session = record("v1|6:claude|\(name.utf8.count):\(name)|0:",
+                             ageSeconds: age, now: now)
+        #expect(
+            SessionStore.recent(records: [session], now: now, ttl: ttl).isEmpty == !expected,
+            Comment(rawValue: name)
+        )
+    }
 }
 
-@Test func evictsSessionsWhoseProcessIsGone() {
-    let now = Date()
-    let records = [record("a", pid: 100, ageSeconds: 10, now: now),
-                   record("b", pid: 200, ageSeconds: 10, now: now)]
-    let live = SessionStore.live(records: records, now: now, ttl: 43_200,
-                                 liveness: FakeLiveness(alive: [100]))
-    #expect(live.map(\.id) == ["a"])
+@Test func recentRejectsNonpositiveAndNonfiniteTTLs() {
+    let now = Date(timeIntervalSince1970: 1_000)
+    let session = record("v1|6:claude|4:live|0:", ageSeconds: 0, now: now)
+
+    for ttl: TimeInterval in [0, -1, .nan, .infinity, -.infinity] {
+        #expect(SessionStore.recent(records: [session], now: now, ttl: ttl).isEmpty)
+    }
 }
 
-@Test func keepsALongSilentButLiveSession() {
-    // The case a SHORT freshness timeout would get wrong: a session running
-    // a 40-minute build emits one event (PreToolUse) and then nothing until
-    // it finishes. Liveness, not freshness, decides. The 12-hour TTL used
-    // below survives only as the pid-reuse backstop, not as the primary
-    // eviction signal — it is far longer than any real build.
-    let now = Date()
-    let records = [record("build", pid: 100, ageSeconds: 2_400, now: now)]
-    let live = SessionStore.live(records: records, now: now, ttl: 43_200,
-                                 liveness: FakeLiveness(alive: [100]))
-    #expect(live.map(\.id) == ["build"])
+@Test func preV06BareIDsRemainDecodableButCannotDriveActivity() throws {
+    let data = Data(#"{"id":"legacy","tool":"claude","state":"working","detail":null,"cwd":"/tmp","pid":null,"updatedAt":1000}"#.utf8)
+    let legacy = try JSONDecoder().decode(SessionRecord.self, from: data)
+
+    #expect(legacy.id == "legacy")
+    #expect(SessionStore.recent(
+        records: [legacy], now: Date(timeIntervalSince1970: 1_001), ttl: 43_200
+    ).isEmpty)
 }
 
-@Test func evictsNilPidSessionsOnlyByTTL() {
-    let now = Date()
-    let records = [record("young", pid: nil, ageSeconds: 60, now: now),
-                   record("ancient", pid: nil, ageSeconds: 50_000, now: now)]
-    let live = SessionStore.live(records: records, now: now, ttl: 43_200,
-                                 liveness: FakeLiveness(alive: []))
-    #expect(live.map(\.id) == ["young"])
+@Test func recentRejectsMalformedOrMismatchedHookRecordIDs() {
+    let now = Date(timeIntervalSince1970: 1_000)
+    let invalidIDs = [
+        "v1|6:claude|4:live|", // truncated child field
+        "v1|6:claude|5:live|0:", // wrong parent byte length
+        "v1|6:claude|4:live|0:extra", // suffix
+        "v1|7:unknown|4:live|0:", // unknown agent
+        "v1|6:claude|0:|0:", // empty parent
+        "legacy",
+    ]
+    let records = invalidIDs.map { record($0, ageSeconds: 10, now: now) }
+        + [record("v1|5:codex|4:live|0:", tool: "claude", ageSeconds: 10, now: now)]
+
+    #expect(SessionStore.recent(records: records, now: now, ttl: 43_200).isEmpty)
 }
 
-@Test func ttlAlsoEvictsALiveButAncientSession() {
-    // Backstop against pid reuse: a recycled pid could look alive forever.
-    let now = Date()
-    let records = [record("stale", pid: 100, ageSeconds: 50_000, now: now)]
-    let live = SessionStore.live(records: records, now: now, ttl: 43_200,
-                                 liveness: FakeLiveness(alive: [100]))
-    #expect(live.isEmpty)
-}
+@Test func recentSessionsSortByRecency() {
+    let now = Date(timeIntervalSince1970: 1_000)
+    let records = [
+        record("v1|6:claude|3:old|0:", ageSeconds: 300, now: now),
+        record("v1|6:claude|3:new|0:", ageSeconds: 5, now: now),
+        record("v1|6:claude|3:mid|0:", ageSeconds: 60, now: now),
+    ]
 
-@Test func resultIsSortedByRecencyForStableDisplay() {
-    let now = Date()
-    let records = [record("old", pid: 1, ageSeconds: 300, now: now),
-                   record("new", pid: 2, ageSeconds: 5, now: now),
-                   record("mid", pid: 3, ageSeconds: 60, now: now)]
-    let live = SessionStore.live(records: records, now: now, ttl: 43_200,
-                                 liveness: FakeLiveness(alive: [1, 2, 3]))
-    #expect(live.map(\.id) == ["new", "mid", "old"])
+    #expect(SessionStore.recent(records: records, now: now, ttl: 43_200)
+        .map(\.id) == ["v1|6:claude|3:new|0:", "v1|6:claude|3:mid|0:", "v1|6:claude|3:old|0:"])
 }
 
 // MARK: - KillZeroLiveness against the real kernel
 //
-// Every test above injects `FakeLiveness`, which proves `SessionStore.live`'s
-// filtering logic but says nothing about whether `KillZeroLiveness` itself
-// talks to the kernel correctly. This project already shipped one defect
-// that looked correct against a scripted table and only broke against real
-// process data (`ProcessAncestry` reading `p_comm`, a version string, instead
-// of argv[0]) — these tests exercise the real `kill(2)` syscall instead of a
-// fake, so a regression in the non-positive-pid guard or the ESRCH/EPERM
-// handling shows up here rather than staying hidden behind a green suite.
+// Agent-session activity is hook-only. These kernel checks remain because
+// the closed-lid watchdog validates ownership of its own app-process lease.
 
 @Test func killZeroRejectsNonPositivePids() {
     // kill(0, 0) signals the caller's entire process group; kill(-1, 0)

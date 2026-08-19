@@ -5,7 +5,7 @@ let package = Package(
     name: "LetItBrew",
     platforms: [.macOS(.v14)],
     targets: [
-        .target(name: "LetItBrewAppCore"),
+        .target(name: "LetItBrewAppCore", dependencies: ["LetItBrewCore"]),
         .target(name: "LetItBrewCore"),
         .target(name: "LetItBrewDaemonCore", dependencies: ["LetItBrewCore"]),
         .executableTarget(name: "letitbrew", dependencies: ["LetItBrewCore"]),

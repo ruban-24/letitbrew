@@ -81,6 +81,72 @@ private final class DaemonCompletionGate: @unchecked Sendable {
     }
 }
 
+/// Owns the unauthenticated transport probe across its asynchronous XPC
+/// callbacks. The one-shot gate serializes completion, and invalidation drops
+/// the handler cycle after the first response, error, interruption, or timeout.
+private final class DaemonServiceTransportProbe: @unchecked Sendable {
+    private let connection: NSXPCConnection
+    private let gate = DaemonCompletionGate()
+    private let timeout: TimeInterval
+    private let completion: @Sendable (Result<Void, Error>) -> Void
+
+    init(
+        machServiceName: String,
+        timeout: TimeInterval,
+        completion: @escaping @Sendable (Result<Void, Error>) -> Void
+    ) {
+        connection = NSXPCConnection(
+            machServiceName: machServiceName,
+            options: .privileged
+        )
+        self.timeout = timeout
+        self.completion = completion
+    }
+
+    func start() {
+        connection.remoteObjectInterface = NSXPCInterface(
+            with: LetItBrewDaemonXPCProtocol.self
+        )
+        connection.interruptionHandler = { [self] in
+            finish(.failure(DaemonConnectionFailure.transportUnreachable(
+                domain: NSCocoaErrorDomain,
+                code: NSXPCConnectionInterrupted,
+                message: "The background service interrupted the presence check."
+            )))
+        }
+        connection.resume()
+
+        guard let proxy = connection.remoteObjectProxyWithErrorHandler({ [self] error in
+            let underlying = error as NSError
+            finish(.failure(DaemonConnectionFailure.transportUnreachable(
+                domain: underlying.domain,
+                code: underlying.code,
+                message: underlying.localizedDescription
+            )))
+        }) as? LetItBrewDaemonXPCProtocol else {
+            finish(.failure(DaemonConnectionFailure.unavailable(
+                "Invalid XPC interface during the presence check."
+            )))
+            return
+        }
+
+        DispatchQueue.global(qos: .userInitiated).asyncAfter(
+            deadline: .now() + max(0.1, timeout)
+        ) { [self] in
+            finish(.failure(DaemonConnectionFailure.handshakeTimedOut))
+        }
+        proxy.protocolVersion { [self] _ in finish(.success(())) }
+    }
+
+    private func finish(_ result: Result<Void, Error>) {
+        gate.runOnce {
+            connection.interruptionHandler = nil
+            connection.invalidate()
+            completion(result)
+        }
+    }
+}
+
 /// A mutually authenticated client for the privileged launch daemon.
 /// Constructing this object creates only an XPC connection; it never creates,
 /// registers, or queries an `SMAppService`.
@@ -126,6 +192,22 @@ final class DaemonConnection: @unchecked Sendable {
 
     var expectedBuildIdentity: LetItBrewDaemonBuildIdentity {
         expectedBuild
+    }
+
+    /// A read-only fallback for a copy whose own signature cannot construct
+    /// an authenticated connection. It may prove only that a known launchd
+    /// service is absent. Any peer response, authentication interruption,
+    /// timeout, or unfamiliar transport error remains a refusal.
+    static func probeServiceTransport(
+        machServiceName: String,
+        timeout: TimeInterval = 1,
+        completion: @escaping Completion
+    ) {
+        DaemonServiceTransportProbe(
+            machServiceName: machServiceName,
+            timeout: timeout,
+            completion: completion
+        ).start()
     }
 
     private static func validatedIdentities() throws -> (

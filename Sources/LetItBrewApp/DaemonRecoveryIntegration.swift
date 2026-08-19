@@ -322,12 +322,32 @@ enum LiveDaemonUninstallPreparer {
         do {
             connection = try DaemonConnection()
         } catch {
-            // `DaemonConnection.init()` validates only this app's own code
-            // signature and its embedded daemon binary — both are present
-            // regardless of whether a launchd job is registered, so a throw
-            // here says nothing about service existence. Treat it as
-            // "could not determine", which must block rather than silently
-            // waving through an uninstall we can't reason about.
+            // A certificate-free development build cannot authenticate a
+            // daemon, but that must not strand one-click uninstall when no
+            // service exists. Probe only the two product-owned service names
+            // without a signing requirement. Structured 4099 is affirmative
+            // absence; every other result still blocks.
+            if let identifier = Bundle.main.bundleIdentifier,
+               [
+                   BackgroundServiceEligibility.productionAppIdentifier,
+                   BackgroundServiceEligibility.developmentAppIdentifier,
+               ].contains(identifier) {
+                let probe: Result<Void, Error> = await withCheckedContinuation {
+                    continuation in
+                    DaemonConnection.probeServiceTransport(
+                        machServiceName: identifier + ".daemon"
+                    ) { continuation.resume(returning: $0) }
+                }
+                if case .failure(let probeError) = probe,
+                   let failure = probeError as? DaemonConnectionFailure,
+                   case .transportUnreachable(let domain, let code, _) = failure,
+                   DaemonConnectionAbsenceClassifier.classify(
+                       domain: domain,
+                       code: code
+                   ) == .affirmativelyAbsent {
+                    return .absent
+                }
+            }
             return .failed(DaemonUninstallPreparationFailure(
                 message: error.localizedDescription
             ))

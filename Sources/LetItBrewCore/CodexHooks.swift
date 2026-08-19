@@ -71,8 +71,16 @@ public enum CodexHooks {
     /// Codex has no `Notification` event.
     public static let events = [
         "SessionStart", "UserPromptSubmit", "PreToolUse",
-        "PostToolUse", "PermissionRequest", "Stop", "SessionEnd",
+        "PostToolUse", "PermissionRequest", "PreCompact", "PostCompact",
+        "SubagentStart", "SubagentStop", "Stop", "SessionEnd",
     ]
+
+    /// The app-server reports the same installed events with a lowercase
+    /// initial. Derive the trust contract from the writer's complete list so
+    /// install and runtime verification cannot drift apart.
+    public static let appServerEvents = Set(events.map { event in
+        event.prefix(1).lowercased() + event.dropFirst()
+    })
 
     public static let fallbackCLIPath = ClaudeHooks.fallbackCLIPath
 
@@ -118,7 +126,7 @@ public enum CodexHooks {
         guard cliPath.hasPrefix("/") else { throw RelativeCLIPath(cliPath) }
         return "c=\(ClaudeHooks.shellSingleQuoted(cliPath)); "
             + "[ -x \"$c\" ] || c=\(ClaudeHooks.shellSingleQuoted(fallbackCLIPath)); "
-            + "\"$c\" hook \(event); \(HookFile.ownershipComment(marker: marker))"
+            + "\"$c\" hook codex \(event) >/dev/null 2>&1; \(HookFile.ownershipComment(marker: marker))"
     }
 
     /// Thrown for `hooks.json` content that exists but cannot be safely

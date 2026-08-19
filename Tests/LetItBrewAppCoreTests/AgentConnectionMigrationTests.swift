@@ -1,0 +1,42 @@
+import Testing
+@testable import LetItBrewAppCore
+@testable import LetItBrewCore
+
+private func migrationSnapshot() -> ExactFileSnapshot {
+    try! ExactFileSnapshot(path: "/migration/a", exists: false)
+}
+
+@Test func migrationConsultsLegacyOnlyWhenV2IsTrulyMissing() {
+    let inspections = [AgentConnectionInspection(agentID: "claude", state: .healthyOwned, hasRecordedTarget: false, exactTargetSnapshot: migrationSnapshot())]
+    let missing = AgentConnectionMigration.migrate(persisted: .missing, legacyDisconnected: [], inspections: inspections, legacyMigratableAgentIDs: ["claude", "codex"])
+    let empty = AgentConnectionMigration.migrate(persisted: .values([]), legacyDisconnected: [], inspections: inspections, legacyMigratableAgentIDs: ["claude", "codex"])
+    let malformed = AgentConnectionMigration.migrate(persisted: .malformed, legacyDisconnected: [], inspections: inspections, legacyMigratableAgentIDs: ["claude", "codex"])
+    #expect(missing.selectedAgentIDs == ["claude"])
+    #expect(empty.selectedAgentIDs.isEmpty)
+    #expect(malformed.selectedAgentIDs.isEmpty)
+}
+
+@Test func migrationFiltersUnknownAuthoritativeValuesWithoutLegacyFallback() {
+    let result = AgentConnectionMigration.migrate(
+        persisted: .values(["opencode", "unknown"]), legacyDisconnected: [],
+        inspections: [AgentConnectionInspection(agentID: "claude", state: .healthyOwned, hasRecordedTarget: false, exactTargetSnapshot: migrationSnapshot())],
+        legacyMigratableAgentIDs: ["claude", "codex"]
+    )
+    #expect(result.selectedAgentIDs == ["opencode"])
+}
+
+@Test(arguments: [
+    AgentPersistedSelection.missing,
+    .values([]),
+    .values(["opencode"]),
+    .values(["unknown"]),
+    .malformed,
+])
+func migrationAlwaysWritesV2BeforeRemovingLegacy(persisted: AgentPersistedSelection) {
+    var events: [String] = []
+    let result = AgentConnectionMigration.migrate(persisted: persisted, legacyDisconnected: ["codex"], inspections: [], legacyMigratableAgentIDs: ["claude", "codex"])
+    AgentConnectionMigration.persist(result.selectedAgentIDs, writeV2: { events.append("write:\($0)") }, removeLegacy: { events.append("removeLegacy") })
+    #expect(events.count == 2)
+    #expect(events[0].hasPrefix("write:"))
+    #expect(events[1] == "removeLegacy")
+}

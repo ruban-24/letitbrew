@@ -14,34 +14,61 @@ public enum HookEffect: Equatable, Sendable {
     case end
 }
 
-/// Maps a lifecycle hook event to its effect on the session record.
-///
-/// Claude Code and Codex share event names and payload semantics, so this
-/// serves both. Codex simply never emits `Notification`.
+/// Maps one agent's lifecycle event to its effect on the session record.
+/// Event names are not assumed to have identical semantics across agents.
 public enum HookReducer {
     public static func reduce(
+        agent: AgentID,
         event: String,
         toolName: String?,
-        notificationType: String?
+        notificationType: String?,
+        source: String? = nil,
+        hasBackgroundTasks: Bool = false,
+        errorRecoverable: Bool? = nil
     ) -> HookEffect? {
         switch event {
         case "SessionStart":
             // Idle, not working: a session that has never been prompted emits
             // no further events, so `working` here would hold the Mac awake
             // for as long as the process lives. Still writes a record, so the
-            // session appears immediately and the pid join lands.
-            return .set(.idle, detail: nil)
+            // session appears immediately.
+            return source == "compact" ? .set(.working, detail: nil) : .set(.idle, detail: nil)
+        case "PreCompact", "PostCompact", "SubagentStart":
+            return .set(.working, detail: nil)
         case "UserPromptSubmit", "PostToolUse":
             return .set(.working, detail: nil)
         case "PreToolUse":
+            if agent == .copilot, isCopilotUserInputTool(toolName) {
+                return .set(.idle, detail: nil)
+            }
             return .set(.working, detail: toolName.map(detailToken(forTool:)))
         case "PermissionRequest":
-            return nil
+            return agent == .copilot || agent == .opencode
+                ? .set(.idle, detail: nil)
+                : nil
         case "Notification":
-            return notificationType == "idle_prompt" ? .set(.idle, detail: nil) : nil
+            if notificationType == "idle_prompt" {
+                return .set(.idle, detail: nil)
+            }
+            if agent == .copilot,
+               ["permission_prompt", "elicitation_dialog"].contains(notificationType) {
+                return .set(.idle, detail: nil)
+            }
+            return nil
+        case "UserInputRequested":
+            return agent == .opencode ? .set(.idle, detail: nil) : nil
+        case "UserInputResolved":
+            return agent == .opencode ? .set(.working, detail: nil) : nil
         case "Stop":
+            return hasBackgroundTasks ? .set(.working, detail: nil) : .set(.idle, detail: nil)
+        case "StopFailure":
             return .set(.idle, detail: nil)
-        case "SessionEnd":
+        case "ErrorOccurred":
+            // Copilot can recover from some execution errors and continue the
+            // same turn. Only its explicit terminal value releases the hold;
+            // a missing or future payload shape preserves the prior state.
+            return errorRecoverable == false ? .set(.idle, detail: nil) : nil
+        case "SubagentStop", "SessionEnd":
             return .end
         default:
             // Unknown events change nothing. Both tools add names over time.
@@ -59,6 +86,13 @@ public enum HookReducer {
         case "WebFetch", "WebSearch": return "searching-web"
         case "Task", "Agent": return "running-subagent"
         default: return "tool:\(tool)"
+        }
+    }
+
+    private static func isCopilotUserInputTool(_ toolName: String?) -> Bool {
+        switch toolName {
+        case "ask_user", "ask_user_question", "AskUserQuestion": true
+        default: false
         }
     }
 

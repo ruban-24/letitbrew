@@ -1,6 +1,7 @@
 #!/bin/bash
 # Isolated command-adapter tests. These never invoke real xcodebuild, codesign,
-# hdiutil, notarytool, stapler, spctl, or the release artifact verifier.
+# hdiutil, notarytool, stapler, or spctl. The verifier's legal-only fixture
+# mode validates copied static legal resources without inspecting signatures.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && /bin/pwd -P)"
@@ -10,7 +11,8 @@ source "$SCRIPT_DIR/build-release-artifact.sh"
 source "$SCRIPT_DIR/create-release-dmg.sh"
 # shellcheck source=../notarize-release.sh
 source "$SCRIPT_DIR/notarize-release.sh"
-
+# shellcheck source=../lib-power-baseline.sh
+source "$SCRIPT_DIR/lib-power-baseline.sh"
 TEST_VERSION="$(release_project_value "$SCRIPT_DIR/../project.yml" MARKETING_VERSION)"
 TEST_BUILD="$(release_project_value "$SCRIPT_DIR/../project.yml" CURRENT_PROJECT_VERSION)"
 ORIGINAL_RELEASE_BUILD_VERIFY_DETAILS="$(declare -f release_build_verify_release_details)"
@@ -74,7 +76,8 @@ make_fake_app() {
     /bin/mkdir -p \
         "$app/Contents/MacOS" \
         "$app/Contents/Library/LaunchServices" \
-        "$app/Contents/Helpers"
+        "$app/Contents/Helpers" \
+        "$app/Contents/Resources/Legal"
     printf 'plist\n' >"$app/Contents/Info.plist"
     for executable in \
         "$app/Contents/MacOS/LetItBrew" \
@@ -83,6 +86,53 @@ make_fake_app() {
         printf 'fake executable: %s\n' "$executable" >"$executable"
         /bin/chmod +x "$executable"
     done
+    /usr/bin/install -m 644 "$SCRIPT_DIR/../LICENSE" "$app/Contents/Resources/Legal/LICENSE"
+    /usr/bin/install -m 644 "$SCRIPT_DIR/../NOTICE" "$app/Contents/Resources/Legal/NOTICE"
+    /usr/bin/install -m 644 "$SCRIPT_DIR/../TRADEMARKS.md" "$app/Contents/Resources/Legal/TRADEMARKS.md"
+}
+
+verify_legal_resources_only() {
+    baseline_verify_legal_resources "$1"
+}
+
+make_legal_only_app() {
+    local app="$1"
+    /bin/mkdir -p "$app/Contents/Resources/Legal"
+    /usr/bin/install -m 644 "$SCRIPT_DIR/../LICENSE" "$app/Contents/Resources/Legal/LICENSE"
+    /usr/bin/install -m 644 "$SCRIPT_DIR/../NOTICE" "$app/Contents/Resources/Legal/NOTICE"
+    /usr/bin/install -m 644 "$SCRIPT_DIR/../TRADEMARKS.md" "$app/Contents/Resources/Legal/TRADEMARKS.md"
+}
+
+make_four_file_update_support() {
+    local app="$1" support_dir="$1/Contents/Resources/UpdateSupport" support
+    /bin/mkdir -p "$support_dir"
+    for support in run-update.sh upgrade-installed-app.sh verify-artifact.sh; do
+        printf '#!/bin/bash\n' >"$support_dir/$support"
+        /bin/chmod 755 "$support_dir/$support"
+    done
+    printf '# immutable support data\n' >"$support_dir/lib-power-baseline.sh"
+    /bin/chmod 644 "$support_dir/lib-power-baseline.sh"
+}
+
+normal_verifier_runs_legal_then_full_gates() {
+    local app="$1" transcript="$TEST_ROOT/normal-verifier-transcript"
+    LETITBREW_VERIFY_ARTIFACT_LEGAL_ONLY=1 "$SCRIPT_DIR/verify-artifact.sh" "$app" >"$transcript" 2>&1 || true
+    /usr/bin/grep -Fq 'PASS: embedded legal resource verification' "$transcript" &&
+        /usr/bin/grep -Fq -- '-- signed update support --' "$transcript" &&
+        /usr/bin/grep -Fq -- '-- strict signatures and live-image identity --' "$transcript"
+}
+
+frozen_v051_contract_runs_without_git_or_cwd() {
+    local no_git="$TEST_ROOT/no-git-bin" transcript="$TEST_ROOT/no-git-transcript"
+    /bin/mkdir -p "$no_git"
+    printf '#!/bin/bash\nexit 127\n' >"$no_git/git"
+    /bin/chmod 755 "$no_git/git"
+    (
+        cd /private/tmp || exit 1
+        PATH="$no_git:$PATH" /bin/bash \
+            "$SCRIPT_DIR/tests/frozen-v0.5.1-update-support-contract-tests.sh"
+    ) >"$transcript" 2>&1 &&
+        /usr/bin/grep -Fq 'PASS: 5 frozen v0.5.1 UpdateSupport assertions' "$transcript"
 }
 
 echo "-- shared path and manifest contracts --"
@@ -103,6 +153,60 @@ expect_true "accepts canonical major.minor.patch" release_version_is_canonical 0
 expect_false "rejects a two-component release version" release_version_is_canonical 0.4
 expect_false "rejects a leading-zero release version" release_version_is_canonical 00.4.0
 expect_false "rejects a fourth release component" release_version_is_canonical 0.4.0.1
+
+echo
+echo "-- embedded legal resource contract --"
+legal_app="$TEST_ROOT/legal/Let It Brew.app"
+make_fake_app "$legal_app"
+expect_true "accepts exactly the three embedded legal resources" verify_legal_resources_only "$legal_app"
+
+for legal_name in LICENSE NOTICE TRADEMARKS.md; do
+    fixture="$TEST_ROOT/legal-missing-$legal_name/Let It Brew.app"
+    make_fake_app "$fixture"
+    /bin/rm -f "$fixture/Contents/Resources/Legal/$legal_name"
+    expect_false "rejects a missing Legal/$legal_name" verify_legal_resources_only "$fixture"
+done
+
+for legal_name in LICENSE NOTICE TRADEMARKS.md; do
+    fixture="$TEST_ROOT/legal-symlink-$legal_name/Let It Brew.app"
+    foreign="$TEST_ROOT/foreign-$legal_name"
+    make_fake_app "$fixture"
+    /bin/rm -f "$fixture/Contents/Resources/Legal/$legal_name"
+    case "$legal_name" in
+        LICENSE) /usr/bin/install -m 644 "$SCRIPT_DIR/../LICENSE" "$foreign" ;;
+        NOTICE) /usr/bin/install -m 644 "$SCRIPT_DIR/../NOTICE" "$foreign" ;;
+        TRADEMARKS.md) /usr/bin/install -m 644 "$SCRIPT_DIR/../TRADEMARKS.md" "$foreign" ;;
+    esac
+    /bin/ln -s "$foreign" "$fixture/Contents/Resources/Legal/$legal_name"
+    expect_false "rejects a symlinked Legal/$legal_name" verify_legal_resources_only "$fixture"
+done
+
+fixture="$TEST_ROOT/legal-wrong-family/Let It Brew.app"
+make_fake_app "$fixture"
+/bin/mkdir -p "$fixture/Contents/Resources/Legal"
+printf 'MIT License\n' >"$fixture/Contents/Resources/Legal/LICENSE"
+expect_false "rejects a non-Apache embedded LICENSE" verify_legal_resources_only "$fixture"
+
+minimal_legal_app="$TEST_ROOT/legal-only/Let It Brew.app"
+make_legal_only_app "$minimal_legal_app"
+expect_false "normal verifier refuses a Legal-only app" "$SCRIPT_DIR/verify-artifact.sh" "$minimal_legal_app"
+expect_false "old Legal-only environment cannot bypass normal verification" \
+    env LETITBREW_VERIFY_ARTIFACT_LEGAL_ONLY=1 "$SCRIPT_DIR/verify-artifact.sh" "$minimal_legal_app"
+expect_false "old Legal-only environment cannot bypass release verification" \
+    env LETITBREW_VERIFY_ARTIFACT_LEGAL_ONLY=1 "$SCRIPT_DIR/verify-artifact.sh" "$minimal_legal_app" --release
+expect_true "normal verifier calls Legal validation and continues through full gates despite the retired environment" \
+    normal_verifier_runs_legal_then_full_gates "$minimal_legal_app"
+
+echo
+echo "-- frozen v0.5.1 update support compatibility --"
+v051_four_file_app="$TEST_ROOT/v051-four-file/Let It Brew.app"
+make_fake_app "$v051_four_file_app"
+make_four_file_update_support "$v051_four_file_app"
+expect_true "frozen v0.5.1 exact-four predicate accepts the current inventory" \
+    release_build_verify_v051_compatibility "$v051_four_file_app"
+
+expect_true "frozen v0.5.1 predicate works without Git from an unrelated caller cwd" \
+    frozen_v051_contract_runs_without_git_or_cwd
 
 echo
 echo "-- Developer ID identity refusal and selection --"

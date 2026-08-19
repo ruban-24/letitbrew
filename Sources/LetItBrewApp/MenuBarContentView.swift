@@ -202,6 +202,7 @@ struct MenuBarContentView: View {
                         case .session(let session, _):
                             SessionRowView(
                                 session: session.session,
+                                groupedProject: item.groupedProject,
                                 shortID: item.shortSessionID,
                                 onStopTracking: { stopTracking(session.session) }
                             )
@@ -311,9 +312,9 @@ struct MenuBarContentView: View {
         MenuSetupAttentionPolicy.presentation(for: MenuSetupAttentionInput(
             hasUpdateResult: model.updateCompletionReport != nil,
             closedLidNeedsAttention: model.daemonNeedsSetupAttention,
-            agentNames: model.agentHooks
-                .filter(\.requiresSetupAttention)
-                .map(\.name)
+            connectedAgentCount: model.agentHooks.filter {
+                $0.state == .connected && $0.disposition == .managed
+            }.count
         ))
     }
 
@@ -384,6 +385,7 @@ private struct RepositoryGroupRowView: View {
 
 private struct SessionRowView: View {
     let session: MenuSessionPresentation
+    let groupedProject: String?
     let shortID: String?
     let onStopTracking: () -> Void
 
@@ -436,12 +438,14 @@ private struct SessionRowView: View {
     }
 
     private var primaryText: String {
-        guard let shortID else { return session.project }
-        return "\(session.toolName) · \(shortID)"
+        guard let groupedProject else { return session.project }
+        return "\(session.toolName) · \(groupedProject)"
     }
 
     private var secondaryText: String {
-        shortID == nil ? "\(session.toolName) · \(session.stateText)" : session.stateText
+        groupedProject == nil
+            ? "\(session.toolName) · \(session.stateText)"
+            : session.stateText
     }
 
     private var accessibilityLabel: String {
@@ -462,10 +466,22 @@ struct AgentLogo: View {
                 Image("ClaudeAgent")
                     .resizable()
                     .interpolation(.high)
+                    .scaledToFit()
             case "codex":
                 Image("CodexAgent")
                     .resizable()
                     .interpolation(.high)
+                    .scaledToFit()
+            case "opencode":
+                Image("OpenCodeAgent")
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+            case "copilot":
+                Image("CopilotAgent")
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
             default:
                 Image(systemName: "terminal")
                     .resizable()
@@ -474,7 +490,6 @@ struct AgentLogo: View {
                     .padding(3)
             }
         }
-        .scaledToFit()
         .accessibilityHidden(true)
     }
 }

@@ -139,22 +139,16 @@ public struct SessionRecord: Codable, Equatable, Sendable {
     /// the state unchanged retain this value, which lets consumers dedupe
     /// effects without tying them to the hook polling cadence.
     public var stateTransitionID: String?
-    /// Agent-owned transcript/event-log path supplied by the lifecycle hook.
-    /// Optional for records created by older Let It Brew versions. Let It Brew never
-    /// persists transcript contents; the Codex cancellation fallback uses this
-    /// path only after constraining it to Codex's own sessions directory.
-    public var transcriptPath: String?
-
     enum CodingKeys: String, CodingKey {
         case id, tool, state, detail, cwd, pid
         case updatedAt = "updated_at"
+        case legacyUpdatedAt = "updatedAt"
         case eventObservedAt = "event_observed_at"
         case startedAt = "started_at"
         case accumulatedWorkingTime = "accumulated_working_time"
         case lastEvent = "last_event"
         case stateChangedAt = "state_changed_at"
         case stateTransitionID = "state_transition_id"
-        case transcriptPath = "transcript_path"
     }
 
     public init(id: String, tool: String, state: SessionState, detail: String?,
@@ -162,7 +156,6 @@ public struct SessionRecord: Codable, Equatable, Sendable {
                 startedAt: Date? = nil,
                 accumulatedWorkingTime: TimeInterval? = nil,
                 stateChangedAt: Date? = nil, stateTransitionID: String? = nil,
-                transcriptPath: String? = nil,
                 eventObservedAt: TimeInterval? = nil) {
         self.id = id
         self.tool = tool
@@ -177,7 +170,46 @@ public struct SessionRecord: Codable, Equatable, Sendable {
         self.lastEvent = lastEvent
         self.stateChangedAt = stateChangedAt
         self.stateTransitionID = stateTransitionID
-        self.transcriptPath = transcriptPath
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        tool = try container.decode(String.self, forKey: .tool)
+        state = try container.decode(SessionState.self, forKey: .state)
+        detail = try container.decodeIfPresent(String.self, forKey: .detail)
+        cwd = try container.decode(String.self, forKey: .cwd)
+        pid = try container.decodeIfPresent(Int32.self, forKey: .pid)
+        updatedAt = if container.contains(.updatedAt) {
+            try container.decode(Date.self, forKey: .updatedAt)
+        } else {
+            try container.decode(Date.self, forKey: .legacyUpdatedAt)
+        }
+        eventObservedAt = try container.decodeIfPresent(TimeInterval.self, forKey: .eventObservedAt)
+        startedAt = try container.decodeIfPresent(Date.self, forKey: .startedAt)
+        accumulatedWorkingTime = try container.decodeIfPresent(
+            TimeInterval.self, forKey: .accumulatedWorkingTime
+        )
+        lastEvent = try container.decodeIfPresent(String.self, forKey: .lastEvent)
+        stateChangedAt = try container.decodeIfPresent(Date.self, forKey: .stateChangedAt)
+        stateTransitionID = try container.decodeIfPresent(String.self, forKey: .stateTransitionID)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(tool, forKey: .tool)
+        try container.encode(state, forKey: .state)
+        try container.encodeIfPresent(detail, forKey: .detail)
+        try container.encode(cwd, forKey: .cwd)
+        try container.encodeIfPresent(pid, forKey: .pid)
+        try container.encode(updatedAt, forKey: .updatedAt)
+        try container.encodeIfPresent(eventObservedAt, forKey: .eventObservedAt)
+        try container.encodeIfPresent(startedAt, forKey: .startedAt)
+        try container.encodeIfPresent(accumulatedWorkingTime, forKey: .accumulatedWorkingTime)
+        try container.encodeIfPresent(lastEvent, forKey: .lastEvent)
+        try container.encodeIfPresent(stateChangedAt, forKey: .stateChangedAt)
+        try container.encodeIfPresent(stateTransitionID, forKey: .stateTransitionID)
     }
 
     /// What the board shows: the directory name people actually think in.
@@ -271,17 +303,6 @@ public enum SessionTimeline {
         return accumulated + max(0, now.timeIntervalSince(previous.updatedAt))
     }
 
-    /// Retains the first usable agent-owned event-log path when later hook
-    /// payloads omit it. An empty untrusted payload never erases a valid path.
-    public static func transcriptPath(
-        previous: SessionRecord?,
-        supplied: String?
-    ) -> String? {
-        guard let supplied, !supplied.isEmpty else {
-            return previous?.transcriptPath
-        }
-        return supplied
-    }
 }
 
 /// Reads and writes session records as one file each.

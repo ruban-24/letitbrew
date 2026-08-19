@@ -29,7 +29,7 @@ that those compile. See [ATTENDED-UAT.md](ATTENDED-UAT.md) for what covers them.
 ```
 agent lifecycle event
   ↓  agent runs the installed hook command
-letitbrew hook <event>            (Sources/letitbrew)
+letitbrew hook <agent> <event>    (Sources/letitbrew)
   ↓  HookPayload parses the event from stdin
 HookReducer.reduce(...)           → .set(working|idle) or .end
   ↓
@@ -40,22 +40,29 @@ Decision.decide(sessions, settings, power)
 hold or release
 ```
 
-`HookReducer` is the whole state model, and it is small on purpose. Claude Code
-and Codex share event names and payload semantics, so one reducer serves both;
-Codex simply never emits `Notification`.
+`HookReducer` is the whole state model, and it is small on purpose. It reduces
+every supported adapter to only **Working** and **Idle** (or removes a terminal
+record); there is no third permission or waiting state.
 
-The complete lifecycle mapping is:
+The common lifecycle mapping is:
 
-- `SessionStart` maps to **idle, not working**. A session that has never been
+- `SessionStart` maps to **idle, not working**, except `source=compact`, which
+  maps to **Working**. A session that has never been
   prompted emits no further events, so treating it as working would hold the Mac
   awake for as long as that process lives.
-- `UserPromptSubmit`, `PreToolUse`, and `PostToolUse` set **Working**.
+- `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PreCompact`, `PostCompact`,
+  and `SubagentStart` set **Working**.
 - `Stop` and an `idle_prompt` `Notification` set **Idle**. Idle rows are hidden
-  and stop contributing to the hold on the next one-second app poll.
+  and stop contributing to the hold on the next one-second app poll. `Stop`
+  with nonempty `background_tasks` remains **Working**; `StopFailure` is Idle.
 - `PermissionRequest` and `permission_prompt` notifications return no effect,
   preserving the prior Working or Idle state. Permission is not a third session
   state.
-- `SessionEnd` removes the active record.
+- `SubagentStop` and `SessionEnd` remove the addressed active record.
+
+Each adapter's exact source-event vocabulary is frozen in
+[AGENT-HOOK-CONTRACTS.md](AGENT-HOOK-CONTRACTS.md); unsupported source events do
+not infer a state.
 
 `Decision.decide()` is a pure function over sessions, settings, and power state.
 It is where the battery floor and thermal release live. `PowerState.trusted`
@@ -92,21 +99,11 @@ storage problem must not block the agent. This fail-open CLI boundary means the
 event may be missed; it does not bypass the app's battery, thermal, pause, power,
 or daemon safety gates and is not evidence that the hold changed.
 
-Codex has two conservative structural fallbacks for lifecycle gaps. Active-task
-discovery considers at most the 128 newest recent rollout candidates. Terminal
-observation reads only structural envelopes for newer `task_complete` and
-`turn_aborted` edges. Those rollout decoders retain only session ID, working
-directory, timestamps, and lifecycle event type; the hook payload decoder also
-treats `notification_type` as structural metadata. Notification prose, prompts,
-responses, reasoning, tool inputs and outputs, other tool details, and final
-assistant text are not decoded or recorded; only structural `tool_name` becomes
-a semantic activity token. Agent-supplied rollout paths are constrained to
-Codex's own sessions directory before they are read.
-
-The deterministic automated pressure harness qualifies 100 simultaneous
-sessions. It covers independent record identity, agent and full-path attribution,
-one-session stop isolation, aggregate hold release only after the last Working
-session becomes Idle, corrupt-record isolation, grouping, and presentation.
+The deterministic automated pressure harness qualifies 1, 10, 15, 50, and 100
+round-robin sessions across all four agents. It covers independent record
+identity, old-event/new-event ordering, selected-agent visibility, child-session
+isolation, aggregate hold release only after the final Working session becomes
+Idle, corrupt-record isolation, grouping, and presentation.
 
 ## Adaptive activity menu
 
@@ -118,9 +115,11 @@ different paths remain distinct.
 On the first real loaded snapshot, the newest eligible multi-session repository
 is initially expanded. After that, manual expansion remains stable while the
 repository still has at least two Working sessions, and expanding another group
-collapses the current one. Grouped children start with eight-character session
-IDs and lengthen only as needed to disambiguate collisions. They reuse the flat
-session-row layout, so logo, text, and timer alignment do not gain indentation.
+collapses the current one. Grouped children show the agent and project folder
+instead of an internal session-ID fragment. Their accessibility labels include
+eight-character session IDs that lengthen only as needed to disambiguate
+collisions. They reuse the flat session-row layout, so logo, text, and timer
+alignment do not gain indentation.
 
 The activity viewport is capped at 294 points: at most one 54-point group header
 plus four 60-point session rows. One outer vertical scroll owns overflow; there
@@ -186,9 +185,19 @@ the closed-lid preference reads off.
 
 ## Hook installation
 
-Hooks are installed into `~/.claude/settings.json` and `~/.codex/hooks.json`,
-each entry tagged with an ownership marker (`__letitbrew_hook`) so uninstall can
-remove exactly Let It Brew's own entries and nothing else.
+The four adapters are deliberately narrow and user-scoped: Claude Code uses
+`~/.claude/settings.json`; Codex uses `~/.codex/hooks.json` or
+`$CODEX_HOME/hooks.json`; OpenCode writes its one global plugin at
+`~/.config/opencode/plugins/letitbrew.js` or
+`$OPENCODE_CONFIG_DIR/plugins/letitbrew.js`; and GitHub Copilot CLI uses
+`~/.copilot/hooks/letitbrew.json` or `$COPILOT_HOME/hooks/letitbrew.json`.
+The three JSON markers are adapter-specific and frozen: Claude uses
+`__letitbrew_hook`, Codex `__letitbrew_codex_hook`, and Copilot
+`__letitbrew_copilot_hook`. OpenCode owns
+only its named plugin. The versioned registry at
+`~/Library/Application Support/LetItBrew/agent-hook-targets.json` records the
+exact selected target, so later environment changes cannot redirect an owned
+connection.
 
 Three constraints shape that code:
 
@@ -198,10 +207,18 @@ Three constraints shape that code:
 - **Only the events `HookReducer` maps.** Nothing speculative.
 - **Unparseable configuration is left alone.** An unreadable file, a non-object
   root, or a `hooks` value that isn't the expected shape is reported as **Action
-  needed** rather than rewritten. Other tools' hooks are preserved verbatim.
+  needed** rather than rewritten. Other tools' JSON structure and values are
+  preserved, although JSON adapters may reserialize formatting.
 
-Codex additionally requires an explicit `/hooks` trust step from the user.
-Let It Brew cannot approve its own Codex hooks, by design on Codex's side.
+Claude requires workspace trust before its hooks run. Codex additionally
+requires an explicit `/hooks` trust step; Let It Brew cannot approve it.
+OpenCode is limited to its stable 1.x local runtime and preserves unrelated plugins.
+Copilot's observational `ErrorOccurred` hook maps an explicit
+`recoverable: false` payload to Idle. Recoverable or malformed error payloads
+preserve the prior state because the same turn may continue. Let It Brew does
+install Copilot `PreToolUse` and `PermissionRequest` hooks, but only as
+observational lifecycle signals: their output is discarded and their commands
+exit zero, so they cannot allow, deny, or block a Copilot action.
 
 ## Updating
 

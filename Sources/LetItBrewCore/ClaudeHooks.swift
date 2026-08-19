@@ -23,7 +23,8 @@ public enum ClaudeHooks {
     /// Exactly the events `HookReducer` maps. Nothing speculative.
     public static let events = [
         "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse",
-        "PermissionRequest", "Notification", "Stop", "SessionEnd",
+        "PermissionRequest", "Notification", "PreCompact", "PostCompact",
+        "SubagentStart", "SubagentStop", "Stop", "StopFailure", "SessionEnd",
     ]
 
     /// Events whose settings entry takes a tool matcher; the others reject one.
@@ -72,7 +73,7 @@ public enum ClaudeHooks {
     public static func hookCommand(event: String, cliPath: String) throws -> String {
         guard cliPath.hasPrefix("/") else { throw RelativeCLIPath(cliPath) }
         return "c=\(shellSingleQuoted(cliPath)); [ -x \"$c\" ] || c=\(shellSingleQuoted(fallbackCLIPath)); "
-            + "\"$c\" hook \(event); \(HookFile.ownershipComment(marker: marker))"
+            + "\"$c\" hook claude \(event) >/dev/null 2>&1; \(HookFile.ownershipComment(marker: marker))"
     }
 
     public struct SettingsUnreadable: Error, Equatable {

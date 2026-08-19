@@ -5,14 +5,16 @@ let arguments = Array(CommandLine.arguments.dropFirst())
 
 switch arguments.first {
 case "hook":
-    guard arguments.count >= 2 else { exit(0) }
-    exit(runHook(event: arguments[1]))
+    guard arguments.count == 3,
+          let agent = AgentID(rawValue: arguments[1])
+    else { exit(0) }
+    exit(runHook(agent: agent, event: arguments[2]))
 case "install":
     if arguments.count == 1 {
         exit(runInstall())
     }
-    guard arguments.count == 2, let agent = HookAgent(rawValue: arguments[1]) else {
-        FileHandle.standardError.write(Data("Usage: letitbrew install [claude|codex]\n".utf8))
+    guard arguments.count == 2, let agent = AgentID(rawValue: arguments[1]) else {
+        FileHandle.standardError.write(Data("Usage: letitbrew install [claude|codex|opencode|copilot]\n".utf8))
         exit(1)
     }
     exit(runInstall(agents: [agent]))
@@ -20,13 +22,16 @@ case "uninstall":
     if arguments.count == 1 {
         exit(runUninstall())
     }
-    guard arguments.count == 2, let agent = HookAgent(rawValue: arguments[1]) else {
-        FileHandle.standardError.write(Data("Usage: letitbrew uninstall [claude|codex]\n".utf8))
+    guard arguments.count == 2, let agent = AgentID(rawValue: arguments[1]) else {
+        FileHandle.standardError.write(Data("Usage: letitbrew uninstall [claude|codex|opencode|copilot]\n".utf8))
         exit(1)
     }
     exit(runUninstall(agents: [agent]))
 case "doctor":
     exit(runDoctor())
+case "prepare-exact":
+    guard arguments.count == 2, let agent = AgentID(rawValue: arguments[1]) else { exit(1) }
+    exit(runPrepareExact(agent: agent, input: FileHandle.standardInput.readDataToEndOfFile()))
 case "watch":
     exit(runWatch(lidClosed: arguments.contains("--lid-closed")))
 case "status":
@@ -34,17 +39,17 @@ case "status":
 case "repair":
     exit(runRepair())
 case "--version":
-    print("letitbrew 0.5.1")
+    print("letitbrew 0.6.0")
     exit(0)
 default:
     print("""
     letitbrew - keep your Mac awake while AI agents work
 
     Usage:
-      letitbrew install [claude|codex]
-                              install hooks for both agents, or one agent
-      letitbrew uninstall [claude|codex]
-                              remove hooks for both agents, or one agent
+      letitbrew install [claude|codex|opencode|copilot]
+                              install hooks for all agents, or one agent
+      letitbrew uninstall [claude|codex|opencode|copilot]
+                              remove hooks for all agents, or one agent
       letitbrew doctor         report install health per event
       letitbrew watch          hold the Mac awake while agents work
       letitbrew watch --lid-closed
@@ -53,7 +58,8 @@ default:
       letitbrew status [--json]  one-shot board
       letitbrew repair          clear a sleep-watchdog lease left by a dead
                               watchdog loop (see `letitbrew doctor`)
-      letitbrew hook <event>   internal: called by agent lifecycle hooks
+      letitbrew hook <agent> <event>
+                              internal: called by agent lifecycle hooks
       letitbrew --version
 
     Testing only:

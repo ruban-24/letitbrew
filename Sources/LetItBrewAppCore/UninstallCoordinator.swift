@@ -8,6 +8,8 @@ public enum UninstallStep: String, CaseIterable, Equatable, Sendable {
     case unregisterDaemon
     case removeClaudeHooks
     case removeCodexHooks
+    case removeOpenCodeHooks
+    case removeCopilotHooks
     case disableLaunchAtLogin
     case deleteUserData
     case clearPreferences
@@ -21,7 +23,8 @@ public enum UninstallStep: String, CaseIterable, Equatable, Sendable {
         switch self {
         case .releaseHolds, .reconcileDaemon, .unregisterDaemon:
             true
-        case .removeClaudeHooks, .removeCodexHooks, .disableLaunchAtLogin,
+        case .removeClaudeHooks, .removeCodexHooks,
+             .removeOpenCodeHooks, .removeCopilotHooks, .disableLaunchAtLogin,
              .deleteUserData, .clearPreferences, .trashBundle:
             false
         }
@@ -65,6 +68,8 @@ public protocol UninstallEnvironment: AnyObject, Sendable {
     func unregisterDaemon() async -> Result<Void, UninstallFailure>
     func removeClaudeHooks() async -> Result<Void, UninstallFailure>
     func removeCodexHooks() async -> Result<Void, UninstallFailure>
+    func removeOpenCodeHooks() async -> Result<Void, UninstallFailure>
+    func removeCopilotHooks() async -> Result<Void, UninstallFailure>
     func disableLaunchAtLogin() async -> Result<Void, UninstallFailure>
     func deleteUserData() async -> Result<Void, UninstallFailure>
     func clearPreferences() async -> Result<Void, UninstallFailure>
@@ -139,16 +144,36 @@ public final class UninstallCoordinator {
             return
         }
 
-        let bestEffort: [() async -> Result<Void, UninstallFailure>] = [
+        let hookRemovals: [() async -> Result<Void, UninstallFailure>] = [
             environment.removeClaudeHooks,
             environment.removeCodexHooks,
+            environment.removeOpenCodeHooks,
+            environment.removeCopilotHooks,
+        ]
+
+        var leftovers: [UninstallFailure] = []
+        for operation in hookRemovals {
+            if case .failure(let failure) = await operation() {
+                leftovers.append(failure)
+            }
+        }
+        if !leftovers.isEmpty {
+            leftovers.append(UninstallFailure(
+                step: .trashBundle,
+                message: "Let It Brew was kept installed so hook removal can be retried.",
+                diagnostic: "Application bundle retained because one or more agent hooks could not be removed."
+            ))
+            state = .report(leftovers: leftovers)
+            return
+        }
+
+        let bestEffort: [() async -> Result<Void, UninstallFailure>] = [
             environment.disableLaunchAtLogin,
             environment.deleteUserData,
             environment.clearPreferences,
             environment.trashBundle,
         ]
 
-        var leftovers: [UninstallFailure] = []
         for operation in bestEffort {
             if case .failure(let failure) = await operation() {
                 leftovers.append(failure)

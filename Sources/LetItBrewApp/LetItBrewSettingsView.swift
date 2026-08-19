@@ -167,9 +167,16 @@ struct LetItBrewSettingsView: View {
     private var agents: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Let It Brew connects to local Claude Code and Codex sessions.")
+                Text("Connect the local coding agents you want Let It Brew to follow.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
+
+                if let message = displayedHookMessage {
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
 
                 ForEach(model.agentHooks) { health in
                     AgentConnectionRow(
@@ -179,13 +186,6 @@ struct LetItBrewSettingsView: View {
                         connect: { model.connectAgent(health.id) },
                         disconnect: { model.disconnectAgent(health.id) }
                     )
-                }
-
-                if let message = displayedHookMessage {
-                    Text(message)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
                 }
 
                 Spacer(minLength: 0)
@@ -286,7 +286,7 @@ struct LetItBrewSettingsView: View {
             Button("Uninstall", role: .destructive) { model.confirmUninstall() }
             Button("Cancel", role: .cancel) { model.cancelUninstall() }
         } message: {
-            Text("This disconnects Claude Code and Codex, stops Let It Brew's background service, removes its settings and session records, and moves Let It Brew to the Trash.")
+            Text("This disconnects all connected agent integrations, stops Let It Brew's background service, removes its settings and session records, and moves Let It Brew to the Trash.")
         }
     }
 
@@ -632,14 +632,16 @@ private struct AgentConnectionRow: View {
                 Label(displayedState, systemImage: displayedSymbol)
                     .font(.caption)
                     .foregroundStyle(stateColor)
-                ForEach(health.details, id: \.self) { detail in
-                    Text(detail)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .textSelection(.enabled)
+                if !isDisconnected {
+                    ForEach(health.details, id: \.self) { detail in
+                        Text(detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
+                    }
                 }
-                if isDisconnected || disconnectFailed {
+                if disconnectFailed {
                     Text("Current sessions are hidden and no longer keep this Mac awake.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
