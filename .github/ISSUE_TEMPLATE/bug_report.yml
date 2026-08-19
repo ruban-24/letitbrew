@@ -14,7 +14,7 @@ body:
     attributes:
       label: Let It Brew version and build
       description: Settings → About.
-      placeholder: "0.6.0 (21)"
+      placeholder: "0.6.1 (22)"
     validations:
       required: true
 
