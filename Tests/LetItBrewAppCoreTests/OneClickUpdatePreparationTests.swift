@@ -148,6 +148,15 @@ private func preparationRelease(
     )
 }
 
+@Test func diskImageGatekeeperAssessmentSuppliesPrimarySignatureContext() {
+    let diskImage = URL(fileURLWithPath: "/private/tmp/LetItBrew.dmg")
+
+    #expect(DiskImageGatekeeperCommandSpecification.arguments(for: diskImage) == [
+        "--assess", "--verbose=4", "--type", "open",
+        "--context", "context:primary-signature", diskImage.path,
+    ])
+}
+
 @Test func preparationRunsEveryGateBeforeLaunching() async {
     let operations = RecordingPreparationOperations()
     let workflow = OneClickUpdatePreparationWorkflow(

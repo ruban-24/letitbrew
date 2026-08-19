@@ -62,6 +62,15 @@ public enum UpdateCandidateLocation: String, Equatable, Sendable {
     case staged
 }
 
+public enum DiskImageGatekeeperCommandSpecification {
+    public static func arguments(for diskImage: URL) -> [String] {
+        [
+            "--assess", "--verbose=4", "--type", "open",
+            "--context", "context:primary-signature", diskImage.path,
+        ]
+    }
+}
+
 public enum OneClickUpdatePreparationStage: String, Equatable, Sendable {
     case createWorkspace
     case downloadChecksums

@@ -12,6 +12,29 @@ against the SHA-256 published with the release.
 
 ---
 
+## 0.6.1 (build 22)
+
+Fixed:
+
+- The one-click updater now supplies Gatekeeper's required primary-signature
+  context when assessing a downloaded DMG. This prevents the valid, notarized
+  update from being rejected with `source=Insufficient Context` before mounting.
+
+Updating:
+
+- The affected updater is already inside v0.5.1 and v0.6.0, so those versions
+  cannot install v0.6.1 automatically on affected macOS versions. Download and
+  install v0.6.1 once from GitHub Releases; settings and agent connections are
+  preserved. Future updates can then use the corrected updater.
+
+Tested:
+
+- The failure was reproduced against the byte-exact public v0.6.0 DMG. The
+  contextless assessment failed with status 3, while the corrected command
+  accepted the same DMG as a notarized Developer ID artifact.
+- Regression coverage pins the primary-signature assessment contract, alongside
+  the existing update transaction and direct-distribution suites.
+
 ## 0.6.0 (build 21)
 
 New:

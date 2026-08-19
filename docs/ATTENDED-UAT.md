@@ -14,15 +14,14 @@ If a safety or power test fails, stop with physical access to the Mac, preserve
 the original `SleepDisabled` baseline, record the exact reproduction, and stop
 using the affected feature until it is understood.
 
-## v0.6.0 final-candidate scope
+## v0.6.1 hotfix scope
 
 The v0.6.0 release record already contains full attended OpenCode and GitHub
-Copilot CLI lifecycle passes. Do not repeat those full matrices for the final
-signed artifact unless their adapter or installation code changes after the
-qualified source commit. The final universal Developer ID build still requires
-a short connection and Working/Idle smoke test for Claude Code, Codex, OpenCode,
-and GitHub Copilot CLI. Update, daemon recovery, fresh install, upgrade from
-v0.5.1, and uninstall remain separate signed-artifact gates.
+Copilot CLI lifecycle passes plus the final four-agent signed smoke test. v0.6.1
+changes only the downloaded-DMG Gatekeeper assessment, version metadata, and
+release documentation. Do not repeat the full lifecycle matrices unless agent
+adapter or installation code changes. Verify the corrected assessment against
+the signed v0.6.1 DMG and run the short four-agent signed smoke test.
 
 ## One-click update
 

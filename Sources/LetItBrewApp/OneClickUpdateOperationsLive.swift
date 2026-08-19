@@ -172,7 +172,7 @@ final class LiveOneClickUpdateOperations:
         )
         _ = try runChecked(
             executable: "/usr/sbin/spctl",
-            arguments: ["-a", "-vv", "-t", "open", url.path],
+            arguments: DiskImageGatekeeperCommandSpecification.arguments(for: url),
             timeout: 60,
             context: "disk-image Gatekeeper assessment"
         )
