@@ -42,6 +42,33 @@ import Testing
     #expect(danglingResult.state == .invalid)
 }
 
+@Test func liveReaderResolvesOpenCodeParentSymlinksWithoutFollowingThePluginLeaf() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let actualPlugins = root.appendingPathComponent("actual/plugins")
+    try FileManager.default.createDirectory(at: actualPlugins, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let configuredRoot = root.appendingPathComponent("configured")
+    try FileManager.default.createSymbolicLink(
+        at: configuredRoot,
+        withDestinationURL: root.appendingPathComponent("actual")
+    )
+    let configuredPlugin = configuredRoot.appendingPathComponent("plugins/letitbrew.js")
+    let actualPlugin = actualPlugins.appendingPathComponent("letitbrew.js")
+    try OpenCodePlugin.install(into: nil, cliPath: "/letitbrew").write(to: actualPlugin)
+
+    let result = AgentLiveDiskReader.inspect(
+        agent: .opencode,
+        registryURL: root.appendingPathComponent("missing-registry.json"),
+        defaultTarget: configuredPlugin,
+        helperPath: "/letitbrew"
+    )
+
+    #expect(result.state == .healthyOwned)
+    #expect(result.target == actualPlugin.standardizedFileURL)
+    #expect(result.snapshot?.path == actualPlugin.standardizedFileURL.path)
+}
+
 @Test func liveReaderInjectsExactlyOneSelectedCaptureAndNeverAnAlternate() throws {
     let selected = URL(fileURLWithPath: "/recorded/A.json")
     let ambient = URL(fileURLWithPath: "/ambient/B.json")

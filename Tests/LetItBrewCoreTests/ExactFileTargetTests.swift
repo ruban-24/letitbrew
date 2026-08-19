@@ -356,9 +356,16 @@ private enum DescriptorTestFailure: Error { case parentSync }
     let root = try anchoredRoot(); defer { try? FileManager.default.removeItem(at: root) }
     let file = root.appendingPathComponent("target"); try Data("original".utf8).write(to: file)
     let observed = try DirectoryAnchor.openNoFollow(at: root).target(atAbsoluteURL: file).capture()
-    #expect(throws: ConcurrentModification.self) { try AtomicFile.write(Data("ours".utf8), replacing: observed, hooks: .init(afterQuarantineValidationBeforePublish: { try Data("foreign".utf8).write(to: file) })) }
+    var errorPath = ""
+    do {
+        _ = try AtomicFile.write(Data("ours".utf8), replacing: observed, hooks: .init(afterQuarantineValidationBeforePublish: { try Data("foreign".utf8).write(to: file) }))
+        Issue.record("Expected the active replacement to refuse publication")
+    } catch let error as ConcurrentModification {
+        errorPath = error.path
+    }
     #expect(try String(contentsOf: file, encoding: .utf8) == "foreign")
-    #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).contains { $0.contains("quarantine") })
+    let recovery = try recoveryName(in: root, marker: "quarantine")
+    #expect(errorPath.contains(recovery.path))
 }
 
 @Test func descriptorRemovePreQuarantineReplacementIsRetainedAsRecovery() throws {
@@ -562,8 +569,8 @@ private enum DescriptorTestFailure: Error { case parentSync }
             try replaceNamedEntry(in: root, name: temp, with: "foreign-temporary")
         }))
     }
-    #expect(!FileManager.default.fileExists(atPath: file.path))
-    #expect(try recoveryContents(in: root, marker: "quarantine") == "original")
+    #expect(try String(contentsOf: file, encoding: .utf8) == "original")
+    #expect(try recoveryContents(in: root, marker: "quarantine") == nil)
     #expect(try String(contentsOf: #require(temporary), encoding: .utf8) == "foreign-temporary")
 }
 

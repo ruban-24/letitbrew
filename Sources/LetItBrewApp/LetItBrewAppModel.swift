@@ -1155,6 +1155,8 @@ final class LetItBrewAppModel: ObservableObject {
     /// runner cannot re-resolve an environment target; exact preparations are
     /// encoded unchanged for the internal command.
     private func runLaunchPreparations() {
+        guard !hookActionInProgress else { return }
+        hookActionInProgress = true
         let preparations = launchPreparations
         let inspections = launchInspections
         let selectedAgentIDs = connectedAgentIDs
@@ -1206,7 +1208,9 @@ final class LetItBrewAppModel: ObservableObject {
         }
         Task { [weak self] in
             let (rows, requiresRestart) = await work.value
-            guard let self, connectedAgentIDs == selectedAgentIDs else { return }
+            guard let self else { return }
+            self.hookActionInProgress = false
+            guard connectedAgentIDs == selectedAgentIDs else { return }
             let byID = Dictionary(uniqueKeysWithValues: rows.map { ($0.agentID, $0) })
             agentHooks = agentHooks.map { health in
                 guard let row = byID[health.id] else { return health }
@@ -1240,9 +1244,10 @@ final class LetItBrewAppModel: ObservableObject {
         }
         return ExactTargetSelection(
             recordedTarget: registry?.targets[agent],
-            firstConnectResolvedTarget: agent == .opencode
-                ? configured
-                : configured.resolvingSymlinksInPath().standardizedFileURL
+            firstConnectResolvedTarget: AgentLiveDiskReader.firstConnectTarget(
+                agent: agent,
+                configured: configured
+            )
         )
     }
 

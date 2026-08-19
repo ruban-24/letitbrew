@@ -20,6 +20,17 @@ public enum AgentLiveDiskReader {
             self.afterExactCapture = afterExactCapture
         }
     }
+
+    public static func firstConnectTarget(agent: AgentID, configured: URL) -> URL {
+        if agent == .opencode {
+            return configured.deletingLastPathComponent()
+                .resolvingSymlinksInPath()
+                .appendingPathComponent(configured.lastPathComponent)
+                .standardizedFileURL
+        }
+        return configured.resolvingSymlinksInPath().standardizedFileURL
+    }
+
     public static func readRegistry(at registryURL: URL, hooks: RegistryHooks = .init()) -> AgentDiskRegistry {
         do {
             let capture = try ExactFileCapture.capture(at: registryURL)
@@ -76,9 +87,9 @@ public enum AgentLiveDiskReader {
                    !FileManager.default.fileExists(atPath: requested.resolvingSymlinksInPath().path) {
                     return .invalid(resolvedURL: requested, reason: "Let It Brew will not follow a dangling configuration symlink.")
                 }
-                let target = recorded || agent == .opencode
+                let target = recorded
                     ? requested
-                    : requested.resolvingSymlinksInPath().standardizedFileURL
+                    : firstConnectTarget(agent: agent, configured: requested)
                 do {
                     let capture = try ExactFileCapture.capture(at: target)
                     try hooks.afterExactCapture?(target, recorded, agent, capture)

@@ -26,13 +26,32 @@ private func launchSnapshot(_ id: String) -> ExactFileSnapshot { try! ExactFileS
 }
 
 @Test func launchPresentationCoversSelectedAndUnselectedFourAgentRows() {
-    let inspections = AgentID.allCases.map { AgentConnectionInspection(agentID: $0.rawValue, state: $0 == .opencode ? .invalid : .healthyOwned, hasRecordedTarget: true, exactTargetSnapshot: launchSnapshot($0.rawValue)) }
+    let inspections = AgentID.allCases.map { AgentConnectionInspection(agentID: $0.rawValue, state: $0 == .opencode ? .invalid : ($0 == .copilot ? .absent : .healthyOwned), hasRecordedTarget: true, exactTargetSnapshot: launchSnapshot($0.rawValue)) }
     let rows = AgentLaunchOutcomeCoordinator.present(inspections: inspections, selectedAgentIDs: ["claude", "codex"], outcomes: ["codex": .succeeded(changedVendorBytes: true)], codexTrust: .trusted)
     #expect(rows.first(where: { $0.agentID == "claude" })?.state == .connected)
     #expect(rows.first(where: { $0.agentID == "codex" })?.state == .connected)
     for id in ["opencode", "copilot"] {
         #expect(rows.first(where: { $0.agentID == id })?.disposition == .intentionallyDisconnected)
     }
+}
+
+@Test func unselectedOwnedHooksPreserveFailedDisconnectPresentationForRetry() {
+    let inspection = AgentConnectionInspection(
+        agentID: "codex",
+        state: .healthyOwned,
+        hasRecordedTarget: true,
+        exactTargetSnapshot: launchSnapshot("codex")
+    )
+
+    let rows = AgentLaunchOutcomeCoordinator.present(
+        inspections: [inspection],
+        selectedAgentIDs: [],
+        outcomes: [:]
+    )
+    let codex = rows.first { $0.agentID == "codex" }
+
+    #expect(codex?.state == .couldNotConnect)
+    #expect(codex?.disposition == .disconnectFailed)
 }
 
 @Test func healthyExactSuccessDoesNotRestartAndCodexTrustControlsConnection() {

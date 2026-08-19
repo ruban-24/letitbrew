@@ -61,6 +61,18 @@ public enum AgentLaunchOutcomeCoordinator {
         return AgentID.allCases.map { agent in
             let id = agent.rawValue
             guard selectedAgentIDs.contains(id) else {
+                if let inspection = byID[id],
+                   inspection.state == .healthyOwned || inspection.state == .repairableOwned {
+                    return .init(
+                        agentID: id,
+                        state: .couldNotConnect,
+                        details: [
+                            "Let It Brew’s hooks are still present, so disconnect did not finish.",
+                            "Choose Retry Disconnect to remove them, or Connect to keep using this agent.",
+                        ],
+                        disposition: .disconnectFailed
+                    )
+                }
                 return .init(agentID: id, state: .actionNeeded,
                              details: ["Disconnected. Choose Connect to use this agent with Let It Brew."],
                              disposition: .intentionallyDisconnected)

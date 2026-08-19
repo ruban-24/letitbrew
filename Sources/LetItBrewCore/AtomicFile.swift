@@ -184,9 +184,9 @@ public enum AtomicFile {
         guard quarantined.capture == captured.capture else { cleanup(); throw restore(quarantine, opened: quarantined) }
         try hooks.afterQuarantineValidationBeforePublish?()
         try hooks.beforePublish?(temp)
-        guard stillNames(temp, temporaryInfo) else { cleanup(); throw ConcurrentModification(path: "\(captured.snapshot.path) (foreign temporary preserved)") }
+        guard stillNames(temp, temporaryInfo) else { cleanup(); throw restore(quarantine, opened: quarantined) }
         let published = temp.withCString { from in name.withCString { to in renameatx_np(parent.descriptor.rawValue, from, parent.descriptor.rawValue, to, UInt32(RENAME_EXCL)) } }
-        guard published == 0 else { cleanup(); throw ConcurrentModification(path: "\(captured.snapshot.path) (recovery preserved)") }
+        guard published == 0 else { cleanup(); throw restore(quarantine, opened: quarantined) }
         try hooks.afterPublish?()
         guard stillNames(name, temporaryInfo) else { throw ConcurrentModification(path: "\(captured.snapshot.path) (published name replaced; recovery preserved at \(namedPath(quarantine)))") }
         try synchronizeParent()
