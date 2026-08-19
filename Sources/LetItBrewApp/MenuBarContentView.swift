@@ -473,15 +473,10 @@ struct AgentLogo: View {
                     .interpolation(.high)
                     .scaledToFit()
             case "opencode":
-                ZStack {
-                    RoundedRectangle(cornerRadius: 5)
-                        .fill(Color.black.opacity(0.86))
-                    Image("OpenCodeAgent")
-                        .resizable()
-                        .interpolation(.high)
-                        .scaledToFit()
-                        .padding(3)
-                }
+                Image("OpenCodeAgent")
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
             case "copilot":
                 Image("CopilotAgent")
                     .resizable()
