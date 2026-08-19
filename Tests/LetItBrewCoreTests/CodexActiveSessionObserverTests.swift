@@ -217,8 +217,8 @@ private func observedActiveSessions(fileCount: Int) async throws -> [SessionReco
         transcriptPath: nil,
         eventObservedAt: t0.timeIntervalSince1970
     )
-    let activeObserver = CodexActiveSessionObserver(homeDirectory: home)
-    let terminalObserver = CodexTerminalSessionObserver(homeDirectory: home)
+    let activeObserver = CodexActiveSessionObserver(homeDirectory: home, now: { activeFixtureNow })
+    let terminalObserver = CodexTerminalSessionObserver(homeDirectory: home, now: { activeFixtureNow })
     let later = t10.addingTimeInterval(13)
     let originalActiveTimeAtT10 = original.activeWorkingTime(at: t10)
 
@@ -276,7 +276,7 @@ private func observedActiveSessions(fileCount: Int) async throws -> [SessionReco
             transcriptPath: nil,
             eventObservedAt: edge.timeIntervalSince1970
         )
-        let observer = CodexActiveSessionObserver(homeDirectory: home)
+        let observer = CodexActiveSessionObserver(homeDirectory: home, now: { activeFixtureNow })
 
         let result = try #require(await observer.applyingFallback(to: [original]).first)
 
@@ -302,7 +302,7 @@ private func observedActiveSessions(fileCount: Int) async throws -> [SessionReco
     ], to: url)
     let edge = try #require(ISO8601DateFormatter().date(from: "2026-08-12T00:00:05Z"))
     let original = activeIdleSession(id: id, edge: edge, eventObservedAt: nil)
-    let observer = CodexActiveSessionObserver(homeDirectory: home)
+    let observer = CodexActiveSessionObserver(homeDirectory: home, now: { activeFixtureNow })
 
     let result = try #require(await observer.applyingFallback(to: [original]).first)
 
@@ -329,7 +329,7 @@ private func observedActiveSessions(fileCount: Int) async throws -> [SessionReco
         edge: edge.addingTimeInterval(-30),
         eventObservedAt: edge.timeIntervalSince1970
     )
-    let observer = CodexActiveSessionObserver(homeDirectory: home)
+    let observer = CodexActiveSessionObserver(homeDirectory: home, now: { activeFixtureNow })
 
     let result = try #require(await observer.applyingFallback(to: [original]).first)
 
