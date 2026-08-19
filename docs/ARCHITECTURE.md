@@ -115,9 +115,11 @@ different paths remain distinct.
 On the first real loaded snapshot, the newest eligible multi-session repository
 is initially expanded. After that, manual expansion remains stable while the
 repository still has at least two Working sessions, and expanding another group
-collapses the current one. Grouped children start with eight-character session
-IDs and lengthen only as needed to disambiguate collisions. They reuse the flat
-session-row layout, so logo, text, and timer alignment do not gain indentation.
+collapses the current one. Grouped children show the agent and project folder
+instead of an internal session-ID fragment. Their accessibility labels include
+eight-character session IDs that lengthen only as needed to disambiguate
+collisions. They reuse the flat session-row layout, so logo, text, and timer
+alignment do not gain indentation.
 
 The activity viewport is capped at 294 points: at most one 54-point group header
 plus four 60-point session rows. One outer vertical scroll owns overflow; there
@@ -214,8 +216,9 @@ OpenCode is limited to its stable 1.x local runtime and preserves unrelated plug
 Copilot's observational `ErrorOccurred` hook maps an explicit
 `recoverable: false` payload to Idle. Recoverable or malformed error payloads
 preserve the prior state because the same turn may continue. Let It Brew does
-not install Copilot's decision-capable `PreToolUse` or `PermissionRequest`
-hooks. The selected Copilot hooks themselves are silent and exit zero.
+install Copilot `PreToolUse` and `PermissionRequest` hooks, but only as
+observational lifecycle signals: their output is discarded and their commands
+exit zero, so they cannot allow, deny, or block a Copilot action.
 
 ## Updating
 

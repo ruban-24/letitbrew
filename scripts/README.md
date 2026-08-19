@@ -58,6 +58,8 @@ Verifies the production product before installation:
 - exact ordinary-file `UpdateSupport` payload (`run-update.sh`,
   `upgrade-installed-app.sh`, `verify-artifact.sh`, and
   `lib-power-baseline.sh`) with fixed executable/data modes;
+- exact ordinary-file `Legal` payload containing only repository-identical
+  `LICENSE`, `NOTICE`, and `TRADEMARKS.md` with mode 0644;
 - entitlement-free daemon/helper, icon and `LSUIElement` metadata, app/helper
   version consistency, and no UserNotifications linkage.
 
@@ -241,7 +243,7 @@ scripts/verify-installed-app.sh
 ## `test-hook-safety.sh [cli]`
 
 Exercises hook install/repair/uninstall against a throwaway `LETITBREW_TEST_HOME`.
-It must not touch live Claude/Codex configuration or move the exact power
+It must not touch live agent configuration or move the exact power
 baseline. This is independent of the production bundle transaction.
 
 ## `test-session-pressure.sh`
@@ -264,7 +266,7 @@ the wrapper refuses before constructing cache paths or invoking Swift.
 Exercises the filesystem effects of the in-app uninstall against a throwaway
 `LETITBREW_TEST_HOME`: Let It Brew-owned hook entries removed, the user's own
 configuration preserved semantically, and a malformed file left byte-identical.
-It must not touch live Claude/Codex configuration or move the exact power
+It must not touch live agent configuration or move the exact power
 baseline.
 
 The daemon gates, the data-directory deletion, the preferences wipe, and the

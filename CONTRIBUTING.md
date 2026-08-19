@@ -66,8 +66,13 @@ and icon, and see [TRADEMARKS.md](TRADEMARKS.md) for the brand-use boundary.
 ```sh
 CLANG_MODULE_CACHE_PATH=/private/tmp/LetItBrewContribution-ClangCache \
 SWIFTPM_MODULECACHE_OVERRIDE=/private/tmp/LetItBrewContribution-SwiftPMCache \
-swift test
+swift test --no-parallel
 
+scripts/tests/public-source-tests.sh
+swift build
+scripts/tests/agent-hook-baseline-tests.sh
+LETITBREW_TEST_AGENT_HOOK_SLEEP_DISABLED_BASELINE=0 \
+  scripts/test-agent-hook-contracts.sh .build/debug/letitbrew
 scripts/tests/upgrade-transaction-tests.sh
 scripts/tests/update-runner-tests.sh
 scripts/tests/direct-distribution-tests.sh

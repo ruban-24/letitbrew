@@ -115,10 +115,12 @@ sessions with the same full folder path form a disclosure group; folders with
 the same name at different full paths remain separate. On the first real
 snapshot, the newest eligible multi-session folder expands initially. Manual
 expansion remains stable while that group is valid, and only one group can be
-expanded at a time. Grouped children use collision-safe short session IDs and
-the same logo, text, and timer alignment as flat rows, without indentation.
-The visible activity area is capped at one 54-point group header plus four
-60-point session rows and uses one outer vertical scroll.
+expanded at a time. Grouped children show the agent and project folder instead
+of an internal session-ID fragment. Their accessibility labels retain
+collision-safe short session IDs, and the rows use the same logo, text, and
+timer alignment as flat rows without indentation. The visible activity area is
+capped at one 54-point group header plus four 60-point session rows and uses one
+outer vertical scroll.
 
 Lifecycle events define the two states. `UserPromptSubmit`, `PreToolUse`, and
 `PostToolUse` set **Working**. `Stop` and idle notifications set **Idle**, so the

@@ -14,6 +14,16 @@ If a safety or power test fails, stop with physical access to the Mac, preserve
 the original `SleepDisabled` baseline, record the exact reproduction, and stop
 using the affected feature until it is understood.
 
+## v0.6.0 final-candidate scope
+
+The v0.6.0 release record already contains full attended OpenCode and GitHub
+Copilot CLI lifecycle passes. Do not repeat those full matrices for the final
+signed artifact unless their adapter or installation code changes after the
+qualified source commit. The final universal Developer ID build still requires
+a short connection and Working/Idle smoke test for Claude Code, Codex, OpenCode,
+and GitHub Copilot CLI. Update, daemon recovery, fresh install, upgrade from
+v0.5.1, and uninstall remain separate signed-artifact gates.
+
 ## One-click update
 
 Run update UAT only from a Developer ID signed, release-verified install at the
@@ -244,8 +254,9 @@ Record these visual and accessibility results during the matrix:
   the exact recorded display selection and verify the restoration;
 - accordion: at most one repository expanded, with disclosure state announced;
 - alignment: grouped children have the same logo, text, and timer columns as a
-  flat row, with no indentation, and colliding eight-character ID prefixes
-  lengthen until each visible short ID is unique; and
+  flat row, with no indentation; visible rows show the agent and project folder,
+  while colliding eight-character ID prefixes lengthen until each accessibility
+  label's short ID is unique; and
 - VoiceOver: group labels include the full folder path, session count, agent
   summary, and expanded/collapsed state; child labels include agent, full folder
   path, short ID, Working state, and accumulated active time; disclosure and

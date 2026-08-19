@@ -78,7 +78,7 @@ conversation. Apple describes the credential and ticket workflow in
 
 Choose a new release workspace beneath `/private/tmp`. The build number remains
 part of app metadata, evidence ZIPs, and the manifest; the final public
-DMG name is stable by marketing version, for example `LetItBrew-0.3.0.dmg`.
+DMG name is stable by marketing version: `LetItBrew-<version>.dmg`.
 
 ```sh
 letitbrew_version="$(awk -F': ' '/^[[:space:]]+MARKETING_VERSION:/ { gsub(/\"/, \"\", $2); print $2; exit }' project.yml)"

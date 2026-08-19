@@ -40,5 +40,5 @@ sleep enabled, which may not be true. Report the reading instead.
 ## What not to publish
 
 Do not publish Apple credentials, signing certificates, private keys,
-notarization credentials, or unrelated Claude or Codex configuration — in an
+notarization credentials, or unrelated agent configuration — in an
 issue, a pull request, a release log, or an agent conversation.

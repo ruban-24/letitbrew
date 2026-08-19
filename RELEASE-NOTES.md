@@ -12,22 +12,45 @@ against the SHA-256 published with the release.
 
 ---
 
-## 0.6.0
+## 0.6.0 (build 21)
 
 New:
 
-- Claude Code, Codex, OpenCode, and GitHub Copilot CLI use owned,
-  hook-only lifecycle integrations.
+- Four optional, owned lifecycle-hook integrations: Claude Code, Codex,
+  OpenCode stable 1.x, and GitHub Copilot CLI.
 - Agent connections are explicit: choose **Connect** in Settings to install an
   owned hook integration, and **Disconnect** to remove it.
+- OpenCode and GitHub Copilot CLI have native connection, lifecycle, menu,
+  settings, and uninstall support alongside Claude Code and Codex.
 
 Changed:
 
 - Process, rollout, transcript, and ambient session observation have been
   removed. Only selected hook integrations can create managed activity.
+- Public agent state remains only **Working** or **Idle**. Permission and input
+  waits do not introduce extra public states.
+- Grouped menu rows show the project folder instead of an internal session-ID
+  fragment. Settings shows shared disconnected and restart guidance once, and
+  the complete OpenCode logo is rendered without cropping or distortion.
+- Hook installation, repair, disconnect, and uninstall are bound to exact
+  recorded targets and preserve foreign agent configuration.
+
+Tested:
+
+- Attended OpenCode and GitHub Copilot CLI lifecycle UAT covered connection,
+  Working/Idle transitions, questions and permissions, stop, disconnect, and
+  owned-hook removal.
+- Automated coverage includes the four-agent lifecycle contracts, concurrent
+  session pressure, exact-target race resistance, uninstall preservation, and
+  guarded update/distribution transactions.
+
+Licensing:
+
 - v0.6.0 and later use Apache License 2.0. The code remains open source, while
   [TRADEMARKS.md](TRADEMARKS.md) describes the distinct Let It Brew name, icon,
   and branding boundary for forks and redistributed builds.
+- Signed app bundles contain exactly `LICENSE`, `NOTICE`, and `TRADEMARKS.md`
+  under `Contents/Resources/Legal`, matching the repository files.
 
 ## 0.5.1
 
@@ -207,6 +230,6 @@ the exact local data locations, setup, troubleshooting, update, and uninstall
 procedures.
 
 When reporting a problem, include the Let It Brew version and build, macOS
-version, Mac model, and reproduction steps. Do not include unrelated Claude or
-Codex configuration or private project contents. Report issues at
+version, Mac model, and reproduction steps. Do not include unrelated agent
+configuration or private project contents. Report issues at
 [GitHub Issues](https://github.com/ruban-24/letitbrew/issues).

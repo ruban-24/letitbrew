@@ -7,14 +7,14 @@ body:
   - type: markdown
     attributes:
       value: |
-        Do not include private project contents, credentials, or unrelated Claude/Codex configuration. Use [private vulnerability reporting](https://github.com/ruban-24/letitbrew/security/advisories/new) for security issues.
+        Do not include private project contents, credentials, or unrelated agent configuration. Use [private vulnerability reporting](https://github.com/ruban-24/letitbrew/security/advisories/new) for security issues.
 
   - type: input
     id: version
     attributes:
       label: Let It Brew version and build
       description: Settings → About.
-      placeholder: "0.4.0 (15)"
+      placeholder: "0.6.0 (21)"
     validations:
       required: true
 
