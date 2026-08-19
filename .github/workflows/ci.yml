@@ -2,7 +2,23 @@ name: CI
 
 on:
   push:
+    paths:
+      - "Sources/**"
+      - "Tests/**"
+      - "scripts/**"
+      - "Package.swift"
+      - "project.yml"
+      - "Config/**"
+      - ".github/workflows/ci.yml"
   pull_request:
+    paths:
+      - "Sources/**"
+      - "Tests/**"
+      - "scripts/**"
+      - "Package.swift"
+      - "project.yml"
+      - "Config/**"
+      - ".github/workflows/ci.yml"
 
 permissions:
   contents: read
