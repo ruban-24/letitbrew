@@ -19,10 +19,10 @@ Confirm that:
 **Settings → Agents**. Confirm the session is local and restart it if it was
 already open when the hooks changed.
 
-**An agent says Action needed or Couldn't connect.** Let It Brew left the agent's
-configuration untouched because it could not safely verify it. Review the
-agent's user-scoped path in [Privacy and local data](docs/PRIVACY.md), fix any
-malformed configuration if appropriate, then choose **Check Again**.
+**An agent says Action needed or Couldn't connect.** In **Settings → Agents**,
+follow the message shown under that agent, then choose **Check Again**. If the
+message reports an invalid configuration, review the agent's user-scoped path
+in [Privacy and local data](docs/PRIVACY.md) and fix only the reported issue.
 
 **Codex asks me to run `/hooks`.** Codex requires explicit trust for the hooks
 Let It Brew installs. Run `/hooks` inside Codex, trust the Let It Brew entries,
