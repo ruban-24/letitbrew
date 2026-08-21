@@ -26,7 +26,7 @@ not a cosmetic one.
 If you suspect one:
 
 1. Keep physical access to the Mac and save your work.
-2. Choose **Allow Mac to Sleep**, then quit Let It Brew.
+2. Choose **Pause Let It Brew**, then quit Let It Brew.
 3. Record the original and current `SleepDisabled` values **without forcing
    either**:
 
