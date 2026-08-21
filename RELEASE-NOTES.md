@@ -57,6 +57,9 @@ Changed:
   the complete OpenCode logo is rendered without cropping or distortion.
 - Hook installation, repair, disconnect, and uninstall are bound to exact
   recorded targets and preserve foreign agent configuration.
+- Upgrades from a pre-v0.6 release carry forward only previously owned Claude
+  Code and Codex connections. New OpenCode and GitHub Copilot CLI connections
+  remain opt-in.
 
 Tested:
 
@@ -200,59 +203,7 @@ Earlier internal builds were developed under the name **Sandman**.
 
 ---
 
-## Setup notes
-
-- Requires macOS 14 or later. The app includes Apple silicon and Intel code.
-- Install and run the app only as `/Applications/Let It Brew.app`.
-- Allow Let It Brew under **System Settings → General → Login Items & Extensions
-  → App Background Activity** if you want closed-lid support.
-- Codex requires a one-time `/hooks` trust approval. Sessions that were already
-  open when hooks changed may need to be restarted.
-
-## Scope and known limitations
-
-- Only local sessions are observed. Remote, cloud, and SSH sessions are out of
-  scope.
-- An Idle session is intentionally allowed to sleep and is hidden from the menu.
-- Launch at Login is optional and off until you enable it.
-- Update checks are user-initiated. They require access to GitHub Releases; there
-  is no background polling and no update-channel choice.
-
-## Release validation
-
-Every release candidate must clear all of the following before it ships:
-
-- The Swift test suite, updater and transaction script assertions,
-  direct-distribution assertions, Debug and Release builds, and release-artifact
-  verification, all passing for the final source.
-- Functional testing across agent connection, work/input/resume/completion, pause
-  persistence, disconnect/reconnect, concurrency, settings, and local surface
-  presentation.
-- Deterministic safety testing across exact `SleepDisabled` restoration, process
-  death, stale debt, boot repair, service loss, lid/display edges, battery,
-  thermal pressure, and unreadable state.
-- Developer ID verification, Apple notarization, stapler validation, Gatekeeper,
-  architecture, identifier, content, and checksum checks on the published DMG.
-- Signed attended UAT exercising uninstall and update separately against an
-  absent daemon, a registered/running daemon, and a stranded registered daemon
-  whose closed-lid preference is off — see
-  [docs/ATTENDED-UAT.md](docs/ATTENDED-UAT.md). Update UAT also requires relaunch,
-  settings/data preservation, strict new-daemon identity, exact baseline
-  preservation, and a proven post-swap rollback.
-
-Physical lid/display topology cases may be recorded as approved N/A when the
-required hardware configuration is unavailable; they are never represented as
-physical passes.
-
-## Privacy and support
-
-Session records and preferences stay on the Mac. A manual update check contacts
-GitHub only for release metadata and, after confirmation, the signed DMG and
-checksum; no session or project data is uploaded. See [README.md](README.md) for
-the exact local data locations, setup, troubleshooting, update, and uninstall
-procedures.
-
-When reporting a problem, include the Let It Brew version and build, macOS
-version, Mac model, and reproduction steps. Do not include unrelated agent
-configuration or private project contents. Report issues at
-[GitHub Issues](https://github.com/ruban-24/letitbrew/issues).
+Current installation and product details are in [README.md](README.md). See
+[SUPPORT.md](SUPPORT.md) for troubleshooting, [docs/PRIVACY.md](docs/PRIVACY.md)
+for local data, and [docs/ATTENDED-UAT.md](docs/ATTENDED-UAT.md) for release
+validation.

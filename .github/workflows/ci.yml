@@ -10,15 +10,8 @@ on:
       - "project.yml"
       - "Config/**"
       - ".github/workflows/ci.yml"
+  # Required checks cannot use path filters: skipped workflows stay pending.
   pull_request:
-    paths:
-      - "Sources/**"
-      - "Tests/**"
-      - "scripts/**"
-      - "Package.swift"
-      - "project.yml"
-      - "Config/**"
-      - ".github/workflows/ci.yml"
 
 permissions:
   contents: read
