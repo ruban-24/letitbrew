@@ -201,6 +201,8 @@ Released as **Brewkeeper**. First publicly documented release.
 
 Earlier internal builds were developed under the name **Sandman**.
 
+---
+
 Current installation and product details are in [README.md](README.md). See
 [SUPPORT.md](SUPPORT.md) for troubleshooting, [docs/PRIVACY.md](docs/PRIVACY.md)
 for local data, and [docs/ATTENDED-UAT.md](docs/ATTENDED-UAT.md) for release
