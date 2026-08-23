@@ -131,6 +131,13 @@ in the documented order.
 - [Signing and release process](SIGNING.md)
 - [Maintainer UAT](docs/ATTENDED-UAT.md)
 
+## Support the project
+
+Let It Brew is free and open source. If it has been useful, you can support
+maintenance, signed releases, new integrations, and more open-source apps
+through [GitHub Sponsors](https://github.com/sponsors/ruban-24) or
+[Buy Me a Coffee](https://buymeacoffee.com/rubanbhatia).
+
 ## Support and contributing
 
 Report reproducible bugs through [GitHub Issues](https://github.com/ruban-24/letitbrew/issues).
