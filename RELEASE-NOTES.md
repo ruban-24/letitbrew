@@ -12,6 +12,21 @@ against the SHA-256 published with the release.
 
 ---
 
+## 0.6.4 (build 25)
+
+Fixed:
+
+- The About pane now shows its full description. Extra top spacing added in
+  v0.6.2 left too little room in the fixed-height Settings window, so SwiftUI
+  compressed the description to one line and added an ellipsis. Removing that
+  spacer restores the existing multiline layout without changing the window
+  size.
+
+Tested:
+
+- The macOS app target builds after the layout change. The existing Swift and
+  release-script suites continue to pass.
+
 ## 0.6.3 (build 24)
 
 Fixed:
