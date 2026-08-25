@@ -7,9 +7,11 @@ struct MenuBarStatusIcon: View {
     let state: LetItBrewPresentationState
 
     // ponytail: a fraction of the cone's height, not its area. The cone widens
-    // downward, so a half-height pour covers well over half the glyph — nudge
-    // this down if it still reads heavy at 18pt.
-    private static let activeFillLevel: CGFloat = 0.5
+    // downward, so this pour covers well over half the glyph — the point is that
+    // awake reads as clearly filled vs an empty idle outline at 18pt monochrome
+    // in the menu bar, where fill level is the only state signal. Nudge down if
+    // it reads heavy, up if awake/idle look too alike.
+    private static let activeFillLevel: CGFloat = 0.62
     private static let size: CGFloat = 18
 
     private var level: CGFloat { state == .awake ? Self.activeFillLevel : 0 }
@@ -50,12 +52,12 @@ private struct PopoverFlaskMark: View {
 
     var body: some View {
         Image(nsImage: flaskImage(level: level, side: 20))
-            .foregroundStyle(.orange)
+            .foregroundStyle(Color(.brewPurple))
             .frame(width: 32, height: 32)
-            .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 9))
+            .background(Color(.brewPurple).opacity(0.12), in: RoundedRectangle(cornerRadius: 9))
             .overlay {
                 RoundedRectangle(cornerRadius: 9)
-                    .stroke(Color.orange.opacity(0.28), lineWidth: 1)
+                    .stroke(Color(.brewPurple).opacity(0.28), lineWidth: 1)
             }
             .accessibilityHidden(true)
     }
