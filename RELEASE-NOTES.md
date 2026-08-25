@@ -12,6 +12,23 @@ against the SHA-256 published with the release.
 
 ---
 
+## 0.6.5 (build 26)
+
+Fixed:
+
+- The one-click updater now receives the property-list output it requires when
+  mounting a downloaded DMG. The mount command combined `hdiutil`'s `-quiet`
+  and `-plist` options, so the mount succeeded but produced no property-list
+  data. The updater then stopped at `mountDiskImage` with `The data couldn’t be
+  read because it isn’t in the correct format.`
+
+Updating:
+
+- The broken mount command runs inside v0.6.4 and earlier, so those versions
+  cannot install v0.6.5 automatically. Download and install v0.6.5 once from
+  GitHub Releases. Settings and agent connections are preserved; subsequent
+  in-app updates use the corrected mount command.
+
 ## 0.6.4 (build 25)
 
 Fixed:

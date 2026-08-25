@@ -71,6 +71,15 @@ public enum DiskImageGatekeeperCommandSpecification {
     }
 }
 
+public enum DiskImageAttachCommandSpecification {
+    public static func arguments(for diskImage: URL, mountPoint: URL) -> [String] {
+        [
+            "attach", "-readonly", "-nobrowse", "-noautoopen",
+            "-mountpoint", mountPoint.path, "-plist", diskImage.path,
+        ]
+    }
+}
+
 public enum OneClickUpdatePreparationStage: String, Equatable, Sendable {
     case createWorkspace
     case downloadChecksums
