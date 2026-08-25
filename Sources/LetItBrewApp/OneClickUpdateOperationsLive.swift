@@ -186,10 +186,10 @@ final class LiveOneClickUpdateOperations:
         }
         let result = try runChecked(
             executable: "/usr/bin/hdiutil",
-            arguments: [
-                "attach", "-readonly", "-nobrowse", "-noautoopen",
-                "-quiet", "-mountpoint", mountPoint.path, "-plist", url.path,
-            ],
+            arguments: DiskImageAttachCommandSpecification.arguments(
+                for: url,
+                mountPoint: mountPoint
+            ),
             timeout: 60,
             context: "read-only disk-image attach"
         )

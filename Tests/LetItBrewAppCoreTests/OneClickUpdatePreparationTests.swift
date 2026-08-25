@@ -157,6 +157,19 @@ private func preparationRelease(
     ])
 }
 
+@Test func diskImageAttachRequestsMachineReadableOutput() {
+    let diskImage = URL(fileURLWithPath: "/private/tmp/LetItBrew.dmg")
+    let mountPoint = URL(fileURLWithPath: "/private/tmp/LetItBrewMount")
+
+    #expect(DiskImageAttachCommandSpecification.arguments(
+        for: diskImage,
+        mountPoint: mountPoint
+    ) == [
+        "attach", "-readonly", "-nobrowse", "-noautoopen",
+        "-mountpoint", mountPoint.path, "-plist", diskImage.path,
+    ])
+}
+
 @Test func preparationRunsEveryGateBeforeLaunching() async {
     let operations = RecordingPreparationOperations()
     let workflow = OneClickUpdatePreparationWorkflow(
