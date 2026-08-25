@@ -12,6 +12,54 @@ against the SHA-256 published with the release.
 
 ---
 
+## 0.6.3 (build 24)
+
+Fixed:
+
+- The one-click updater now creates its private `Updates` workspace directory
+  idempotently. The base directory lives at
+  `~/Library/Caches/com.ruban24.letitbrew/Updates` and persists across updates,
+  but it was created in a way that fails when it already exists. As a result the
+  second and every later in-app update stopped at the `createWorkspace` stage
+  with `The file “Updates” couldn’t be saved in the folder
+  “com.ruban24.letitbrew” because a file with the same name already exists.` The
+  first update on a machine succeeded; every one after it failed. Present since
+  v0.5.0.
+
+Updating:
+
+- The broken step runs inside v0.6.2 and earlier, so once their update cache
+  exists those versions cannot install v0.6.3 automatically. Fix it once, either
+  way:
+  - Remove the stale directory, then update from within the app:
+    `rm -rf ~/Library/Caches/com.ruban24.letitbrew/Updates`, or
+  - Download and install v0.6.3 once from GitHub Releases — the v0.6.3 build
+    tolerates the existing directory.
+  Settings and agent connections are preserved, and future in-app updates then
+  work. Note: the app's Uninstall does not remove this cache directory, so
+  uninstalling and reinstalling the same version does not clear it.
+
+Tested:
+
+- Regression coverage pins the idempotency contract: the old non-idempotent
+  creation reproduces the exact `NSFileWriteFileExistsError` above on the second
+  attempt, while the corrected creation accepts an already-existing base at
+  owner-only `0700`. The existing update-transaction and direct-distribution
+  suites continue to pass.
+
+## 0.6.2 (build 23)
+
+Changed:
+
+- Unified the accent color to a single brewed purple. The Settings safety rows
+  and the menu popover's flask mark now use the shared `BrewPurple` asset in
+  place of the previous mix of orange and blue.
+- The menu-bar status icon fills more of the flask when awake (0.62 of the
+  glyph, up from 0.5) so the awake state reads as clearly filled against the
+  empty idle outline at 18pt monochrome, where fill level is the only state
+  signal.
+- Minor Settings spacing above the app icon.
+
 ## 0.6.1 (build 22)
 
 Fixed:

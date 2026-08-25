@@ -75,11 +75,9 @@ final class LiveOneClickUpdateOperations:
             attributes: [.posixPermissions: 0o700]
         )
         try hardenOwnedDirectory(appCache)
-        let base = appCache.appendingPathComponent("Updates", isDirectory: true)
-        try fileManager.createDirectory(
-            at: base,
-            withIntermediateDirectories: false,
-            attributes: [.posixPermissions: 0o700]
+        let base = try OneClickUpdateCache.prepareUpdatesBase(
+            inAppCache: appCache,
+            fileManager: fileManager
         )
         try hardenOwnedDirectory(base)
 
