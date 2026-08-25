@@ -246,7 +246,6 @@ struct LetItBrewSettingsView: View {
 
     private var about: some View {
         VStack(spacing: 10) {
-            Spacer(minLength: 12)
             Image(nsImage: NSApp.applicationIconImage)
                 .resizable()
                 .interpolation(.high)
