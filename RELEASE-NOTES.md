@@ -47,6 +47,19 @@ Tested:
   owner-only `0700`. The existing update-transaction and direct-distribution
   suites continue to pass.
 
+## 0.6.2 (build 23)
+
+Changed:
+
+- Unified the accent color to a single brewed purple. The Settings safety rows
+  and the menu popover's flask mark now use the shared `BrewPurple` asset in
+  place of the previous mix of orange and blue.
+- The menu-bar status icon fills more of the flask when awake (0.62 of the
+  glyph, up from 0.5) so the awake state reads as clearly filled against the
+  empty idle outline at 18pt monochrome, where fill level is the only state
+  signal.
+- Minor Settings spacing above the app icon.
+
 ## 0.6.1 (build 22)
 
 Fixed:
