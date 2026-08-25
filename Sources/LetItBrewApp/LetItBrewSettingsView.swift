@@ -218,7 +218,7 @@ struct LetItBrewSettingsView: View {
                     detail: "Releases the hold immediately if your Mac becomes too warm.",
                     status: "Always on",
                     systemImage: "thermometer.high",
-                    accent: .orange
+                    accent: Color(.brewPurple)
                 )
 
                 SafetyProtectionRow(
@@ -226,7 +226,7 @@ struct LetItBrewSettingsView: View {
                     detail: "Requests display sleep again if the last external display disconnects.",
                     status: "Automatic",
                     systemImage: "display",
-                    accent: .blue
+                    accent: Color(.brewPurple)
                 )
 
                 if model.lidCloseDisplaySleepInProgress {
@@ -246,6 +246,7 @@ struct LetItBrewSettingsView: View {
 
     private var about: some View {
         VStack(spacing: 10) {
+            Spacer(minLength: 12)
             Image(nsImage: NSApp.applicationIconImage)
                 .resizable()
                 .interpolation(.high)
