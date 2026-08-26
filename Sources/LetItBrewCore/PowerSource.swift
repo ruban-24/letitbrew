@@ -6,7 +6,9 @@ public struct IOKitPowerSource: Sendable {
     public init() {}
 
     public func current() -> PowerState {
-        let thermal = ProcessInfo.processInfo.thermalState
+        let processInfo = ProcessInfo.processInfo
+        let thermal = processInfo.thermalState
+        let lowPowerModeEnabled = processInfo.isLowPowerModeEnabled
 
         // A desktop Mac (Mac mini, Mac Studio) has no battery, so the power
         // sources list is empty. That must read as "plugged in at 100%", not
@@ -23,7 +25,8 @@ public struct IOKitPowerSource: Sendable {
             // floor entirely on a laptop with a real, possibly draining
             // battery. Refuse rather than guess: mark untrusted and let
             // `decide()` take the conservative branch instead.
-            return PowerState(onBattery: false, batteryPercent: 100, thermal: thermal, trusted: false)
+            return PowerState(onBattery: false, batteryPercent: 100, thermal: thermal,
+                              lowPowerModeEnabled: lowPowerModeEnabled, trusted: false)
         }
 
         if sources.isEmpty {
@@ -31,7 +34,8 @@ public struct IOKitPowerSource: Sendable {
             // normal and trustworthy state on a desktop Mac. Keep the
             // default `trusted: true` — this is the case the plugged-in/100%
             // fallback exists for.
-            return PowerState(onBattery: false, batteryPercent: 100, thermal: thermal)
+            return PowerState(onBattery: false, batteryPercent: 100, thermal: thermal,
+                              lowPowerModeEnabled: lowPowerModeEnabled)
         }
 
         for source in sources {
@@ -62,7 +66,8 @@ public struct IOKitPowerSource: Sendable {
             let ratio = Double(capacity) / Double(maximum)
             let percent = min(100, max(0, Int((ratio * 100).rounded())))
 
-            return PowerState(onBattery: onBattery, batteryPercent: percent, thermal: thermal)
+            return PowerState(onBattery: onBattery, batteryPercent: percent, thermal: thermal,
+                              lowPowerModeEnabled: lowPowerModeEnabled)
         }
 
         // IMPORTANT 4: the OS reported at least one power source, but none
@@ -70,6 +75,7 @@ public struct IOKitPowerSource: Sendable {
         // confirmed "no battery" — it's a laptop (or similar) whose battery
         // entry exists but couldn't be read, which is precisely the
         // cannot-be-trusted case this fix exists to catch.
-        return PowerState(onBattery: false, batteryPercent: 100, thermal: thermal, trusted: false)
+        return PowerState(onBattery: false, batteryPercent: 100, thermal: thermal,
+                          lowPowerModeEnabled: lowPowerModeEnabled, trusted: false)
     }
 }

@@ -3,6 +3,9 @@ import Foundation
 public struct Settings: Equatable, Sendable {
     /// Release below this charge, on battery only.
     public var batteryFloor: Int = 20
+    public var onlyWhileConnectedToPower = false
+    public var respectLowPowerMode = true
+    public var allowDisplaysToSleep = true
     /// Whether lid-closed mode follows the session automatically.
     public var lidClosedFollowsSession: Bool = true
     /// Backstop eviction age for session records.
@@ -18,6 +21,7 @@ public struct PowerState: Equatable, Sendable {
     public var onBattery: Bool
     public var batteryPercent: Int
     public var thermal: ProcessInfo.ThermalState
+    public var lowPowerModeEnabled: Bool
     /// False means this reading itself could not be trusted — an IOKit call
     /// FAILED outright, not "this machine confirmed it has no battery".
     /// Defaults to true so every plugged-in/100% reading (a confirmed-empty
@@ -27,11 +31,16 @@ public struct PowerState: Equatable, Sendable {
     public var trusted: Bool
 
     public init(
-        onBattery: Bool, batteryPercent: Int, thermal: ProcessInfo.ThermalState, trusted: Bool = true
+        onBattery: Bool,
+        batteryPercent: Int,
+        thermal: ProcessInfo.ThermalState,
+        lowPowerModeEnabled: Bool = false,
+        trusted: Bool = true
     ) {
         self.onBattery = onBattery
         self.batteryPercent = batteryPercent
         self.thermal = thermal
+        self.lowPowerModeEnabled = lowPowerModeEnabled
         self.trusted = trusted
     }
 }
@@ -39,12 +48,14 @@ public struct PowerState: Equatable, Sendable {
 public struct Decision: Equatable, Sendable {
     public var holdSystem: Bool
     public var holdLidClosed: Bool
+    public var holdDisplay: Bool
     /// Human-readable explanation, shown in the menu and the status output.
     public var reason: String
 
-    public init(holdSystem: Bool, holdLidClosed: Bool, reason: String) {
+    public init(holdSystem: Bool, holdLidClosed: Bool, holdDisplay: Bool = false, reason: String) {
         self.holdSystem = holdSystem
         self.holdLidClosed = holdLidClosed
+        self.holdDisplay = holdDisplay
         self.reason = reason
     }
 }
@@ -79,6 +90,14 @@ public func decide(
                         reason: "battery \(power.batteryPercent)%")
     }
 
+    if settings.onlyWhileConnectedToPower, power.onBattery {
+        return Decision(holdSystem: false, holdLidClosed: false, reason: "battery power")
+    }
+
+    if settings.respectLowPowerMode, power.lowPowerModeEnabled {
+        return Decision(holdSystem: false, holdLidClosed: false, reason: "low power mode")
+    }
+
     // 2. A shut lid traps heat with no airflow, so thermal pressure wins.
     if power.thermal == .serious || power.thermal == .critical {
         return Decision(holdSystem: false, holdLidClosed: false,
@@ -91,6 +110,7 @@ public func decide(
         return Decision(
             holdSystem: true,
             holdLidClosed: settings.lidClosedFollowsSession,
+            holdDisplay: !settings.allowDisplaysToSleep,
             reason: "\(working) working"
         )
     }
