@@ -95,17 +95,18 @@ public func decide(
                         reason: "battery \(power.batteryPercent)%")
     }
 
+    // 3. Low Power Mode releases active holds when the setting is enabled.
     if settings.respectLowPowerMode, power.lowPowerModeEnabled {
         return Decision(holdSystem: false, holdLidClosed: false, reason: "low power mode")
     }
 
-    // 3. A shut lid traps heat with no airflow, so thermal pressure wins.
+    // 4. A shut lid traps heat with no airflow, so thermal pressure wins.
     if power.thermal == .serious || power.thermal == .critical {
         return Decision(holdSystem: false, holdLidClosed: false,
                         reason: "thermal pressure")
     }
 
-    // 3. Working sessions hold.
+    // 5. Working sessions hold.
     let working = sessions.count { $0.state == .working }
     if working > 0 {
         return Decision(
@@ -116,7 +117,7 @@ public func decide(
         )
     }
 
-    // 4. Completion has no grace period. The app applies this snapshot on its
+    // 6. Completion has no grace period. The app applies this snapshot on its
     // existing one-second poll, so Stop/SessionEnd releases on the next poll.
     guard !sessions.isEmpty else {
         return Decision(holdSystem: false, holdLidClosed: false, reason: "no agent sessions")

@@ -135,8 +135,14 @@ private func release(version: String) -> StableUpdateRelease? {
     #expect(environment.fetchCount == 1)
     #expect(coordinator.availableRelease == newest)
     #expect(store.snapshot.lastAttemptAt == now)
-    await coordinator.runIfDue(at: now.addingTimeInterval(60))
+    await coordinator.runIfDue(at: now.addingTimeInterval(
+        AutomaticUpdateCoordinator.throttleInterval - 1
+    ))
     #expect(environment.fetchCount == 1)
+    await coordinator.runIfDue(at: now.addingTimeInterval(
+        AutomaticUpdateCoordinator.throttleInterval
+    ))
+    #expect(environment.fetchCount == 2)
 }
 
 @Test @MainActor func automaticFailureIsSilentAndPreservesCachedRelease() async throws {

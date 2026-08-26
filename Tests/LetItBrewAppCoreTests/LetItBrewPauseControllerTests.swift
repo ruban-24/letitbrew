@@ -21,13 +21,13 @@ private final class PauseStore: LetItBrewPausePersisting, @unchecked Sendable {
     let controller = LetItBrewPauseController(persistence: PauseStore())
 
     #expect(!controller.isPaused)
-    #expect(controller.resolve(systemHold: true, lidClosedHold: true)
-            == LetItBrewHoldIntent(system: true, lidClosed: true, display: false))
+    #expect(controller.resolve(systemHold: true, lidClosedHold: true, displayHold: true)
+            == LetItBrewHoldIntent(system: true, lidClosed: true, display: true))
     #expect(controller.resolve(systemHold: true, lidClosedHold: false)
             == LetItBrewHoldIntent(system: true, lidClosed: false, display: false))
 }
 
-@Test func allowingSleepSuppressesBothHoldsAndPersistsAcrossRelaunch() {
+@Test func allowingSleepSuppressesAllHoldsAndPersistsAcrossRelaunch() {
     let store = PauseStore()
     var controller = LetItBrewPauseController(persistence: store)
 
@@ -36,13 +36,13 @@ private final class PauseStore: LetItBrewPausePersisting, @unchecked Sendable {
     #expect(controller.isPaused)
     #expect(store.storedValue)
     for _ in 0..<5 {
-        #expect(controller.resolve(systemHold: true, lidClosedHold: true)
+        #expect(controller.resolve(systemHold: true, lidClosedHold: true, displayHold: true)
                 == LetItBrewHoldIntent(system: false, lidClosed: false, display: false))
     }
 
     let relaunched = LetItBrewPauseController(persistence: store)
     #expect(relaunched.isPaused)
-    #expect(relaunched.resolve(systemHold: true, lidClosedHold: true)
+    #expect(relaunched.resolve(systemHold: true, lidClosedHold: true, displayHold: true)
             == LetItBrewHoldIntent(system: false, lidClosed: false, display: false))
 }
 

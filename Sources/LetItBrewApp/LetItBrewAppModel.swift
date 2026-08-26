@@ -905,10 +905,22 @@ final class LetItBrewAppModel: ObservableObject {
         guard keepWorkingWithLidClosed,
               !uninstallInProgress,
               !updateBlocksOtherActions,
-              !automaticUpdateInProgress,
-              daemonRecoveryTask == nil
+              !automaticUpdateInProgress
         else { return }
-        runDaemonRecovery(trigger: .automaticLaunch)
+
+        switch DaemonBackgroundRefreshPolicy.action(
+            recoveryInFlight: daemonRecoveryTask != nil,
+            handshakeInFlight: daemonHandshakeInFlight,
+            holdRequestInFlight: daemonHoldRequestState.isInFlight,
+            daemonAvailable: daemonAvailable
+        ) {
+        case .none:
+            break
+        case .synchronizeHold:
+            synchronizeDaemonHold(force: true)
+        case .recover:
+            runDaemonRecovery(trigger: .automaticLaunch)
+        }
     }
 
     private func refreshAgentHooks(

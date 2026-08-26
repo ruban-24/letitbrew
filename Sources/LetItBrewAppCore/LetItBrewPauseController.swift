@@ -21,7 +21,7 @@ public struct LetItBrewHoldIntent: Equatable, Sendable {
 
 /// Applies a persisted manual pause without affecting session observation.
 /// Callers continue collecting and presenting sessions while this controller
-/// suppresses only Let It Brew's two sleep holds.
+/// suppresses only Let It Brew's three sleep holds.
 public struct LetItBrewPauseController: Sendable {
     private let persistence: any LetItBrewPausePersisting
     public private(set) var isPaused: Bool

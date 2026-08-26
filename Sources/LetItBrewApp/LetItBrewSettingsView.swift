@@ -457,7 +457,7 @@ struct LetItBrewSettingsView: View {
                             VStack(alignment: .leading, spacing: 5) {
                                 Text(guidance.title)
                                     .font(.callout.weight(.semibold))
-                                Text(leftover.message)
+                                Text(guidance.summary)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                     .fixedSize(horizontal: false, vertical: true)

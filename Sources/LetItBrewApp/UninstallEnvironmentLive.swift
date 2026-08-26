@@ -128,14 +128,14 @@ extension LetItBrewAppModel: UninstallEnvironment {
         guard let result = results.first else {
             return failure(
                 step,
-                "To remove Let It Brew's \(agentName) hooks, open Let It Brew—restoring it from the Trash first if needed—then choose Settings → Agents → \(agentName) → Disconnect before uninstalling again. Until then, the hooks are inert.",
+                "To remove Let It Brew's \(agentName) hooks, restore Let It Brew from the Trash if needed, open it, turn off the \(agentName) watched-agent switch, then try uninstalling again. Until then, the hooks are inert.",
                 "no result"
             )
         }
         guard result.succeeded else {
             return failure(
                 step,
-                "To remove Let It Brew's \(agentName) hooks, open Let It Brew—restoring it from the Trash first if needed—then choose Settings → Agents → \(agentName) → Disconnect before uninstalling again. Until then, the hooks are inert.",
+                "To remove Let It Brew's \(agentName) hooks, restore Let It Brew from the Trash if needed, open it, turn off the \(agentName) watched-agent switch, then try uninstalling again. Until then, the hooks are inert.",
                 result.timedOut ? "timed out" : "status \(result.status): \(result.output)"
             )
         }
