@@ -833,12 +833,7 @@ final class LetItBrewAppModel: ObservableObject {
     }
 
     func retryDaemonConnection() {
-        let trigger: DaemonRecoveryTrigger = if case .approvalRequired = daemonRecoveryState {
-            .userRequestedRetry
-        } else {
-            .automaticLaunch
-        }
-        runDaemonRecovery(trigger: trigger)
+        runDaemonRecovery(trigger: .userRequestedRetry)
     }
 
     func setUpDaemon() {
@@ -896,7 +891,7 @@ final class LetItBrewAppModel: ObservableObject {
               !automaticUpdateInProgress,
               daemonRecoveryTask == nil
         else { return }
-        retryDaemonConnection()
+        runDaemonRecovery(trigger: .automaticLaunch)
     }
 
     private func refreshAgentHooks(
@@ -2210,6 +2205,13 @@ final class LetItBrewAppModel: ObservableObject {
         } else if !daemonHoldRequestState.isInFlight {
             holdReleaseFailure = nil
         }
+    }
+
+    func quiesceAutomaticUpdate() async {
+        guard let task = automaticUpdateTask else { return }
+        automaticUpdateTask = nil
+        task.cancel()
+        await task.value
     }
 
     func cleanQuit() {

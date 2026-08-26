@@ -49,7 +49,9 @@ public final class AutomaticUpdateCoordinator {
 
         snapshot.lastAttemptAt = now
         persistence.save(snapshot)
-        switch await environment.fetchLatestStableRelease() {
+        let result = await environment.fetchLatestStableRelease()
+        guard !Task.isCancelled else { return }
+        switch result {
         case .success(let release):
             snapshot.availableRelease = release.version > installedVersion ? release : nil
             availableRelease = snapshot.availableRelease

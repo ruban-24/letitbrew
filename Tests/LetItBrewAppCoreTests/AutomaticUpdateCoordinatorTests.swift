@@ -29,6 +29,35 @@ private final class UpdateEnvironment: OneClickUpdateEnvironment, @unchecked Sen
     }
 }
 
+private actor SuspendedUpdateEnvironment: OneClickUpdateEnvironment {
+    let release: StableUpdateRelease
+    private var fetching = false
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    init(release: StableUpdateRelease) {
+        self.release = release
+    }
+
+    func fetchLatestStableRelease() async -> Result<StableUpdateRelease, OneClickUpdateFailure> {
+        fetching = true
+        await withCheckedContinuation { continuation = $0 }
+        return .success(release)
+    }
+
+    func prepareAndLaunchInstaller(
+        for release: StableUpdateRelease
+    ) async -> Result<Void, OneClickUpdateFailure> {
+        .success(())
+    }
+
+    func isFetching() -> Bool { fetching }
+
+    func resumeFetch() {
+        continuation?.resume()
+        continuation = nil
+    }
+}
+
 private func release(version: String) -> StableUpdateRelease? {
     guard let version = StableUpdateVersion(version) else { return nil }
     let root = "https://github.com/ruban-24/letitbrew/releases/download/v\(version)"
@@ -60,6 +89,34 @@ private func release(version: String) -> StableUpdateRelease? {
         AutomaticUpdateSnapshot.self,
         from: JSONEncoder().encode(snapshot)
     ) == snapshot)
+}
+
+@Test @MainActor func cancelledAutomaticCheckCannotRestoreClearedPreferences() async throws {
+    let store = AutomaticUpdateStore()
+    let now = Date(timeIntervalSince1970: 1_700_000_000)
+    let environment = SuspendedUpdateEnvironment(
+        release: try #require(release(version: "0.6.6"))
+    )
+    let coordinator = AutomaticUpdateCoordinator(
+        installedVersion: try #require(StableUpdateVersion("0.6.5")),
+        environment: environment,
+        persistence: store
+    )
+
+    let check = Task { @MainActor in await coordinator.runIfDue(at: now) }
+    while !(await environment.isFetching()) { await Task.yield() }
+    #expect(store.snapshot.lastAttemptAt == now)
+
+    check.cancel()
+    store.snapshot = AutomaticUpdateSnapshot(lastAttemptAt: nil, availableRelease: nil)
+    await environment.resumeFetch()
+    await check.value
+
+    #expect(coordinator.availableRelease == nil)
+    #expect(store.snapshot == AutomaticUpdateSnapshot(
+        lastAttemptAt: nil,
+        availableRelease: nil
+    ))
 }
 
 @Test @MainActor func automaticCheckRunsOnlyWhenDueAndCachesNewerRelease() async throws {

@@ -191,6 +191,7 @@ extension LetItBrewAppModel: UninstallEnvironment {
         guard let domain = Bundle.main.bundleIdentifier else {
             return failure(.clearPreferences, "Let It Brew could not identify its own preferences.", "nil bundleIdentifier")
         }
+        await quiesceAutomaticUpdate()
         // One domain removal, not a key list: a hand-maintained list would
         // drift from HoldSettingsPreferenceKey as settings are added.
         // ponytail: cfprefsd can re-flush a cached domain, so the app quits
