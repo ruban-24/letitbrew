@@ -5,6 +5,7 @@ import SwiftUI
 struct LetItBrewSettingsView: View {
     @EnvironmentObject private var model: LetItBrewAppModel
     @State private var selectedPane: SettingsPane = .general
+    @State private var presentedRecovery: RecoveryGuidance?
     @FocusState private var focusedPane: SettingsPane?
 
     var body: some View {
@@ -71,8 +72,8 @@ struct LetItBrewSettingsView: View {
             general
         case .agents:
             agents
-        case .safety:
-            safety
+        case .powerAndDisplay:
+            powerAndDisplay
         case .about:
             about
         }
@@ -108,87 +109,40 @@ struct LetItBrewSettingsView: View {
                 Text(closedLidDescription)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-
-                if model.keepWorkingWithLidClosed {
-                    daemonRecoveryControls
-                }
             }
         }
         .formStyle(.grouped)
     }
 
-    @ViewBuilder
-    private var daemonRecoveryControls: some View {
-        let presentation = model.daemonRecoveryPresentation
-
-        if presentation.showsProgress {
-            ProgressView(presentation.headline)
-                .controlSize(.small)
-        } else if !model.daemonAvailable {
+    private var agents: some View {
+        ScrollView {
             VStack(alignment: .leading, spacing: 10) {
-                Label {
-                    Text(presentation.actions.contains(.setUp)
-                         ? "Setup required"
-                         : presentation.headline)
-                        .font(.callout.weight(.semibold))
-                } icon: {
-                    Image(systemName: "exclamationmark.circle.fill")
-                        .foregroundStyle(.orange)
-                }
+                Text("Watched Agents")
+                    .font(.headline)
 
-                if let detail = presentation.detail {
-                    Text(detail)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .textSelection(.enabled)
-                }
-
-                HStack(spacing: 10) {
-                    ForEach(Array(presentation.actions.enumerated()), id: \.offset) { _, action in
-                        switch action {
-                        case .setUp:
-                            Button("Set Up Closed-Lid Support") { model.setUpDaemon() }
-                                .buttonStyle(.borderedProminent)
-                        case .retry:
-                            Button("Retry") { model.retryDaemonConnection() }
-                        case .openBackgroundItems:
-                            Button("Open Background Items…") {
-                                model.openLoginItemSettings()
+                VStack(spacing: 0) {
+                    ForEach(Array(model.agentHooks.enumerated()), id: \.element.id) { index, health in
+                        WatchedAgentRow(
+                            health: health,
+                            isWatched: model.isAgentWatched(health.id),
+                            isWorking: model.hookActionInProgress || model.updateBlocksOtherActions,
+                            setWatched: { model.setAgent(health.id, watched: $0) },
+                            retry: {
+                                if health.disposition == .disconnectFailed {
+                                    model.setAgent(health.id, watched: false)
+                                } else {
+                                    model.retryAgentConnection(health.id)
+                                }
                             }
-                            .buttonStyle(.borderedProminent)
+                        )
+
+                        if index < model.agentHooks.count - 1 {
+                            Divider()
+                                .padding(.leading, 52)
                         }
                     }
                 }
-            }
-        }
-    }
-
-    private var agents: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Connect the local coding agents you want Let It Brew to follow.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-
-                if let message = displayedHookMessage {
-                    Text(message)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                }
-
-                ForEach(model.agentHooks) { health in
-                    AgentConnectionRow(
-                        health: health,
-                        isWorking: model.hookActionInProgress || model.updateBlocksOtherActions,
-                        checkAgain: { model.retryAgentConnection(health.id) },
-                        connect: { model.connectAgent(health.id) },
-                        disconnect: { model.disconnectAgent(health.id) }
-                    )
-                }
-
-                Spacer(minLength: 0)
+                .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 10))
             }
             .padding(22)
         }
@@ -197,34 +151,110 @@ struct LetItBrewSettingsView: View {
         }
     }
 
-    private var safety: some View {
-        Form {
+    private var powerAndDisplay: some View {
+        let helper = BackgroundHelperPresentationPolicy.resolve(
+            closedLidEnabled: model.keepWorkingWithLidClosed,
+            recoveryState: model.daemonRecoveryState
+        )
+
+        return Form {
+            Section("Background helper") {
+                HStack(alignment: .center, spacing: 10) {
+                    Label(helper.status, systemImage: !model.keepWorkingWithLidClosed
+                          ? "minus.circle"
+                          : helper.requiresAttention
+                            ? "exclamationmark.triangle.fill"
+                            : helper.showsProgress
+                              ? "clock"
+                              : "checkmark.circle.fill")
+                        .foregroundStyle(helper.requiresAttention ? .orange : .secondary)
+
+                    Spacer()
+
+                    if helper.showsProgress {
+                        ProgressView()
+                            .controlSize(.small)
+                            .accessibilityLabel(helper.status)
+                    }
+                }
+
+                Text("Required for closed-lid operation. The helper runs locally and releases its hold if communication with Let It Brew stops.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if helper.requiresAttention {
+                    Text(helper.detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                }
+
+                ForEach(Array(helper.actions.enumerated()), id: \.offset) { _, action in
+                    switch action {
+                    case .setUp:
+                        Button("Repair Helper") { model.setUpDaemon() }
+                            .buttonStyle(.borderedProminent)
+                    case .retry:
+                        Button("Repair Helper") { model.retryDaemonConnection() }
+                    case .openBackgroundItems:
+                        Button("Open Background Items…") { model.openLoginItemSettings() }
+                            .buttonStyle(.borderedProminent)
+                    }
+                }
+            }
+
             Section("Battery") {
-                LabeledContent("Release sleep hold at") {
+                LabeledContent("Stop keeping Mac awake below") {
                     Text("\(Int(model.batteryFloor))%")
                         .monospacedDigit()
                 }
-                Slider(value: $model.batteryFloor, in: 5...50, step: 1)
-                    .accessibilityLabel("Release sleep hold at")
+                Slider(value: $model.batteryFloor, in: 5...50, step: 5)
+                    .disabled(model.onlyWhileConnectedToPower)
+                    .accessibilityLabel("Stop keeping Mac awake below")
                     .accessibilityValue("\(Int(model.batteryFloor)) percent")
-                Text("When your Mac is on battery, Let It Brew stops keeping it awake at this level.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .accessibilityHint(model.onlyWhileConnectedToPower
+                        ? "Unavailable because Let It Brew is limited to connected power"
+                        : "Sets the battery level where Let It Brew releases its sleep hold")
+
+                Toggle(
+                    "Only keep Mac awake while connected to power",
+                    isOn: $model.onlyWhileConnectedToPower
+                )
+                Toggle("Respect Low Power Mode", isOn: $model.respectLowPowerMode)
+            }
+
+            Section("Display") {
+                Toggle(
+                    "Allow displays to sleep while agents are working",
+                    isOn: $model.allowDisplaysToSleep
+                )
             }
 
             Section("Built-in protections") {
-                SafetyProtectionRow(
+                ProtectionRow(
                     title: "Thermal protection",
-                    detail: "Releases the hold immediately if your Mac becomes too warm.",
+                    detail: "Releases sleep holds under serious or critical thermal pressure.",
                     status: "Always on",
                     systemImage: "thermometer.high",
                     accent: Color(.brewPurple)
                 )
 
-                SafetyProtectionRow(
-                    title: "Closed-lid display sleep",
-                    detail: "Requests display sleep again if the last external display disconnects.",
-                    status: "Automatic",
+                ProtectionRow(
+                    title: "Helper fail-safe",
+                    detail: "Releases the closed-lid hold if the app and helper stop communicating.",
+                    status: "Always on",
+                    systemImage: "bolt.slash",
+                    accent: Color(.brewPurple)
+                )
+
+                ProtectionRow(
+                    title: "Display handling",
+                    detail: model.allowDisplaysToSleep
+                        ? "Displays may sleep while the system sleep hold remains active."
+                        : "Display idle sleep is held only while an agent keeps the Mac awake.",
+                    status: model.allowDisplaysToSleep ? "Can sleep" : "Held while working",
                     systemImage: "display",
                     accent: Color(.brewPurple)
                 )
@@ -242,32 +272,49 @@ struct LetItBrewSettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .onAppear { model.refreshBackgroundHelper() }
     }
 
     private var about: some View {
-        VStack(spacing: 10) {
-            Image(nsImage: NSApp.applicationIconImage)
-                .resizable()
-                .interpolation(.high)
-                .frame(width: 80, height: 80)
-                .accessibilityHidden(true)
-            Text("Let It Brew")
-                .font(.title2.weight(.semibold))
-            Text(versionDescription)
-                .foregroundStyle(.secondary)
-            Text("Keeps your Mac awake while local coding agents work, then lets it sleep when they stop.")
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 360)
-                .foregroundStyle(.secondary)
-            updateControl
-                .padding(.top, 6)
-            Spacer(minLength: 28)
-            Divider()
-                .frame(maxWidth: 360)
-            uninstallControl
-                .padding(.top, 4)
+        ScrollView {
+            VStack(spacing: 10) {
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 80, height: 80)
+                    .accessibilityHidden(true)
+                Text("Let It Brew")
+                    .font(.title2.weight(.semibold))
+                Text(versionDescription)
+                    .foregroundStyle(.secondary)
+                Text("Keeps your Mac awake while local coding agents work, then lets it sleep when they finish.")
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 360)
+                    .foregroundStyle(.secondary)
+                updateControl
+                    .padding(.top, 6)
+
+                HStack(spacing: 8) {
+                    Link("GitHub", destination: ProductLinks.repository)
+                    Text("·")
+                    Link("Release Notes", destination: ProductLinks.releases)
+                    Text("·")
+                    Link("Report an Issue", destination: ProductLinks.reportIssue)
+                    Text("·")
+                    Link("Privacy", destination: ProductLinks.privacy)
+                }
+                .font(.caption)
+
+                Divider()
+                    .frame(maxWidth: 360)
+                    .padding(.top, 18)
+                uninstallControl
+                    .padding(.top, 4)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(28)
         }
-        .padding(28)
         .confirmationDialog(
             updateConfirmationTitle,
             isPresented: updateConfirmationBinding,
@@ -287,6 +334,9 @@ struct LetItBrewSettingsView: View {
             Button("Cancel", role: .cancel) { model.cancelUninstall() }
         } message: {
             Text("This disconnects all connected agent integrations, stops Let It Brew's background service, removes its settings and session records, and moves Let It Brew to the Trash.")
+        }
+        .sheet(item: $presentedRecovery) { guidance in
+            recoverySheet(guidance)
         }
     }
 
@@ -320,8 +370,14 @@ struct LetItBrewSettingsView: View {
             ProgressView("Update ready. Restarting Let It Brew…")
                 .controlSize(.small)
         case .failed(let failure, _):
+            let guidance = OperationRecoveryCatalog.update(
+                kind: failure.kind,
+                diagnostic: model.updateDiagnostic(for: failure)
+            )
             VStack(spacing: 8) {
-                Text(failure.message)
+                Text(guidance.title)
+                    .font(.callout.weight(.medium))
+                Text(guidance.summary)
                     .font(.callout)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 360)
@@ -329,8 +385,8 @@ struct LetItBrewSettingsView: View {
                 HStack(spacing: 12) {
                     Button("Try Again") { model.retryUpdate() }
                         .disabled(model.updateInProgress)
-                    Button("Copy Diagnostic") {
-                        copyToPasteboard(model.updateDiagnostic(for: failure))
+                    Button("Recovery Steps…") {
+                        presentedRecovery = guidance
                     }
                     Button("Dismiss") { model.dismissUpdateStatus() }
                 }
@@ -345,7 +401,15 @@ struct LetItBrewSettingsView: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(.red)
             if case .blocked(let failure, let offersDiagnostic) = model.uninstallState {
-                Text(failure.message)
+                let guidance = OperationRecoveryCatalog.uninstall(
+                    step: failure.step,
+                    diagnostic: offersDiagnostic
+                        ? model.uninstallDiagnostic(for: [failure])
+                        : nil
+                )
+                Text(guidance.title)
+                    .font(.callout.weight(.medium))
+                Text(guidance.summary)
                     .font(.callout)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 360)
@@ -353,10 +417,8 @@ struct LetItBrewSettingsView: View {
                 HStack(spacing: 12) {
                     Button("Try Again") { model.retryUninstall() }
                         .disabled(model.uninstallInProgress || model.updateBlocksOtherActions)
-                    if offersDiagnostic {
-                        Button("Copy Diagnostic") {
-                            copyToPasteboard(model.uninstallDiagnostic(for: [failure]))
-                        }
+                    Button("Recovery Steps…") {
+                        presentedRecovery = guidance
                     }
                     if model.isPaused {
                         Button("Resume Let It Brew") {
@@ -383,25 +445,30 @@ struct LetItBrewSettingsView: View {
                      : "The privileged background service is stopped. This window remains open only to show you how to finish cleanup.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
-                ForEach(leftovers, id: \.step) { leftover in
-                    Text("• \(leftover.message)")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        ForEach(leftovers, id: \.step) { leftover in
+                            let guidance = OperationRecoveryCatalog.uninstall(
+                                step: leftover.step,
+                                diagnostic: model.uninstallDiagnostic(for: [leftover])
+                            )
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(guidance.title)
+                                    .font(.callout.weight(.semibold))
+                                Text(leftover.message)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Button("Recovery Steps…") {
+                                    presentedRecovery = guidance
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
                 }
+
                 HStack(spacing: 12) {
-                    Button("Copy Diagnostic") {
-                        copyToPasteboard(model.uninstallDiagnostic(for: leftovers))
-                    }
-                    if leftovers.contains(where: { $0.step == .disableLaunchAtLogin }) {
-                        Button("Open Login Items…") {
-                            model.openLoginItemSettings()
-                        }
-                    }
-                    if leftovers.contains(where: { $0.step == .trashBundle }) {
-                        Button("Reveal in Finder") {
-                            NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
-                        }
-                    }
                     Spacer()
                     Button("Finish & Quit") { model.acknowledgeUninstallReport() }
                         .keyboardShortcut(.defaultAction)
@@ -413,32 +480,41 @@ struct LetItBrewSettingsView: View {
         .interactiveDismissDisabled()
         .onAppear { model.uninstallReportDidAppear() }
         .onDisappear { model.uninstallReportDidDisappear() }
+        .sheet(item: $presentedRecovery) { guidance in
+            recoverySheet(guidance)
+        }
     }
 
     @ViewBuilder
     private var updateCompletionReport: some View {
         if let report = model.updateCompletionReport {
             VStack(alignment: .leading, spacing: 12) {
-                Text(report.outcome == .success ? "Let It Brew was updated" : "Let It Brew update needs attention")
-                    .font(.headline)
-                Text(report.message)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
                 if report.outcome == .success {
+                    Text("Let It Brew was updated")
+                        .font(.headline)
+                    Text(report.message)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
                     Text(versionDescription)
                         .font(.callout.weight(.medium))
-                }
-                if let diagnostic = report.diagnostic {
-                    Text(diagnostic)
-                        .font(.caption.monospaced())
+                } else {
+                    let guidance = OperationRecoveryCatalog.update(
+                        kind: .relaunch,
+                        diagnostic: report.diagnostic
+                    )
+                    Text(guidance.title)
+                        .font(.headline)
+                    Text(report.message)
+                        .font(.callout)
                         .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                        .lineLimit(8)
+                    Text(guidance.summary)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Button("Recovery Steps…") {
+                        presentedRecovery = guidance
+                    }
                 }
                 HStack(spacing: 12) {
-                    if let diagnostic = report.diagnostic {
-                        Button("Copy Diagnostic") { copyToPasteboard(diagnostic) }
-                    }
                     if report.logFile != nil {
                         Button("Reveal Log") { model.revealUpdateLog(report) }
                     }
@@ -449,6 +525,9 @@ struct LetItBrewSettingsView: View {
             }
             .padding(24)
             .frame(width: 460)
+            .sheet(item: $presentedRecovery) { guidance in
+                recoverySheet(guidance)
+            }
         }
     }
 
@@ -520,29 +599,34 @@ struct LetItBrewSettingsView: View {
         )
     }
 
+    private func recoverySheet(_ guidance: RecoveryGuidance) -> some View {
+        RecoveryGuidanceSheet(
+            guidance: guidance,
+            perform: performRecoveryAction,
+            dismiss: { presentedRecovery = nil }
+        )
+    }
+
+    private func performRecoveryAction(_ action: RecoveryAction) {
+        switch action {
+        case .openURL(let url):
+            NSWorkspace.shared.open(url)
+        case .copyDetails(let details):
+            copyToPasteboard(details)
+        case .openLoginItems:
+            model.openLoginItemSettings()
+        case .revealApplication:
+            NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
+        }
+    }
+
     private func copyToPasteboard(_ text: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
     }
 
-    private var displayedHookMessage: String? {
-        AgentConnectionMessagePolicy.displayedMessage(
-            operationMessage: model.hookMessage,
-            connections: model.agentHooks.map {
-                AgentConnectionMessageInput(
-                    name: $0.name,
-                    state: $0.state,
-                    disposition: $0.disposition
-                )
-            }
-        )
-    }
-
     private var closedLidDescription: String {
-        guard model.keepWorkingWithLidClosed else {
-            return "Turn this on if agents should keep working after you close your MacBook."
-        }
-        return "Uses a local background helper. Let It Brew never sends your agent data off this Mac."
+        "Uses a local background helper only when enabled. Let It Brew never sends your agent data off this Mac."
     }
 
     private var versionDescription: String {
@@ -559,7 +643,64 @@ struct LetItBrewSettingsView: View {
     }
 }
 
-private struct SafetyProtectionRow: View {
+private struct RecoveryGuidanceSheet: View {
+    let guidance: RecoveryGuidance
+    let perform: (RecoveryAction) -> Void
+    let dismiss: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(guidance.title)
+                .font(.headline)
+
+            Text(guidance.summary)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(Array(guidance.steps.enumerated()), id: \.offset) { index, step in
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("\(index + 1).")
+                            .font(.callout.weight(.semibold))
+                        Text(step.text)
+                            .font(.callout)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+            }
+
+            HStack(spacing: 10) {
+                ForEach(Array(guidance.actions.enumerated()), id: \.offset) { _, action in
+                    Button(actionLabel(action)) { perform(action) }
+                }
+
+                Spacer()
+
+                Button("Done", action: dismiss)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24)
+        .frame(width: 480)
+    }
+
+    private func actionLabel(_ action: RecoveryAction) -> String {
+        switch action {
+        case .openURL(let url):
+            url == ProductLinks.releases ? "Open Releases" : "Open Link"
+        case .copyDetails:
+            "Copy Details"
+        case .openLoginItems:
+            "Open Background Items…"
+        case .revealApplication:
+            "Reveal in Finder"
+        }
+    }
+}
+
+private struct ProtectionRow: View {
     let title: String
     let detail: String
     let status: String
@@ -598,7 +739,7 @@ private struct SafetyProtectionRow: View {
 private enum SettingsPane: String, CaseIterable, Identifiable {
     case general = "General"
     case agents = "Agents"
-    case safety = "Safety"
+    case powerAndDisplay = "Power & Display"
     case about = "About"
 
     var id: String { rawValue.lowercased() }
@@ -608,125 +749,68 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         switch self {
         case .general: "gearshape"
         case .agents: "terminal"
-        case .safety: "shield"
+        case .powerAndDisplay: "battery.100percent"
         case .about: "info.circle"
         }
     }
 }
 
-private struct AgentConnectionRow: View {
+private struct WatchedAgentRow: View {
     let health: AgentHookHealth
+    let isWatched: Bool
     let isWorking: Bool
-    let checkAgain: () -> Void
-    let connect: () -> Void
-    let disconnect: () -> Void
+    let setWatched: (Bool) -> Void
+    let retry: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            AgentLogo(toolID: health.id)
-                .frame(width: 28, height: 28)
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle(isOn: Binding(
+                get: { isWatched },
+                set: { watched in setWatched(watched) }
+            )) {
+                HStack(spacing: 12) {
+                    AgentLogo(toolID: health.id)
+                        .frame(width: 28, height: 28)
+                    Text(health.name)
+                }
+            }
+            .toggleStyle(.switch)
+            .disabled(isWorking)
+            .accessibilityHint(isWatched
+                ? "Stop watching \(health.name) sessions"
+                : "Watch \(health.name) sessions")
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(health.name)
-                    .font(.headline)
-                Label(displayedState, systemImage: displayedSymbol)
-                    .font(.caption)
-                    .foregroundStyle(stateColor)
-                if !isDisconnected {
-                    ForEach(health.details, id: \.self) { detail in
+            if isWatched && health.state == .connecting {
+                ProgressView("Checking…")
+                    .controlSize(.small)
+                    .padding(.leading, 40)
+                    .accessibilityLabel("Checking \(health.name)")
+            } else if showsRecovery, let detail = health.details.first {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Label {
                         Text(detail)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                             .textSelection(.enabled)
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
                     }
-                }
-                if disconnectFailed {
-                    Text("Current sessions are hidden and no longer keep this Mac awake.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
 
-            Spacer(minLength: 10)
+                    Spacer(minLength: 8)
 
-            if health.state == .connecting {
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityLabel("Connecting \(health.name)")
-            } else if isDisconnected {
-                Button("Connect", action: connect)
-                    .disabled(isWorking)
-            } else if disconnectFailed {
-                Button("Retry Disconnect", action: disconnect)
-                    .disabled(isWorking)
-
-                Menu {
-                    Button("Connect Instead", action: connect)
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .accessibilityLabel("More options for \(health.name)")
-                }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize()
-                .disabled(isWorking)
-            } else {
-                if health.state == .actionNeeded || health.state == .couldNotConnect {
-                    Button("Check Again", action: checkAgain)
+                    Button("Retry", action: retry)
                         .disabled(isWorking)
                 }
-
-                Menu {
-                    Button("Disconnect", role: .destructive, action: disconnect)
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .accessibilityLabel("More options for \(health.name)")
-                }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize()
-                .disabled(isWorking)
             }
         }
         .padding(12)
-        .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 10))
         .accessibilityElement(children: .contain)
     }
 
-    private var isDisconnected: Bool {
-        health.disposition == .intentionallyDisconnected
-    }
-
-    private var disconnectFailed: Bool {
+    private var showsRecovery: Bool {
         health.disposition == .disconnectFailed
-    }
-
-    private var displayedState: String {
-        switch health.disposition {
-        case .intentionallyDisconnected: "Disconnected"
-        case .disconnectFailed: "Disconnect incomplete"
-        case .managed: health.state.rawValue
-        }
-    }
-
-    private var displayedSymbol: String {
-        switch health.disposition {
-        case .intentionallyDisconnected: "minus.circle"
-        case .disconnectFailed: "exclamationmark.triangle.fill"
-        case .managed: health.symbol
-        }
-    }
-
-    private var stateColor: Color {
-        if health.disposition == .disconnectFailed { return .red }
-        if health.disposition == .intentionallyDisconnected { return .secondary }
-        return switch health.state {
-        case .connecting: .secondary
-        case .connected: .green
-        case .actionNeeded: .orange
-        case .couldNotConnect: .red
-        }
+            || (isWatched && health.requiresSetupAttention)
     }
 }
