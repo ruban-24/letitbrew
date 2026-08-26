@@ -133,6 +133,36 @@ private struct UserDefaultsLetItBrewPausePersistence: LetItBrewPausePersisting, 
     }
 }
 
+private final class UserDefaultsAutomaticUpdatePersistence:
+    AutomaticUpdatePersisting,
+    @unchecked Sendable
+{
+    private let defaults: UserDefaults
+    private let key: String
+
+    init(defaults: UserDefaults, key: String) {
+        self.defaults = defaults
+        self.key = key
+    }
+
+    func load() -> AutomaticUpdateSnapshot {
+        guard let data = defaults.data(forKey: key),
+              let snapshot = try? PropertyListDecoder().decode(
+                  AutomaticUpdateSnapshot.self,
+                  from: data
+              )
+        else {
+            return AutomaticUpdateSnapshot(lastAttemptAt: nil, availableRelease: nil)
+        }
+        return snapshot
+    }
+
+    func save(_ snapshot: AutomaticUpdateSnapshot) {
+        guard let data = try? PropertyListEncoder().encode(snapshot) else { return }
+        defaults.set(data, forKey: key)
+    }
+}
+
 private struct UserDefaultsLetItBrewSettingsMigrationPersistence:
     LetItBrewSettingsMigrationPersisting,
     @unchecked Sendable
@@ -202,6 +232,25 @@ final class LetItBrewAppModel: ObservableObject {
     @Published private(set) var daemonRecoveryState: DaemonRecoveryState = .checking
     @Published private(set) var ownsHold = false
     @Published private(set) var isPaused: Bool
+    @Published var onlyWhileConnectedToPower: Bool {
+        didSet { defaults.set(onlyWhileConnectedToPower, forKey: Keys.onlyWhileConnectedToPower) }
+    }
+    @Published var respectLowPowerMode: Bool {
+        didSet { defaults.set(respectLowPowerMode, forKey: Keys.respectLowPowerMode) }
+    }
+    @Published var allowDisplaysToSleep: Bool {
+        didSet { defaults.set(allowDisplaysToSleep, forKey: Keys.allowDisplaysToSleep) }
+    }
+    @Published private(set) var currentPower = PowerState(
+        onBattery: false,
+        batteryPercent: 100,
+        thermal: .nominal,
+        trusted: false
+    )
+    @Published private(set) var availableUpdate: StableUpdateRelease?
+    @Published private(set) var holdReleaseFailure: String?
+    @Published private(set) var automaticUpdateInProgress = false
+    @Published private(set) var releaseConstraint: MenuHeaderCopy.ReleaseConstraint?
     @Published private(set) var agentHooks = AgentID.allCases.map {
         AgentHookHealth(
             id: $0.rawValue,
@@ -245,6 +294,10 @@ final class LetItBrewAppModel: ObservableObject {
         static let disconnectedAgents = "disconnectedAgents"
         static let connectedAgentIDsV2 = "connectedAgentIDsV2"
         static let sessionTrackingSuppressions = "sessionTrackingSuppressionsV1"
+        static let onlyWhileConnectedToPower = "onlyWhileConnectedToPower"
+        static let respectLowPowerMode = "respectLowPowerMode"
+        static let allowDisplaysToSleep = "allowDisplaysToSleep"
+        static let automaticUpdateSnapshot = "automaticUpdateSnapshotV1"
     }
 
     let defaults: UserDefaults
@@ -259,11 +312,13 @@ final class LetItBrewAppModel: ObservableObject {
     private let readsLiveState: Bool
     private let updateEnvironment: any OneClickUpdateEnvironment
     private let installedUpdateVersion: StableUpdateVersion?
+    private let automaticUpdateCoordinator: AutomaticUpdateCoordinator?
     private let updateResultStore = LiveUpdateResultStore()
     private var pauseController: LetItBrewPauseController
     private var lidCloseDisplaySleepCoordinator = LidCloseDisplaySleepCoordinator()
     private var pollTask: Task<Void, Never>?
     private var updateResultTask: Task<Void, Never>?
+    private var automaticUpdateTask: Task<Void, Never>?
     private var latestSnapshot: LetItBrewSnapshot?
     private var latestAppliedSnapshotAt: Date?
     private var daemonConnection: DaemonConnection?
@@ -307,10 +362,38 @@ final class LetItBrewAppModel: ObservableObject {
         self.loginItemRegistration = loginItemRegistration
         self.clamshellMonitor = clamshellMonitor
         self.activeDisplayMonitor = activeDisplayMonitor
-        self.updateEnvironment = updateEnvironment ?? LiveOneClickUpdateEnvironment()
-        self.installedUpdateVersion = installedUpdateVersion ?? Bundle.main.object(
+        let resolvedUpdateEnvironment = updateEnvironment ?? LiveOneClickUpdateEnvironment()
+        self.updateEnvironment = resolvedUpdateEnvironment
+        let resolvedInstalledUpdateVersion = installedUpdateVersion ?? Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
         ).flatMap { StableUpdateVersion($0 as? String ?? "") }
+        self.installedUpdateVersion = resolvedInstalledUpdateVersion
+        automaticUpdateCoordinator = resolvedInstalledUpdateVersion.map {
+            AutomaticUpdateCoordinator(
+                installedVersion: $0,
+                environment: resolvedUpdateEnvironment,
+                persistence: UserDefaultsAutomaticUpdatePersistence(
+                    defaults: defaults,
+                    key: Keys.automaticUpdateSnapshot
+                )
+            )
+        }
+        availableUpdate = automaticUpdateCoordinator?.availableRelease
+        onlyWhileConnectedToPower = Self.persistedBool(
+            defaults,
+            key: Keys.onlyWhileConnectedToPower,
+            fallback: false
+        )
+        respectLowPowerMode = Self.persistedBool(
+            defaults,
+            key: Keys.respectLowPowerMode,
+            fallback: true
+        )
+        allowDisplaysToSleep = Self.persistedBool(
+            defaults,
+            key: Keys.allowDisplaysToSleep,
+            fallback: true
+        )
         sessionTrackingSuppressions = Self.loadSessionTrackingSuppressions(
             from: defaults
         )
@@ -354,14 +437,27 @@ final class LetItBrewAppModel: ObservableObject {
             startPendingUpdateResultPolling()
             runDaemonRecovery(trigger: .automaticLaunch)
             runLaunchPreparations()
+            automaticUpdateTask = Task { [weak self] in
+                try? await Task.sleep(for: AutomaticUpdateCoordinator.launchDelay)
+                guard !Task.isCancelled,
+                      let self,
+                      let automaticUpdateCoordinator = self.automaticUpdateCoordinator
+                else { return }
+                self.automaticUpdateInProgress = true
+                await automaticUpdateCoordinator.runIfDue(at: Date())
+                self.availableUpdate = automaticUpdateCoordinator.availableRelease
+                self.automaticUpdateInProgress = false
+            }
         }
     }
 
     deinit {
         pollTask?.cancel()
         updateResultTask?.cancel()
+        automaticUpdateTask?.cancel()
         daemonRecoveryTask?.cancel()
         powerAssertion.setSystemHold(false, reason: "Let It Brew quit")
+        powerAssertion.setDisplayHold(false, reason: "Let It Brew quit")
         daemonConnection?.invalidate()
     }
 
@@ -371,6 +467,10 @@ final class LetItBrewAppModel: ObservableObject {
 
     var isHolding: Bool {
         ownsHold
+    }
+
+    var isEnabled: Bool {
+        !isPaused
     }
 
     var lidControlHelp: String? {
@@ -412,11 +512,25 @@ final class LetItBrewAppModel: ObservableObject {
         isPaused = true
         requestedSystemHold = false
         let systemReleased = powerAssertion.setSystemHold(false, reason: "Released by user")
+        let displayReleased = powerAssertion.setDisplayHold(false, reason: "Released by user")
         requestedLidHold = false
         synchronizeDaemonHold()
         updateHoldOwnership()
+        updateHoldReleaseFailure(
+            systemReleased: systemReleased,
+            displayReleased: displayReleased
+        )
         refreshNow()
-        return systemReleased
+        return systemReleased && displayReleased
+    }
+
+    func setEnabled(_ enabled: Bool) {
+        if enabled {
+            holdReleaseFailure = nil
+            resumeLetItBrew()
+        } else {
+            allowMacToSleep()
+        }
     }
 
     /// The uninstall `releaseHolds` gate's version of the Release action.
@@ -424,15 +538,15 @@ final class LetItBrewAppModel: ObservableObject {
     /// `synchronizeDaemonHold()` and moves on — that call's XPC completion
     /// runs later, asynchronously, on its own. This waits for that attempt
     /// (or one a poll tick already had in flight) to actually settle and
-    /// reports whether both the local assertion and the daemon hold are
+    /// reports whether both local assertions and the daemon hold are
     /// confirmed released, so a real refusal blocks uninstall instead of
     /// vanishing into a completion handler nobody awaited. See
     /// PowerAssertions.swift's IMPORTANT 3 for the same discipline applied to
     /// the local assertion.
     func releaseHoldsAwaitingConfirmation() async -> Bool {
         let daemonWasAvailable = daemonAvailable
-        let systemReleased = allowMacToSleep()
-        guard daemonWasAvailable else { return systemReleased }
+        let localHoldsReleased = allowMacToSleep()
+        guard daemonWasAvailable else { return localHoldsReleased }
 
         // Bounded: a wedged daemon completion must not hang uninstall
         // forever. Not settling within two seconds is treated as failure.
@@ -442,7 +556,7 @@ final class LetItBrewAppModel: ObservableObject {
         let daemonReleased = !daemonHoldRequestState.isInFlight
             && daemonAvailable
             && appliedLidHold != true
-        return systemReleased && daemonReleased
+        return localHoldsReleased && daemonReleased
     }
 
     private lazy var uninstallCoordinator = UninstallCoordinator(environment: self)
@@ -454,6 +568,12 @@ final class LetItBrewAppModel: ObservableObject {
             environment: updateEnvironment
         )
     }()
+
+    func presentAvailableUpdate() {
+        guard let release = availableUpdate, let updateCoordinator else { return }
+        updateCoordinator.present(release)
+        updateState = updateCoordinator.state
+    }
 
     var updateBlocksOtherActions: Bool {
         if updateInProgress || updateCompletionReport != nil { return true }
@@ -552,6 +672,8 @@ final class LetItBrewAppModel: ObservableObject {
             guard let self else { return }
             await operation(updateCoordinator)
             self.updateState = updateCoordinator.state
+            self.automaticUpdateCoordinator?.recordInteractiveState(self.updateState)
+            self.availableUpdate = self.automaticUpdateCoordinator?.availableRelease
             self.updateInProgress = false
             if case .readyToQuit = self.updateState {
                 // Give SwiftUI one main-actor turn to dismiss the dialog before
@@ -699,6 +821,7 @@ final class LetItBrewAppModel: ObservableObject {
     func resumeLetItBrew() {
         pauseController.resume()
         isPaused = false
+        holdReleaseFailure = nil
         refreshNow()
     }
 
@@ -710,7 +833,12 @@ final class LetItBrewAppModel: ObservableObject {
     }
 
     func retryDaemonConnection() {
-        runDaemonRecovery(trigger: .userRequestedRetry)
+        let trigger: DaemonRecoveryTrigger = if case .approvalRequired = daemonRecoveryState {
+            .userRequestedRetry
+        } else {
+            .automaticLaunch
+        }
+        runDaemonRecovery(trigger: trigger)
     }
 
     func setUpDaemon() {
@@ -758,11 +886,17 @@ final class LetItBrewAppModel: ObservableObject {
 
     func applicationDidBecomeActive() {
         refreshCodexTrustIfNeeded()
-        guard !uninstallInProgress,
+        refreshBackgroundHelper()
+    }
+
+    func refreshBackgroundHelper() {
+        guard keepWorkingWithLidClosed,
+              !uninstallInProgress,
               !updateBlocksOtherActions,
-              case .approvalRequired = daemonRecoveryState
+              !automaticUpdateInProgress,
+              daemonRecoveryTask == nil
         else { return }
-        runDaemonRecovery(trigger: .userRequestedRetry)
+        retryDaemonConnection()
     }
 
     private func refreshAgentHooks(
@@ -874,6 +1008,18 @@ final class LetItBrewAppModel: ObservableObject {
                 refreshAgentHooks(agentIDs: [id])
             }
         )
+    }
+
+    func isAgentWatched(_ id: String) -> Bool {
+        connectedAgentIDs.contains(id)
+    }
+
+    func setAgent(_ id: String, watched: Bool) {
+        if watched {
+            connectAgent(id)
+        } else {
+            disconnectAgent(id)
+        }
     }
 
     /// Explicit per-agent model API for a UI "Check Again" action. This does
@@ -1643,6 +1789,14 @@ final class LetItBrewAppModel: ObservableObject {
         return value
     }
 
+    private nonisolated static func persistedBool(
+        _ defaults: UserDefaults,
+        key: String,
+        fallback: Bool
+    ) -> Bool {
+        defaults.object(forKey: key) == nil ? fallback : defaults.bool(forKey: key)
+    }
+
     private nonisolated static func loadSessionTrackingSuppressions(
         from defaults: UserDefaults
     ) -> [SessionTrackingSuppression] {
@@ -1817,6 +1971,11 @@ final class LetItBrewAppModel: ObservableObject {
     private func applyVisibleSnapshot(_ snapshot: LetItBrewSnapshot) {
         var settings = LetItBrewCore.Settings()
         settings.batteryFloor = Int(batteryFloor.rounded())
+        settings.onlyWhileConnectedToPower = onlyWhileConnectedToPower
+        settings.respectLowPowerMode = respectLowPowerMode
+        settings.allowDisplaysToSleep = allowDisplaysToSleep
+        settings.lidClosedFollowsSession = keepWorkingWithLidClosed
+        currentPower = snapshot.power
 
         sessions = MenuSessionPresentationPolicy.rows(
             from: snapshot.sessions.map { Self.menuInput($0, now: snapshot.now) },
@@ -1829,28 +1988,31 @@ final class LetItBrewAppModel: ObservableObject {
             settings: settings,
             power: snapshot.power
         )
-        let safetyPaused = !snapshot.power.trusted
-            || (snapshot.power.onBattery && snapshot.power.batteryPercent <= settings.batteryFloor)
-            || snapshot.power.thermal == .serious
-            || snapshot.power.thermal == .critical
-
-        let holdIntent = pauseController.resolve(
-            systemHold: !safetyPaused && decision.holdSystem,
-            lidClosedHold: !safetyPaused
-                && keepWorkingWithLidClosed
-                && decision.holdLidClosed
+        let intent = pauseController.resolve(
+            systemHold: decision.holdSystem,
+            lidClosedHold: decision.holdLidClosed,
+            displayHold: decision.holdDisplay
         )
-        let allowedSystemHold = holdIntent.system
-        requestedSystemHold = holdIntent.system
-        requestedLidHold = holdIntent.lidClosed
+        requestedSystemHold = intent.system
+        requestedLidHold = intent.lidClosed
 
         evaluateLidCloseDisplaySleep(snapshot: snapshot)
 
-        powerAssertion.setSystemHold(
-            allowedSystemHold,
+        let systemSettled = powerAssertion.setSystemHold(
+            intent.system,
+            reason: "Let It Brew: \(decision.reason)"
+        )
+        let displaySettled = powerAssertion.setDisplayHold(
+            intent.display,
             reason: "Let It Brew: \(decision.reason)"
         )
         synchronizeDaemonHold()
+        if isPaused {
+            updateHoldReleaseFailure(
+                systemReleased: systemSettled,
+                displayReleased: displaySettled
+            )
+        }
         updateHoldOwnership()
 
         if daemonAvailable,
@@ -1867,14 +2029,20 @@ final class LetItBrewAppModel: ObservableObject {
             connectToDaemon()
         }
 
-        let isKeepingAwake = allowedSystemHold
+        let isKeepingAwake = intent.system
             || (requestedLidHold && appliedLidHold == true)
-        let releaseConstraint: MenuHeaderCopy.ReleaseConstraint? = if !sessions.isEmpty {
+        releaseConstraint = if !sessions.isEmpty {
             if !snapshot.power.trusted {
                 .powerUnavailable
+            } else if settings.onlyWhileConnectedToPower,
+                      snapshot.power.onBattery {
+                .connectedPowerOnly
             } else if snapshot.power.onBattery,
                       snapshot.power.batteryPercent <= settings.batteryFloor {
                 .battery(percent: snapshot.power.batteryPercent)
+            } else if settings.respectLowPowerMode,
+                      snapshot.power.lowPowerModeEnabled {
+                .lowPowerMode
             } else if snapshot.power.thermal == .serious
                         || snapshot.power.thermal == .critical {
                 .thermal
@@ -1990,6 +2158,20 @@ final class LetItBrewAppModel: ObservableObject {
                     if self.requestedLidHold != desired {
                         self.synchronizeDaemonHold()
                     }
+                    if !desired, self.isPaused {
+                        let systemReleased = self.powerAssertion.setSystemHold(
+                            false,
+                            reason: "Released by user"
+                        )
+                        let displayReleased = self.powerAssertion.setDisplayHold(
+                            false,
+                            reason: "Released by user"
+                        )
+                        self.updateHoldReleaseFailure(
+                            systemReleased: systemReleased,
+                            displayReleased: displayReleased
+                        )
+                    }
                 case .failure(let error):
                     self.markDaemonUnavailable(error.localizedDescription)
                 }
@@ -2007,7 +2189,41 @@ final class LetItBrewAppModel: ObservableObject {
         appliedLidHold = nil
         daemonConnection?.invalidate()
         daemonConnection = nil
+        if isPaused {
+            let systemReleased = powerAssertion.setSystemHold(false, reason: "Released by user")
+            let displayReleased = powerAssertion.setDisplayHold(false, reason: "Released by user")
+            updateHoldReleaseFailure(
+                systemReleased: systemReleased,
+                displayReleased: displayReleased
+            )
+        }
         updateHoldOwnership()
+    }
+
+    private func updateHoldReleaseFailure(
+        systemReleased: Bool,
+        displayReleased: Bool
+    ) {
+        guard isPaused else { return }
+        if !systemReleased || !displayReleased {
+            holdReleaseFailure = "Let It Brew could not confirm that every sleep hold was released. Try again or quit Let It Brew."
+        } else if !daemonHoldRequestState.isInFlight {
+            holdReleaseFailure = nil
+        }
+    }
+
+    func cleanQuit() {
+        requestedSystemHold = false
+        requestedLidHold = false
+        powerAssertion.setSystemHold(false, reason: "Let It Brew quit")
+        powerAssertion.setDisplayHold(false, reason: "Let It Brew quit")
+        synchronizeDaemonHold()
+        daemonConnection?.invalidate()
+        daemonConnection = nil
+        updateHoldOwnership()
+        DispatchQueue.main.async {
+            NSApp.terminate(nil)
+        }
     }
 
     private func updateHoldOwnership() {
@@ -2035,6 +2251,7 @@ extension LetItBrewAppModel {
     static func preview(
         sessions: [SessionRecord],
         power: PowerState = PowerState(onBattery: false, batteryPercent: 100, thermal: .nominal),
+        updateState: OneClickUpdateState = .idle,
         now: Date = Date()
     ) -> LetItBrewAppModel {
         let defaults = UserDefaults(suiteName: "LetItBrewPreview-\(UUID().uuidString)")!
@@ -2045,6 +2262,7 @@ extension LetItBrewAppModel {
         )
         model.daemonAvailable = true
         model.applyDaemonRecoveryState(.ready)
+        model.updateState = updateState
         model.apply(LetItBrewSnapshot(
             sessions: sessions,
             power: power,
@@ -2058,4 +2276,5 @@ extension LetItBrewAppModel {
 
 private final class PreviewPowerAssertion: PowerAsserting, @unchecked Sendable {
     func setSystemHold(_ on: Bool, reason: String) -> Bool { true }
+    func setDisplayHold(_ on: Bool, reason: String) -> Bool { true }
 }

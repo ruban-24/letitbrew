@@ -17,9 +17,9 @@ extension LetItBrewAppModel: UninstallEnvironment {
     }
 
     func releaseHolds() async -> Result<Void, UninstallFailure> {
-        // Exactly the user-facing pause path: clears the power assertion, the
+        // Exactly the user-facing pause path: clears both power assertions, the
         // lid hold, and the daemon hold, and persists the choice — but,
-        // unlike the plain Release action, this waits for both releases to
+        // unlike the plain Release action, this waits for all releases to
         // actually be confirmed rather than firing and forgetting, so a real
         // refusal (see PowerAssertions.swift IMPORTANT 3) blocks instead of
         // being silently discarded.
@@ -27,7 +27,7 @@ extension LetItBrewAppModel: UninstallEnvironment {
             return failure(
                 .releaseHolds,
                 "Let It Brew could not confirm this Mac's sleep settings were fully restored. Nothing was removed.",
-                "power assertion release or daemon lid-hold release did not confirm"
+                "system/display power assertion release or daemon lid-hold release did not confirm"
             )
         }
         return .success(())
