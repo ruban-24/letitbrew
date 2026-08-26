@@ -5,15 +5,17 @@ public protocol LetItBrewPausePersisting: Sendable {
     func savePause(_ isPaused: Bool)
 }
 
-/// The two sleep holds Let It Brew may request after automatic policy and the
+/// The sleep holds Let It Brew may request after automatic policy and the
 /// user's pause choice have both been applied.
 public struct LetItBrewHoldIntent: Equatable, Sendable {
     public let system: Bool
     public let lidClosed: Bool
+    public let display: Bool
 
-    public init(system: Bool, lidClosed: Bool) {
+    public init(system: Bool, lidClosed: Bool, display: Bool = false) {
         self.system = system
         self.lidClosed = lidClosed
+        self.display = display
     }
 }
 
@@ -41,11 +43,20 @@ public struct LetItBrewPauseController: Sendable {
 
     public func resolve(
         systemHold: Bool,
-        lidClosedHold: Bool
+        lidClosedHold: Bool,
+        displayHold: Bool = false
     ) -> LetItBrewHoldIntent {
         guard !isPaused else {
-            return LetItBrewHoldIntent(system: false, lidClosed: false)
+            return LetItBrewHoldIntent(
+                system: false,
+                lidClosed: false,
+                display: false
+            )
         }
-        return LetItBrewHoldIntent(system: systemHold, lidClosed: lidClosedHold)
+        return LetItBrewHoldIntent(
+            system: systemHold,
+            lidClosed: lidClosedHold,
+            display: displayHold
+        )
     }
 }

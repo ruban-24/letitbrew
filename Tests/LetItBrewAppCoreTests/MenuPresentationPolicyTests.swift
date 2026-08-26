@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import LetItBrewAppCore
+import LetItBrewCore
 
 @Test func headerCopyPrioritizesPausedThenAwakeThenSafetyRelease() {
     #expect(MenuHeaderCopy.resolve(isPaused: true, isKeepingAwake: true)
@@ -33,7 +34,7 @@ import Testing
         releaseConstraint: .powerUnavailable
     ) == "Power status unavailable — your Mac can sleep")
     #expect(MenuHeaderCopy.resolve(isPaused: false, isKeepingAwake: false)
-        == "Your Mac can sleep")
+        == "Watching for coding agents")
 }
 
 @Test func headerDetailDescribesOnlyWorkingRows() {
@@ -46,11 +47,54 @@ import Testing
     #expect(MenuHeaderDetailCopy.resolve(context: .awake, rows: rows)
         == "1 agent is working")
     #expect(MenuHeaderDetailCopy.resolve(context: .idle, rows: rows)
-        == "No agents are working")
+        == "Your Mac can sleep normally")
     #expect(MenuHeaderDetailCopy.resolve(context: .paused, rows: rows)
-        == "Agent sessions remain visible")
+        == "Agents will not keep your Mac awake")
     #expect(MenuHeaderDetailCopy.resolve(context: .paused, rows: [])
-        == "No agents are working")
+        == "Agents will not keep your Mac awake")
+}
+
+@Test func batteryRowIsConditionalAndProtectionAware() {
+    let battery = PowerState(onBattery: true, batteryPercent: 68, thermal: .nominal)
+    #expect(MenuBatteryPresentationPolicy.resolve(
+        power: battery,
+        batteryFloor: 20,
+        releaseConstraint: nil
+    )?.text == "Battery 68% · Sleep hold stops below 20%")
+
+    let plugged = PowerState(onBattery: false, batteryPercent: 100, thermal: .nominal)
+    #expect(MenuBatteryPresentationPolicy.resolve(
+        power: plugged,
+        batteryFloor: 20,
+        releaseConstraint: nil
+    ) == nil)
+
+    #expect(MenuBatteryPresentationPolicy.resolve(
+        power: plugged,
+        batteryFloor: 20,
+        releaseConstraint: .lowPowerMode
+    )?.text == "Low Power Mode released the sleep hold")
+
+    #expect(MenuBatteryPresentationPolicy.resolve(
+        power: battery,
+        batteryFloor: 20,
+        releaseConstraint: .battery(percent: 20)
+    )?.isAttention == true)
+}
+
+@Test func headerCopyMatchesEnabledIdleAndPausedStates() {
+    #expect(MenuHeaderCopy.resolve(
+        isPaused: false,
+        isKeepingAwake: false
+    ) == "Watching for coding agents")
+    #expect(MenuHeaderDetailCopy.resolve(
+        context: .idle,
+        rows: []
+    ) == "Your Mac can sleep normally")
+    #expect(MenuHeaderDetailCopy.resolve(
+        context: .paused,
+        rows: []
+    ) == "Agents will not keep your Mac awake")
 }
 
 @Test func popupConnectionAttentionAppearsOnlyAtZeroConnectedAgents() {

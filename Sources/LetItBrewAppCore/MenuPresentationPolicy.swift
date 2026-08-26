@@ -327,17 +327,26 @@ public enum MenuActivityViewportMetrics {
 public enum MenuHeaderCopy {
     public enum ReleaseConstraint: Equatable, Sendable {
         case battery(percent: Int)
+        case connectedPowerOnly
+        case lowPowerMode
         case thermal
         case powerUnavailable
+        case holdReleaseFailed
 
         fileprivate var message: String {
             switch self {
             case .battery(let percent):
                 "Battery at \(percent)% — your Mac can sleep"
+            case .connectedPowerOnly:
+                "Battery power released the sleep hold"
+            case .lowPowerMode:
+                "Low Power Mode released the sleep hold"
             case .thermal:
                 "Mac is too warm — it can sleep"
             case .powerUnavailable:
                 "Power status unavailable — your Mac can sleep"
+            case .holdReleaseFailed:
+                "Couldn’t release the sleep hold"
             }
         }
     }
@@ -350,7 +359,53 @@ public enum MenuHeaderCopy {
         if isPaused { return "Let It Brew is paused" }
         if isKeepingAwake { return "Keeping your Mac awake" }
         if let releaseConstraint { return releaseConstraint.message }
-        return "Your Mac can sleep"
+        return "Watching for coding agents"
+    }
+}
+
+public struct MenuBatteryPresentation: Equatable, Sendable {
+    public let text: String
+    public let isAttention: Bool
+
+    public init(text: String, isAttention: Bool) {
+        self.text = text
+        self.isAttention = isAttention
+    }
+}
+
+public enum MenuBatteryPresentationPolicy {
+    public static func resolve(
+        power: PowerState,
+        batteryFloor: Int,
+        releaseConstraint: MenuHeaderCopy.ReleaseConstraint?
+    ) -> MenuBatteryPresentation? {
+        if releaseConstraint == .lowPowerMode {
+            return MenuBatteryPresentation(
+                text: "Low Power Mode released the sleep hold",
+                isAttention: true
+            )
+        }
+
+        guard power.onBattery else { return nil }
+
+        if case .battery(let percent) = releaseConstraint {
+            return MenuBatteryPresentation(
+                text: "Battery \(percent)% · Sleep hold stops below \(batteryFloor)%",
+                isAttention: true
+            )
+        }
+
+        if releaseConstraint == .connectedPowerOnly {
+            return MenuBatteryPresentation(
+                text: "Battery power released the sleep hold",
+                isAttention: true
+            )
+        }
+
+        return MenuBatteryPresentation(
+            text: "Battery \(power.batteryPercent)% · Sleep hold stops below \(batteryFloor)%",
+            isAttention: false
+        )
     }
 }
 
@@ -372,11 +427,9 @@ public enum MenuHeaderDetailCopy {
             if workingCount > 1 { return "\(workingCount) agents are working" }
             return "No agents are working"
         case .idle:
-            return "No agents are working"
+            return "Your Mac can sleep normally"
         case .paused:
-            return rows.isEmpty
-                ? "No agents are working"
-                : "Agent sessions remain visible"
+            return "Agents will not keep your Mac awake"
         }
     }
 }
