@@ -82,6 +82,24 @@ import LetItBrewCore
     )?.isAttention == true)
 }
 
+@Test func supplementaryRowsKeepReleaseFailureBeforeBatteryAndUpdate() throws {
+    let battery = MenuBatteryPresentation(
+        text: "Battery 68% · Sleep hold stops below 20%",
+        isAttention: false
+    )
+    let version = try #require(StableUpdateVersion("0.6.6"))
+
+    #expect(MenuSupplementaryRowPolicy.rows(
+        holdReleaseFailure: "Release failed",
+        battery: battery,
+        availableVersion: version
+    ) == [
+        .holdReleaseFailure("Release failed"),
+        .battery(battery),
+        .update(version),
+    ])
+}
+
 @Test func headerCopyMatchesEnabledIdleAndPausedStates() {
     #expect(MenuHeaderCopy.resolve(
         isPaused: false,

@@ -409,6 +409,32 @@ public enum MenuBatteryPresentationPolicy {
     }
 }
 
+public enum MenuSupplementaryRow: Equatable, Sendable {
+    case holdReleaseFailure(String)
+    case battery(MenuBatteryPresentation)
+    case update(StableUpdateVersion)
+}
+
+public enum MenuSupplementaryRowPolicy {
+    public static func rows(
+        holdReleaseFailure: String?,
+        battery: MenuBatteryPresentation?,
+        availableVersion: StableUpdateVersion?
+    ) -> [MenuSupplementaryRow] {
+        var rows: [MenuSupplementaryRow] = []
+        if let holdReleaseFailure {
+            rows.append(.holdReleaseFailure(holdReleaseFailure))
+        }
+        if let battery {
+            rows.append(.battery(battery))
+        }
+        if let availableVersion {
+            rows.append(.update(availableVersion))
+        }
+        return rows
+    }
+}
+
 public enum MenuHeaderDetailContext: Sendable {
     case awake
     case idle

@@ -90,38 +90,9 @@ struct MenuBarContentView: View {
                 sessionBoard
             }
 
-            if let setupAttention {
+            if !supplementaryRows.isEmpty {
                 Divider()
-                Button {
-                    showSettings()
-                } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "exclamationmark.circle.fill")
-                            .font(.system(size: 18))
-                            .foregroundStyle(.orange)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(setupAttention.title)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.orange)
-                            Text(setupAttention.detail)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        Spacer(minLength: 8)
-
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.tertiary)
-                    }
-                    .contentShape(Rectangle())
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                }
-                .buttonStyle(.plain)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.orange.opacity(0.07))
+                supplementaryRowsView
             }
 
             Divider()
@@ -146,6 +117,16 @@ struct MenuBarContentView: View {
             updateExpansionState()
         }
         .task { model.refreshNow() }
+        .confirmationDialog(
+            updateConfirmationTitle,
+            isPresented: updateConfirmationBinding,
+            titleVisibility: .visible
+        ) {
+            Button("Install Update") { model.confirmUpdate() }
+            Button("Cancel", role: .cancel) { model.cancelUpdate() }
+        } message: {
+            Text(updateConfirmationMessage)
+        }
     }
 
     private var uninstallRecovery: some View {
@@ -182,8 +163,92 @@ struct MenuBarContentView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
+
+            Spacer(minLength: 8)
+
+            Toggle("Let It Brew enabled", isOn: Binding(
+                get: { model.isEnabled },
+                set: { model.setEnabled($0) }
+            ))
+            .labelsHidden()
+            .toggleStyle(.switch)
+            .accessibilityHint("Controls whether working agents may keep this Mac awake")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var supplementaryRowsView: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(supplementaryRows.enumerated()), id: \.offset) { index, row in
+                supplementaryRow(row)
+                if index < supplementaryRows.count - 1 {
+                    Divider()
+                        .padding(.leading, 44)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func supplementaryRow(_ row: MenuSupplementaryRow) -> some View {
+        switch row {
+        case .holdReleaseFailure(let message):
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .accessibilityHidden(true)
+
+                Text(message)
+                    .font(.caption)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Spacer(minLength: 8)
+
+                Button("Retry") { model.setEnabled(false) }
+                    .controlSize(.small)
+                    .help("Try to release every sleep hold again")
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(Color.orange.opacity(0.07))
+
+        case .battery(let presentation):
+            Label {
+                Text(presentation.text)
+                    .font(.caption)
+            } icon: {
+                Image(systemName: presentation.isAttention
+                      ? "exclamationmark.triangle.fill"
+                      : "battery.100percent")
+                    .accessibilityHidden(true)
+            }
+            .foregroundStyle(presentation.isAttention ? Color.orange : Color.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+
+        case .update(let version):
+            Button {
+                model.presentAvailableUpdate()
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .foregroundStyle(Color(.brewPurple))
+                        .accessibilityHidden(true)
+                    Text("Update \(version.description) available")
+                        .font(.caption.weight(.medium))
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
+                }
+                .contentShape(Rectangle())
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+            }
+            .buttonStyle(.plain)
+        }
     }
 
     private var sessionBoard: some View {
@@ -262,62 +327,34 @@ struct MenuBarContentView: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 10) {
+        VStack(spacing: 0) {
             Button {
-                if model.isPaused {
-                    model.resumeLetItBrew()
-                } else {
-                    model.allowMacToSleep()
-                }
+                showSettings()
             } label: {
-                Label(
-                    model.isPaused ? "Resume Let It Brew" : "Pause Let It Brew",
-                    systemImage: model.isPaused ? "play.fill" : "pause.fill"
-                )
+                LabeledContent("Settings…", value: "⌘,")
+                    .contentShape(Rectangle())
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 7)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.plain)
-            .help(model.isPaused
-                  ? "Resume automatic sleep holds for working agents"
-                  : "Pause future sleep holds and release any hold Let It Brew owns")
-            .accessibilityHint(model.isPaused
-                               ? "Let It Brew will keep your Mac awake the next time an agent works."
-                               : "Agent sessions remain visible, but Let It Brew will not keep your Mac awake until resumed.")
-
-            Spacer(minLength: 10)
-
-            Button { showSettings() } label: {
-                Image(systemName: "gearshape")
-            }
-            .buttonStyle(.plain)
-            .help("Settings")
-            .accessibilityLabel("Settings")
             .keyboardShortcut(",")
 
-            Menu {
-                Button("Quit Let It Brew") { NSApp.terminate(nil) }
-                    .keyboardShortcut("q")
+            Divider()
+
+            Button {
+                model.cleanQuit()
             } label: {
-                Image(systemName: "ellipsis.circle")
-                    .foregroundStyle(.secondary)
+                LabeledContent("Quit Let It Brew", value: "⌘Q")
+                    .contentShape(Rectangle())
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 7)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help("More Let It Brew actions")
-            .accessibilityLabel("More Let It Brew actions")
+            .buttonStyle(.plain)
+            .keyboardShortcut("q")
         }
         .font(.caption)
-        .controlSize(.small)
-    }
-
-    private var setupAttention: MenuSetupAttentionPresentation? {
-        MenuSetupAttentionPolicy.presentation(for: MenuSetupAttentionInput(
-            hasUpdateResult: model.updateCompletionReport != nil,
-            closedLidNeedsAttention: model.daemonNeedsSetupAttention,
-            connectedAgentCount: model.agentHooks.filter {
-                $0.state == .connected && $0.disposition == .managed
-            }.count
-        ))
     }
 
     private var headerDetail: String {
@@ -331,6 +368,40 @@ struct MenuBarContentView: View {
 
     private var headerColor: Color {
         .primary
+    }
+
+    private var supplementaryRows: [MenuSupplementaryRow] {
+        MenuSupplementaryRowPolicy.rows(
+            holdReleaseFailure: model.holdReleaseFailure,
+            battery: MenuBatteryPresentationPolicy.resolve(
+                power: model.currentPower,
+                batteryFloor: Int(model.batteryFloor),
+                releaseConstraint: model.releaseConstraint
+            ),
+            availableVersion: model.availableUpdate?.version
+        )
+    }
+
+    private var updateConfirmationTitle: String {
+        guard case .available(let release) = model.updateState else {
+            return "Install Let It Brew update?"
+        }
+        return "Install Let It Brew \(release.version)?"
+    }
+
+    private var updateConfirmationMessage: String {
+        "Let It Brew will download and verify the signed update, briefly quit, safely transition its background service if present, and relaunch. Your settings and session records stay in place."
+    }
+
+    private var updateConfirmationBinding: Binding<Bool> {
+        Binding(
+            get: { if case .available = model.updateState { true } else { false } },
+            set: { presented in
+                if !presented && !model.updateInProgress {
+                    model.cancelUpdate()
+                }
+            }
+        )
     }
 
     private func showSettings() {
@@ -421,19 +492,14 @@ private struct SessionRowView: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(accessibilityLabel)
 
-            Menu {
-                Button("Stop Tracking", role: .destructive, action: onStopTracking)
-            } label: {
-                Image(systemName: "ellipsis.circle")
+            Button(action: onStopTracking) {
+                Image(systemName: "eye.slash")
                     .foregroundStyle(.secondary)
+                    .frame(width: 24, height: 24)
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help("Hide this session and stop it from keeping your Mac awake until it starts working again")
-            .accessibilityLabel(
-                "Session actions for \(session.toolName) in \(session.repositoryID)"
-            )
+            .buttonStyle(.plain)
+            .help("Stop watching this session")
+            .accessibilityLabel("Stop watching \(session.project)")
         }
         .padding(.horizontal, 14)
         .frame(height: 60)
