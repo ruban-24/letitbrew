@@ -1,0 +1,34 @@
+import Testing
+@testable import LetItBrewAppCore
+
+@Test func canonicalProductLinksAreExact() {
+    #expect(ProductLinks.repository.absoluteString
+        == "https://github.com/ruban-24/letitbrew")
+    #expect(ProductLinks.releases.absoluteString
+        == "https://github.com/ruban-24/letitbrew/releases")
+    #expect(ProductLinks.reportIssue.absoluteString
+        == "https://github.com/ruban-24/letitbrew/issues/new/choose")
+    #expect(ProductLinks.privacy.absoluteString
+        == "https://github.com/ruban-24/letitbrew/blob/main/docs/PRIVACY.md")
+}
+
+@Test func verificationFailureNeverSuggestsBypassingGatekeeper() {
+    let guidance = OperationRecoveryCatalog.update(
+        kind: .verification,
+        diagnostic: "signature rejected"
+    )
+    let copy = ([guidance.summary] + guidance.steps.map(\.text)).joined(separator: " ")
+    #expect(!copy.localizedCaseInsensitiveContains("disable Gatekeeper"))
+    #expect(guidance.actions.contains(.openURL(ProductLinks.releases)))
+    #expect(guidance.actions.contains(.copyDetails("signature rejected")))
+}
+
+@Test func everyUninstallStepHasRecoveryGuidance() {
+    for step in UninstallStep.allCases {
+        let guidance = OperationRecoveryCatalog.uninstall(
+            step: step,
+            diagnostic: "detail"
+        )
+        #expect(!guidance.steps.isEmpty)
+    }
+}
