@@ -256,7 +256,7 @@ func makeFailure(_ step: UninstallStep) -> UninstallFailure {
         Issue.record("Expected a report state.")
         return
     }
-    #expect(leftovers.map(\.step) == [.removeCodexHooks, .trashBundle])
+    #expect(leftovers.map(\.step) == [.removeCodexHooks, .retainBundleForHookRetry])
     #expect(environment.calls.contains(.removeOpenCodeHooks))
     #expect(environment.calls.contains(.removeCopilotHooks))
     #expect(!environment.calls.contains(.disableLaunchAtLogin))

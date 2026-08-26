@@ -150,6 +150,19 @@ public enum OperationRecoveryCatalog {
             hookGuidance(agent: "OpenCode", id: "opencode", diagnostic: diagnostic)
         case .removeCopilotHooks:
             hookGuidance(agent: "GitHub Copilot CLI", id: "copilot", diagnostic: diagnostic)
+        case .retainBundleForHookRetry:
+            guidance(
+                id: "uninstall-retained-app",
+                title: "Keep Let It Brew installed for now",
+                summary: "Let It Brew and one or more agent hooks may remain.",
+                steps: [
+                    "Keep Let It Brew installed in Applications.",
+                    "Open Let It Brew and turn off each affected watched-agent switch.",
+                    "Try uninstalling again.",
+                ],
+                actions: [],
+                diagnostic: diagnostic
+            )
         case .disableLaunchAtLogin:
             guidance(
                 id: "uninstall-login-item",
@@ -166,7 +179,7 @@ public enum OperationRecoveryCatalog {
             guidance(
                 id: "uninstall-user-data",
                 title: "Could not remove Let It Brew data",
-                summary: "Only Let It Brew's user data remains.",
+                summary: "Let It Brew's user data may remain.",
                 steps: [
                     "In Finder, choose Go → Go to Folder…",
                     "Enter ~/Library/Application Support/LetItBrew.",
@@ -179,7 +192,7 @@ public enum OperationRecoveryCatalog {
             guidance(
                 id: "uninstall-preferences",
                 title: "Could not remove Let It Brew preferences",
-                summary: "Only Let It Brew preferences remain.",
+                summary: "Let It Brew preferences may remain.",
                 steps: [
                     "Quit Let It Brew.",
                     "Open Terminal and run: defaults delete com.ruban24.letitbrew",
@@ -210,7 +223,7 @@ public enum OperationRecoveryCatalog {
         guidance(
             id: "uninstall-\(id)-hooks",
             title: "Could not remove the \(agent) hook",
-            summary: "Only the Let It Brew-owned \(agent) hook may remain.",
+            summary: "The Let It Brew-owned \(agent) hook may remain.",
             steps: [
                 "Restore Let It Brew from the Trash if needed, then open it.",
                 "Turn off the \(agent) watched-agent switch.",

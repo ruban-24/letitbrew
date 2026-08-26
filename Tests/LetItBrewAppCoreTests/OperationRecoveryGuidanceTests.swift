@@ -32,3 +32,34 @@ import Testing
         #expect(!guidance.steps.isEmpty)
     }
 }
+
+@Test func retainedBundleForHookRetryNeverSuggestsTrashingTheApp() {
+    let guidance = OperationRecoveryCatalog.uninstall(
+        step: .retainBundleForHookRetry,
+        diagnostic: "hooks remain"
+    )
+    let copy = ([guidance.summary] + guidance.steps.map(\.text)).joined(separator: " ")
+    #expect(!copy.localizedCaseInsensitiveContains("Trash"))
+    #expect(!guidance.actions.contains(.revealApplication))
+}
+
+@Test func cleanupGuidanceDoesNotClaimOnlyOneResourceRemains() {
+    for step in [
+        UninstallStep.removeClaudeHooks,
+        .deleteUserData,
+        .clearPreferences,
+    ] {
+        let guidance = OperationRecoveryCatalog.uninstall(step: step, diagnostic: "detail")
+        #expect(!guidance.summary.localizedCaseInsensitiveContains("only"))
+    }
+}
+
+@Test func genuineAppTrashFailureStillExplainsFinderRecovery() {
+    let guidance = OperationRecoveryCatalog.uninstall(
+        step: .trashBundle,
+        diagnostic: "Finder refused"
+    )
+    let copy = ([guidance.summary] + guidance.steps.map(\.text)).joined(separator: " ")
+    #expect(copy.contains("Move only Let It Brew.app to the Trash."))
+    #expect(guidance.actions.contains(.revealApplication))
+}

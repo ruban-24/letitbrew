@@ -10,6 +10,7 @@ public enum UninstallStep: String, CaseIterable, Equatable, Sendable {
     case removeCodexHooks
     case removeOpenCodeHooks
     case removeCopilotHooks
+    case retainBundleForHookRetry
     case disableLaunchAtLogin
     case deleteUserData
     case clearPreferences
@@ -24,7 +25,8 @@ public enum UninstallStep: String, CaseIterable, Equatable, Sendable {
         case .releaseHolds, .reconcileDaemon, .unregisterDaemon:
             true
         case .removeClaudeHooks, .removeCodexHooks,
-             .removeOpenCodeHooks, .removeCopilotHooks, .disableLaunchAtLogin,
+             .removeOpenCodeHooks, .removeCopilotHooks, .retainBundleForHookRetry,
+             .disableLaunchAtLogin,
              .deleteUserData, .clearPreferences, .trashBundle:
             false
         }
@@ -159,7 +161,7 @@ public final class UninstallCoordinator {
         }
         if !leftovers.isEmpty {
             leftovers.append(UninstallFailure(
-                step: .trashBundle,
+                step: .retainBundleForHookRetry,
                 message: "Let It Brew was kept installed so hook removal can be retried.",
                 diagnostic: "Application bundle retained because one or more agent hooks could not be removed."
             ))

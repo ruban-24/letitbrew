@@ -44,7 +44,7 @@ pmset -g | grep SleepDisabled
 ```
 
 If that value is not what you expect after uninstalling, please
-[open an issue](https://github.com/ruban-24/letitbrew/issues) with the reading
+[open an issue](https://github.com/ruban-24/letitbrew/issues/new/choose) with the reading
 rather than overwriting it. A wrong baseline is a bug worth fixing.
 
 ## Verifying the removal
