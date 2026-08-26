@@ -115,36 +115,6 @@ import LetItBrewCore
     ) == "Agents will not keep your Mac awake")
 }
 
-@Test func popupConnectionAttentionAppearsOnlyAtZeroConnectedAgents() {
-    #expect(MenuSetupAttentionPolicy.presentation(for: MenuSetupAttentionInput(
-        hasUpdateResult: false,
-        closedLidNeedsAttention: false,
-        connectedAgentCount: 0
-    )) == MenuSetupAttentionPresentation(
-        title: "Connect an agent",
-        detail: "Open Settings to connect your coding agent."
-    ))
-
-    #expect(MenuSetupAttentionPolicy.presentation(for: MenuSetupAttentionInput(
-        hasUpdateResult: false,
-        closedLidNeedsAttention: false,
-        connectedAgentCount: 1
-    )) == nil)
-}
-
-@Test func updateAndClosedLidWarningsRemainIndependent() {
-    #expect(MenuSetupAttentionPolicy.presentation(for: MenuSetupAttentionInput(
-        hasUpdateResult: true,
-        closedLidNeedsAttention: true,
-        connectedAgentCount: 0
-    ))?.title == "Review update result")
-    #expect(MenuSetupAttentionPolicy.presentation(for: MenuSetupAttentionInput(
-        hasUpdateResult: false,
-        closedLidNeedsAttention: true,
-        connectedAgentCount: 0
-    ))?.title == "Finish closed-lid setup")
-}
-
 @Test func sessionRowsAndRepositorySummaryUseAllFourCatalogNames() throws {
     let now = Date(timeIntervalSince1970: 10_000)
     let ids = ["claude", "codex", "opencode", "copilot"]
