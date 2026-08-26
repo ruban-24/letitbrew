@@ -328,7 +328,6 @@ final class LetItBrewAppModel: ObservableObject {
     private var daemonHandshakeInFlight = false
     private var daemonHoldRequestState = DaemonHoldRequestState()
     private var requestedLidHold = false
-    private var appliedLidHold: Bool?
     private var requestedSystemHold = false
     private var lastDaemonAttempt = Date.distantPast
     private var nextDaemonHealthCheck = Date.distantPast
@@ -529,7 +528,21 @@ final class LetItBrewAppModel: ObservableObject {
             holdReleaseFailure = nil
             resumeLetItBrew()
         } else {
+            let retryingRelease = holdReleaseFailure != nil
             allowMacToSleep()
+            guard retryingRelease,
+                  daemonHoldRequestState.releaseConfirmationRequired
+            else { return }
+            if daemonHoldRequestState.isInFlight {
+                markDaemonUnavailable(
+                    "The background helper did not confirm the sleep-hold change in time."
+                )
+            }
+            if !daemonAvailable,
+               !daemonHandshakeInFlight,
+               daemonRecoveryTask == nil {
+                connectToDaemon()
+            }
         }
     }
 
@@ -544,9 +557,10 @@ final class LetItBrewAppModel: ObservableObject {
     /// PowerAssertions.swift's IMPORTANT 3 for the same discipline applied to
     /// the local assertion.
     func releaseHoldsAwaitingConfirmation() async -> Bool {
-        let daemonWasAvailable = daemonAvailable
+        let daemonConfirmationRequired = daemonAvailable
+            || daemonHoldRequestState.releaseConfirmationRequired
         let localHoldsReleased = allowMacToSleep()
-        guard daemonWasAvailable else { return localHoldsReleased }
+        guard daemonConfirmationRequired else { return localHoldsReleased }
 
         // Bounded: a wedged daemon completion must not hang uninstall
         // forever. Not settling within two seconds is treated as failure.
@@ -555,7 +569,7 @@ final class LetItBrewAppModel: ObservableObject {
         }
         let daemonReleased = !daemonHoldRequestState.isInFlight
             && daemonAvailable
-            && appliedLidHold != true
+            && daemonHoldRequestState.isReleaseConfirmed
         return localHoldsReleased && daemonReleased
     }
 
@@ -1875,7 +1889,6 @@ final class LetItBrewAppModel: ObservableObject {
         daemonAvailable = false
         daemonHandshakeInFlight = false
         daemonHoldRequestState.replaceConnection()
-        appliedLidHold = nil
         updateHoldOwnership()
 
         let persistence = daemonRecoveryPersistence
@@ -2001,6 +2014,14 @@ final class LetItBrewAppModel: ObservableObject {
             intent.display,
             reason: "Let It Brew: \(decision.reason)"
         )
+        if daemonHoldRequestState.expireRequestIfTimedOut(
+            at: snapshot.now,
+            timeout: 2
+        ) {
+            markDaemonUnavailable(
+                "The background helper did not confirm the sleep-hold change in time."
+            )
+        }
         synchronizeDaemonHold()
         if isPaused {
             updateHoldReleaseFailure(
@@ -2025,7 +2046,7 @@ final class LetItBrewAppModel: ObservableObject {
         }
 
         let isKeepingAwake = intent.system
-            || (requestedLidHold && appliedLidHold == true)
+            || (requestedLidHold && daemonHoldRequestState.confirmedHold == true)
         releaseConstraint = if !sessions.isEmpty {
             if !snapshot.power.trusted {
                 .powerUnavailable
@@ -2116,7 +2137,6 @@ final class LetItBrewAppModel: ObservableObject {
                         self.daemonWasHealthyThisRun = true
                         self.daemonAvailable = true
                         self.applyDaemonRecoveryState(.ready)
-                        self.appliedLidHold = nil
                         self.nextDaemonHealthCheck = .distantPast
                         self.synchronizeDaemonHold()
                     case .failure(let error):
@@ -2133,21 +2153,33 @@ final class LetItBrewAppModel: ObservableObject {
     private func synchronizeDaemonHold(force: Bool = false) {
         guard daemonAvailable,
               !daemonHoldRequestState.isInFlight,
-              force || appliedLidHold != requestedLidHold,
+              force || daemonHoldRequestState.confirmedHold != requestedLidHold,
               let connection = daemonConnection
         else { return }
 
         let desired = requestedLidHold
-        guard let request = daemonHoldRequestState.beginRequest() else { return }
+        guard let request = daemonHoldRequestState.beginRequest(
+            desiredHold: desired,
+            at: Date()
+        ) else { return }
         connection.setLidClosedHold(desired) { [weak self, weak connection] result in
             Task { @MainActor in
+                let succeeded: Bool
+                switch result {
+                case .success:
+                    succeeded = true
+                case .failure:
+                    succeeded = false
+                }
                 guard let self,
-                      self.daemonHoldRequestState.complete(request),
+                      self.daemonHoldRequestState.complete(
+                        request,
+                        succeeded: succeeded
+                      ),
                       self.daemonConnection === connection
                 else { return }
                 switch result {
                 case .success:
-                    self.appliedLidHold = desired
                     self.nextDaemonHealthCheck = Date().addingTimeInterval(desired ? 5 : 15)
                     self.updateHoldOwnership()
                     if self.requestedLidHold != desired {
@@ -2181,7 +2213,6 @@ final class LetItBrewAppModel: ObservableObject {
         )))
         daemonHandshakeInFlight = false
         daemonHoldRequestState.replaceConnection()
-        appliedLidHold = nil
         daemonConnection?.invalidate()
         daemonConnection = nil
         if isPaused {
@@ -2200,9 +2231,11 @@ final class LetItBrewAppModel: ObservableObject {
         displayReleased: Bool
     ) {
         guard isPaused else { return }
-        if !systemReleased || !displayReleased {
+        let daemonReleaseUnconfirmed = daemonHoldRequestState.releaseConfirmationRequired
+            && !daemonHoldRequestState.isReleaseConfirmed
+        if !systemReleased || !displayReleased || daemonReleaseUnconfirmed {
             holdReleaseFailure = "Let It Brew could not confirm that every sleep hold was released. Try again or quit Let It Brew."
-        } else if !daemonHoldRequestState.isInFlight {
+        } else {
             holdReleaseFailure = nil
         }
     }
@@ -2229,7 +2262,8 @@ final class LetItBrewAppModel: ObservableObject {
     }
 
     private func updateHoldOwnership() {
-        ownsHold = requestedSystemHold || (requestedLidHold && appliedLidHold == true)
+        ownsHold = requestedSystemHold
+            || (requestedLidHold && daemonHoldRequestState.confirmedHold == true)
     }
 
     private static func menuInput(_ record: SessionRecord, now: Date) -> SessionMenuInput {

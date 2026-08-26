@@ -433,7 +433,9 @@ struct LetItBrewSettingsView: View {
     private var uninstallReport: some View {
         VStack(alignment: .leading, spacing: 12) {
             if case .report(let leftovers) = model.uninstallState {
-                let bundleWasRemoved = !leftovers.contains { $0.step == .trashBundle }
+                let bundleWasRemoved = !leftovers.contains {
+                    $0.step.retainsBundleWhenReported
+                }
                 Text(bundleWasRemoved
                      ? (leftovers.count == 1
                         ? "Let It Brew was removed, but one step needs attention"

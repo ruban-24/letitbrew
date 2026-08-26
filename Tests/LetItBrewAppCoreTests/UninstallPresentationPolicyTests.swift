@@ -96,3 +96,10 @@ private func presentationFailure(_ step: UninstallStep) -> UninstallFailure {
         reportIsPresented: false
     ))
 }
+
+@Test func reportedRetainedBundleStepsNeverConfirmRemoval() {
+    #expect(UninstallStep.retainBundleForHookRetry.retainsBundleWhenReported)
+    #expect(UninstallStep.trashBundle.retainsBundleWhenReported)
+    #expect(!UninstallStep.removeCodexHooks.retainsBundleWhenReported)
+    #expect(!UninstallStep.deleteUserData.retainsBundleWhenReported)
+}

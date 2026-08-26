@@ -31,6 +31,11 @@ public enum UninstallStep: String, CaseIterable, Equatable, Sendable {
             false
         }
     }
+
+    /// A reported failure for either step means the app is still installed.
+    public var retainsBundleWhenReported: Bool {
+        self == .retainBundleForHookRetry || self == .trashBundle
+    }
 }
 
 public struct UninstallFailure: Error, Equatable, Sendable {
