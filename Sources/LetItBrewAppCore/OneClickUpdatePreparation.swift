@@ -94,6 +94,21 @@ public enum OneClickUpdatePreparationStage: String, Equatable, Sendable {
     case detachDiskImage
     case copySignedSupport
     case launchRunner
+
+    var failureKind: OneClickUpdateFailure.Kind {
+        switch self {
+        case .downloadChecksums, .downloadDiskImage:
+            .download
+        case .verifyChecksums, .verifyDiskImageDigest, .verifyDiskImage,
+             .mountDiskImage, .verifyMountedCandidate:
+            .verification
+        case .createWorkspace, .stageCandidate, .verifyStagedCandidate,
+             .detachDiskImage:
+            .replacement
+        case .copySignedSupport, .launchRunner:
+            .relaunch
+        }
+    }
 }
 
 /// Side effects stay behind this boundary so the ordered safety transaction is
@@ -259,6 +274,7 @@ public struct OneClickUpdatePreparationWorkflow: Sendable {
                 operations.cleanFailedWorkspace(workspace)
             }
             return .failure(OneClickUpdateFailure(
+                kind: stage.failureKind,
                 message: "Let It Brew couldn't prepare this update. Nothing was changed.",
                 diagnostic: "\(stage.rawValue): \(error.localizedDescription)"
             ))

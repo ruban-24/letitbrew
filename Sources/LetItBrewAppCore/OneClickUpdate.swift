@@ -1,6 +1,6 @@
 import Foundation
 
-public struct StableUpdateVersion: Comparable, CustomStringConvertible, Equatable, Sendable {
+public struct StableUpdateVersion: Comparable, CustomStringConvertible, Codable, Equatable, Sendable {
     public let major: UInt64
     public let minor: UInt64
     public let patch: UInt64
@@ -31,7 +31,7 @@ public struct StableUpdateVersion: Comparable, CustomStringConvertible, Equatabl
     }
 }
 
-public struct UpdateAsset: Equatable, Sendable {
+public struct UpdateAsset: Codable, Equatable, Sendable {
     public let name: String
     public let downloadURL: URL
     public let size: Int64
@@ -50,7 +50,7 @@ public struct UpdateAsset: Equatable, Sendable {
     }
 }
 
-public struct StableUpdateRelease: Equatable, Sendable {
+public struct StableUpdateRelease: Codable, Equatable, Sendable {
     public let version: StableUpdateVersion
     public let dmg: UpdateAsset
     public let checksums: UpdateAsset
@@ -286,10 +286,20 @@ public enum UpdateChecksumParser {
 }
 
 public struct OneClickUpdateFailure: Error, Equatable, Sendable {
+    public enum Kind: String, Codable, Equatable, Sendable {
+        case discovery
+        case download
+        case verification
+        case replacement
+        case relaunch
+    }
+
+    public let kind: Kind
     public let message: String
     public let diagnostic: String
 
-    public init(message: String, diagnostic: String) {
+    public init(kind: Kind, message: String, diagnostic: String) {
+        self.kind = kind
         self.message = message
         self.diagnostic = diagnostic
     }
@@ -400,6 +410,11 @@ public final class OneClickUpdateCoordinator {
         case .failure(let failure):
             state = .failed(failure, retry: .check)
         }
+    }
+
+    public func present(_ release: StableUpdateRelease) {
+        guard !isBusy, release.version > installedVersion else { return }
+        state = .available(release)
     }
 
     public func confirmInstall() async {

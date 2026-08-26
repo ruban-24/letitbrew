@@ -534,6 +534,7 @@ final class LetItBrewAppModel: ObservableObject {
         guard let updateCoordinator else {
             updateState = .failed(
                 OneClickUpdateFailure(
+                    kind: .discovery,
                     message: "Let It Brew couldn't identify its installed version. Nothing was changed.",
                     diagnostic: "CFBundleShortVersionString is missing or is not canonical major.minor.patch"
                 ),

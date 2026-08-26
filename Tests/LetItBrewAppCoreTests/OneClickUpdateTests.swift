@@ -209,6 +209,45 @@ private final class RecordingUpdateEnvironment: OneClickUpdateEnvironment, @unch
     }
 }
 
+private actor BlockingUpdateEnvironment: OneClickUpdateEnvironment {
+    let release: StableUpdateRelease
+    private var fetching = false
+    private var installing = false
+    private var fetchContinuation: CheckedContinuation<Void, Never>?
+    private var installContinuation: CheckedContinuation<Void, Never>?
+
+    init(release: StableUpdateRelease) {
+        self.release = release
+    }
+
+    func fetchLatestStableRelease() async -> Result<StableUpdateRelease, OneClickUpdateFailure> {
+        fetching = true
+        await withCheckedContinuation { fetchContinuation = $0 }
+        return .success(release)
+    }
+
+    func prepareAndLaunchInstaller(
+        for release: StableUpdateRelease
+    ) async -> Result<Void, OneClickUpdateFailure> {
+        installing = true
+        await withCheckedContinuation { installContinuation = $0 }
+        return .success(())
+    }
+
+    func isFetching() -> Bool { fetching }
+    func isInstalling() -> Bool { installing }
+
+    func resumeFetch() {
+        fetchContinuation?.resume()
+        fetchContinuation = nil
+    }
+
+    func resumeInstall() {
+        installContinuation?.resume()
+        installContinuation = nil
+    }
+}
+
 private func parsedRelease(_ version: String) throws -> StableUpdateRelease {
     try StableUpdateReleaseParser.parse(releaseJSON(tag: "v\(version)").replacingOccurrences(
         of: "0.4.0",
@@ -269,7 +308,11 @@ private extension Data {
 
 @Test @MainActor func checkAndInstallFailuresRememberTheRightRetry() async throws {
     let release = try parsedRelease("0.5.0")
-    let failure = OneClickUpdateFailure(message: "Could not update.", diagnostic: "offline")
+    let failure = OneClickUpdateFailure(
+        kind: .discovery,
+        message: "Could not update.",
+        diagnostic: "offline"
+    )
     let environment = RecordingUpdateEnvironment(release: release)
     let coordinator = OneClickUpdateCoordinator(
         installedVersion: StableUpdateVersion("0.4.0")!,
@@ -284,4 +327,43 @@ private extension Data {
     environment.installed = .failure(failure)
     await coordinator.confirmInstall()
     #expect(coordinator.state == .failed(failure, retry: .install(release)))
+}
+
+@Test @MainActor func cachedReleasePresentationAcceptsOnlyNewerIdleRelease() async throws {
+    let newer = try parsedRelease("0.5.0")
+    let environment = RecordingUpdateEnvironment(release: newer)
+    let coordinator = OneClickUpdateCoordinator(
+        installedVersion: StableUpdateVersion("0.4.0")!,
+        environment: environment
+    )
+
+    coordinator.present(try parsedRelease("0.4.0"))
+    #expect(coordinator.state == .idle)
+    coordinator.present(newer)
+    #expect(coordinator.state == .available(newer))
+}
+
+@Test @MainActor func cachedReleasePresentationDoesNotInterruptBusyStates() async throws {
+    let newer = try parsedRelease("0.5.0")
+    let environment = BlockingUpdateEnvironment(release: newer)
+    let coordinator = OneClickUpdateCoordinator(
+        installedVersion: StableUpdateVersion("0.4.0")!,
+        environment: environment
+    )
+
+    let check = Task { @MainActor in await coordinator.check() }
+    while !(await environment.isFetching()) { await Task.yield() }
+    coordinator.present(newer)
+    #expect(coordinator.state == .checking)
+    await environment.resumeFetch()
+    await check.value
+
+    let install = Task { @MainActor in await coordinator.confirmInstall() }
+    while !(await environment.isInstalling()) { await Task.yield() }
+    coordinator.present(newer)
+    #expect(coordinator.state == .installing(newer))
+    await environment.resumeInstall()
+    await install.value
+    coordinator.present(newer)
+    #expect(coordinator.state == .readyToQuit(StableUpdateVersion("0.5.0")!))
 }

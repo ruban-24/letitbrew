@@ -36,6 +36,7 @@ final class LiveOneClickUpdateEnvironment: OneClickUpdateEnvironment, @unchecked
             return .success(try StableUpdateReleaseParser.parse(data))
         } catch {
             return .failure(OneClickUpdateFailure(
+                kind: .discovery,
                 message: "Let It Brew couldn't check for updates.",
                 diagnostic: "fetchLatestStableRelease: \(error.localizedDescription)"
             ))
@@ -47,6 +48,7 @@ final class LiveOneClickUpdateEnvironment: OneClickUpdateEnvironment, @unchecked
     ) async -> Result<Void, OneClickUpdateFailure> {
         guard let installedBuild else {
             return .failure(OneClickUpdateFailure(
+                kind: .replacement,
                 message: "Let It Brew couldn't identify the installed build. Nothing was changed.",
                 diagnostic: "CFBundleVersion is missing or is not an unsigned decimal integer"
             ))
