@@ -103,4 +103,17 @@ public struct DaemonHoldRequestState: Sendable {
         releaseConfirmationRequired = true
         return true
     }
+
+    /// Prepares an attended release retry without disturbing a fresh request.
+    /// Returns true only when the connection should be replaced: the current
+    /// request timed out, or a prior failure still needs release confirmation.
+    public mutating func prepareReleaseRetry(
+        at now: Date,
+        timeout: TimeInterval
+    ) -> Bool {
+        if currentRequest != nil {
+            return expireRequestIfTimedOut(at: now, timeout: timeout)
+        }
+        return releaseConfirmationRequired
+    }
 }

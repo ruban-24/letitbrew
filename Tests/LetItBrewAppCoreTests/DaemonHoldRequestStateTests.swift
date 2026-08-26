@@ -124,3 +124,48 @@ private let requestStart = Date(timeIntervalSince1970: 1_700_000_000)
     #expect(!state.releaseConfirmationRequired)
     #expect(state.confirmedHold == false)
 }
+
+@Test func releaseRetryPreparationPreservesFreshFalseRequestUntilTimeout() {
+    var state = DaemonHoldRequestState()
+    let acquire = state.beginRequest(desiredHold: true, at: requestStart)!
+    let acquireCompleted = state.complete(acquire, succeeded: true)
+    #expect(acquireCompleted)
+    let release = state.beginRequest(desiredHold: false, at: requestStart)!
+
+    let replaceFreshConnection = state.prepareReleaseRetry(
+        at: requestStart.addingTimeInterval(1),
+        timeout: 2
+    )
+
+    #expect(!replaceFreshConnection)
+    #expect(state.isInFlight)
+
+    let replaceTimedOutConnection = state.prepareReleaseRetry(
+        at: requestStart.addingTimeInterval(2),
+        timeout: 2
+    )
+
+    #expect(replaceTimedOutConnection)
+    #expect(!state.isInFlight)
+    #expect(state.releaseConfirmationRequired)
+    #expect(!state.isReleaseConfirmed)
+    let acceptedLateCompletion = state.complete(release, succeeded: true)
+    #expect(!acceptedLateCompletion)
+}
+
+@Test func failedReleaseRetryPreparationRequestsConnectionReplacement() {
+    var state = DaemonHoldRequestState()
+    let release = state.beginRequest(desiredHold: false, at: requestStart)!
+    let releaseCompleted = state.complete(release, succeeded: false)
+    #expect(releaseCompleted)
+
+    let replaceConnection = state.prepareReleaseRetry(
+        at: requestStart.addingTimeInterval(1),
+        timeout: 2
+    )
+
+    #expect(replaceConnection)
+    #expect(!state.isInFlight)
+    #expect(state.releaseConfirmationRequired)
+    #expect(!state.isReleaseConfirmed)
+}

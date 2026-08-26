@@ -529,15 +529,18 @@ final class LetItBrewAppModel: ObservableObject {
             resumeLetItBrew()
         } else {
             let retryingRelease = holdReleaseFailure != nil
-            allowMacToSleep()
-            guard retryingRelease,
-                  daemonHoldRequestState.releaseConfirmationRequired
-            else { return }
-            if daemonHoldRequestState.isInFlight {
+            let shouldReplaceConnection = retryingRelease
+                && daemonHoldRequestState.prepareReleaseRetry(
+                    at: Date(),
+                    timeout: 2
+                )
+            if shouldReplaceConnection, daemonAvailable {
                 markDaemonUnavailable(
                     "The background helper did not confirm the sleep-hold change in time."
                 )
             }
+            allowMacToSleep()
+            guard shouldReplaceConnection else { return }
             if !daemonAvailable,
                !daemonHandshakeInFlight,
                daemonRecoveryTask == nil {
