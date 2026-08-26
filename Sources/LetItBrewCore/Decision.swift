@@ -84,21 +84,22 @@ public func decide(
         return Decision(holdSystem: false, holdLidClosed: false, reason: "battery state unknown")
     }
 
-    // 1. Never flatten the battery, even mid-run.
+    // 1. Connected-only mode releases on any battery level.
+    if settings.onlyWhileConnectedToPower, power.onBattery {
+        return Decision(holdSystem: false, holdLidClosed: false, reason: "battery power")
+    }
+
+    // 2. Never flatten the battery, even mid-run.
     if power.onBattery, power.batteryPercent <= settings.batteryFloor {
         return Decision(holdSystem: false, holdLidClosed: false,
                         reason: "battery \(power.batteryPercent)%")
-    }
-
-    if settings.onlyWhileConnectedToPower, power.onBattery {
-        return Decision(holdSystem: false, holdLidClosed: false, reason: "battery power")
     }
 
     if settings.respectLowPowerMode, power.lowPowerModeEnabled {
         return Decision(holdSystem: false, holdLidClosed: false, reason: "low power mode")
     }
 
-    // 2. A shut lid traps heat with no airflow, so thermal pressure wins.
+    // 3. A shut lid traps heat with no airflow, so thermal pressure wins.
     if power.thermal == .serious || power.thermal == .critical {
         return Decision(holdSystem: false, holdLidClosed: false,
                         reason: "thermal pressure")

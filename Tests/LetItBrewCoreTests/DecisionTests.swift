@@ -183,6 +183,17 @@ private let plugged = PowerState(onBattery: false, batteryPercent: 100, thermal:
     #expect(decision.reason == "battery power")
 }
 
+@Test func connectedPowerOnlyOutranksBatteryFloor() {
+    var settings = Settings()
+    settings.onlyWhileConnectedToPower = true
+    let decision = decide(
+        sessions: [session(.working)], now: now,
+        settings: settings,
+        power: PowerState(onBattery: true, batteryPercent: 20, thermal: .nominal)
+    )
+    #expect(decision.reason == "battery power")
+}
+
 @Test func respectedLowPowerModeReleasesOnACAndBattery() {
     for onBattery in [false, true] {
         let power = PowerState(
