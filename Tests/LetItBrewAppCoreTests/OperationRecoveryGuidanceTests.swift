@@ -54,6 +54,20 @@ import Testing
     }
 }
 
+@Test func preferenceRecoveryPreservesTheCurrentBundleDomainInstruction() {
+    let instruction = "Open Terminal and run: defaults delete com.ruban24.letitbrew.dev"
+    let guidance = OperationRecoveryCatalog.uninstall(
+        step: .clearPreferences,
+        failureInstruction: instruction,
+        diagnostic: "preferences remained"
+    )
+
+    #expect(guidance.steps.contains(RecoveryStep(text: instruction)))
+    #expect(!guidance.steps.contains(RecoveryStep(
+        text: "Open Terminal and run: defaults delete com.ruban24.letitbrew"
+    )))
+}
+
 @Test func genuineAppTrashFailureStillExplainsFinderRecovery() {
     let guidance = OperationRecoveryCatalog.uninstall(
         step: .trashBundle,

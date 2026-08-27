@@ -885,6 +885,28 @@ final class LetItBrewAppModel: ObservableObject {
         refreshAgentHooks(agentIDs: connectedAgentIDs)
     }
 
+    func refreshAgentConnections() {
+        guard !hookActionInProgress, !uninstallInProgress, !updateBlocksOtherActions else { return }
+        let failedCleanupIDs = Set(agentHooks.compactMap { health in
+            !connectedAgentIDs.contains(health.id) && health.disposition == .disconnectFailed
+                ? health.id
+                : nil
+        })
+        guard !failedCleanupIDs.isEmpty else {
+            refreshAgentHooks()
+            return
+        }
+
+        disconnectAgents(failedCleanupIDs) { [weak self] _ in
+            self?.refreshAgentHooks()
+        }
+        // A rejected cleanup never enters the in-progress state or calls its
+        // completion, so the watched refresh can run immediately.
+        if !hookActionInProgress {
+            refreshAgentHooks()
+        }
+    }
+
     func refreshCodexTrustIfNeeded() {
         guard let codex = agentHooks.first(where: { $0.id == "codex" }),
               CodexTrustAutoRefreshPolicy.shouldRefresh(

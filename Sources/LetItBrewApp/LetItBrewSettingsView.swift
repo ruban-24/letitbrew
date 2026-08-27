@@ -5,13 +5,13 @@ import SwiftUI
 struct LetItBrewSettingsView: View {
     @EnvironmentObject private var model: LetItBrewAppModel
     @State private var selectedPane: SettingsPane = .general
+    @State private var hoveredPane: SettingsPane?
     @State private var presentedRecovery: RecoveryGuidance?
     @FocusState private var focusedPane: SettingsPane?
 
     var body: some View {
         VStack(spacing: 0) {
             settingsNavigation
-            Divider()
             selectedSettings
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -43,22 +43,37 @@ struct LetItBrewSettingsView: View {
             VStack(spacing: 4) {
                 Image(systemName: pane.systemImage)
                     .font(.system(size: 19, weight: isSelected ? .semibold : .regular))
+                    .frame(height: 22)
                 Text(pane.title)
                     .font(.caption.weight(isSelected ? .semibold : .regular))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .frame(height: 26, alignment: .center)
             }
-            .frame(width: 74, height: 48)
+            .frame(width: 74, height: 64)
             .contentShape(RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
         .background {
             RoundedRectangle(cornerRadius: 8)
-                .fill(isSelected ? Color.accentColor.opacity(0.16) : Color.clear)
+                .fill(isSelected
+                      ? Color.accentColor.opacity(hoveredPane == pane ? 0.20 : 0.16)
+                      : hoveredPane == pane
+                        ? Color.primary.opacity(0.06)
+                        : Color.clear)
         }
         .overlay {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(isFocused ? Color.accentColor : Color.clear, lineWidth: 2)
         }
         .focused($focusedPane, equals: pane)
+        .onHover { isHovered in
+            if isHovered {
+                hoveredPane = pane
+            } else if hoveredPane == pane {
+                hoveredPane = nil
+            }
+        }
         .accessibilityLabel(pane.title)
         .accessibilityHint("Show \(pane.title) settings")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
@@ -115,37 +130,39 @@ struct LetItBrewSettingsView: View {
     }
 
     private var agents: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Watched Agents")
-                    .font(.headline)
-
-                VStack(spacing: 0) {
-                    ForEach(Array(model.agentHooks.enumerated()), id: \.element.id) { index, health in
-                        WatchedAgentRow(
-                            health: health,
-                            isWatched: model.isAgentWatched(health.id),
-                            isWorking: model.hookActionInProgress || model.updateBlocksOtherActions,
-                            setWatched: { model.setAgent(health.id, watched: $0) },
-                            retry: {
-                                if health.disposition == .disconnectFailed {
-                                    model.setAgent(health.id, watched: false)
-                                } else {
-                                    model.retryAgentConnection(health.id)
-                                }
-                            }
-                        )
-
-                        if index < model.agentHooks.count - 1 {
-                            Divider()
-                                .padding(.leading, 52)
-                        }
-                    }
+        Form {
+            Section {
+                ForEach(model.agentHooks) { health in
+                    WatchedAgentRow(
+                        health: health,
+                        isWatched: model.isAgentWatched(health.id),
+                        isWorking: model.hookActionInProgress
+                            || model.uninstallInProgress
+                            || model.updateBlocksOtherActions,
+                        setWatched: { model.setAgent(health.id, watched: $0) }
+                    )
                 }
-                .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 10))
+            } header: {
+                Text("Watched Agents")
+            } footer: {
+                Button {
+                    model.refreshAgentConnections()
+                } label: {
+                    Label("Refresh Connections", systemImage: "arrow.clockwise")
+                }
+                .controlSize(.small)
+                .disabled(
+                    model.hookActionInProgress
+                        || model.uninstallInProgress
+                        || model.updateBlocksOtherActions
+                        || !model.agentHooks.contains {
+                            model.isAgentWatched($0.id) || $0.disposition == .disconnectFailed
+                        }
+                )
+                .accessibilityHint("Retry failed cleanup and check watched agent connections again")
             }
-            .padding(22)
         }
+        .formStyle(.grouped)
         .onAppear {
             model.refreshCodexTrustIfNeeded()
         }
@@ -178,17 +195,19 @@ struct LetItBrewSettingsView: View {
                     }
                 }
 
-                Text("Required for closed-lid operation. The helper runs locally and releases its hold if communication with Let It Brew stops.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if helper.requiresAttention {
-                    Text(helper.detail)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Required for closed-lid operation. The helper runs locally and releases its hold if communication with Let It Brew stops.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                        .textSelection(.enabled)
+
+                    if helper.requiresAttention {
+                        Text(helper.detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
+                    }
                 }
 
                 ForEach(Array(helper.actions.enumerated()), id: \.offset) { _, action in
@@ -196,27 +215,35 @@ struct LetItBrewSettingsView: View {
                     case .setUp:
                         Button("Repair Helper") { model.setUpDaemon() }
                             .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
                     case .retry:
                         Button("Repair Helper") { model.retryDaemonConnection() }
+                            .controlSize(.small)
                     case .openBackgroundItems:
                         Button("Open Background Items…") { model.openLoginItemSettings() }
                             .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
                     }
                 }
             }
 
             Section("Battery") {
-                LabeledContent("Stop keeping Mac awake below") {
+                HStack(spacing: 12) {
+                    Text("Stop keeping Mac awake below")
+                        .fixedSize()
+
+                    BatteryFloorSlider(
+                        value: $model.batteryFloor,
+                        isEnabled: !model.onlyWhileConnectedToPower
+                    )
+                        .frame(width: 190)
+                        .padding(.leading, 30)
+
                     Text("\(Int(model.batteryFloor))%")
                         .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .frame(width: 36, alignment: .trailing)
                 }
-                Slider(value: $model.batteryFloor, in: 5...50, step: 5)
-                    .disabled(model.onlyWhileConnectedToPower)
-                    .accessibilityLabel("Stop keeping Mac awake below")
-                    .accessibilityValue("\(Int(model.batteryFloor)) percent")
-                    .accessibilityHint(model.onlyWhileConnectedToPower
-                        ? "Unavailable because Let It Brew is limited to connected power"
-                        : "Sets the battery level where Let It Brew releases its sleep hold")
 
                 Toggle(
                     "Only keep Mac awake while connected to power",
@@ -287,7 +314,7 @@ struct LetItBrewSettingsView: View {
                     .font(.title2.weight(.semibold))
                 Text(versionDescription)
                     .foregroundStyle(.secondary)
-                Text("Keeps your Mac awake while local coding agents work, then lets it sleep when they finish.")
+                Text("Keeps your Mac awake while local agents work, then lets it sleep when they finish.")
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: 360)
@@ -295,22 +322,33 @@ struct LetItBrewSettingsView: View {
                 updateControl
                     .padding(.top, 6)
 
-                HStack(spacing: 8) {
+                HStack(alignment: .firstTextBaseline, spacing: 16) {
                     Link("GitHub", destination: ProductLinks.repository)
-                    Text("·")
+                        .accessibilityHint("Open the Let It Brew repository")
                     Link("Release Notes", destination: ProductLinks.releases)
-                    Text("·")
-                    Link("Report an Issue", destination: ProductLinks.reportIssue)
-                    Text("·")
-                    Link("Privacy", destination: ProductLinks.privacy)
+                        .accessibilityHint("Open Let It Brew releases")
+                    Menu {
+                        Link(destination: ProductLinks.reportIssue) {
+                            Label("Report an Issue", systemImage: "exclamationmark.bubble")
+                        }
+                        Link(destination: ProductLinks.privacy) {
+                            Label("Privacy", systemImage: "hand.raised")
+                        }
+                    } label: {
+                        Text("More…")
+                            .font(.caption)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .controlSize(.small)
+                    .tint(Color(nsColor: .linkColor))
+                    .fixedSize()
                 }
                 .font(.caption)
+                .frame(maxWidth: 360)
+                .padding(.top, 8)
 
-                Divider()
-                    .frame(maxWidth: 360)
-                    .padding(.top, 18)
                 uninstallControl
-                    .padding(.top, 4)
+                    .padding(.top, 16)
             }
             .frame(maxWidth: .infinity)
             .padding(28)
@@ -403,6 +441,7 @@ struct LetItBrewSettingsView: View {
             if case .blocked(let failure, let offersDiagnostic) = model.uninstallState {
                 let guidance = OperationRecoveryCatalog.uninstall(
                     step: failure.step,
+                    failureInstruction: failure.message,
                     diagnostic: offersDiagnostic
                         ? model.uninstallDiagnostic(for: [failure])
                         : nil
@@ -452,6 +491,7 @@ struct LetItBrewSettingsView: View {
                         ForEach(leftovers, id: \.step) { leftover in
                             let guidance = OperationRecoveryCatalog.uninstall(
                                 step: leftover.step,
+                                failureInstruction: leftover.message,
                                 diagnostic: model.uninstallDiagnostic(for: [leftover])
                             )
                             VStack(alignment: .leading, spacing: 5) {
@@ -702,6 +742,53 @@ private struct RecoveryGuidanceSheet: View {
     }
 }
 
+private struct BatteryFloorSlider: NSViewRepresentable {
+    @Binding var value: Double
+    let isEnabled: Bool
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(value: $value)
+    }
+
+    func makeNSView(context: Context) -> NSSlider {
+        let slider = NSSlider(
+            value: value,
+            minValue: 5,
+            maxValue: 50,
+            target: context.coordinator,
+            action: #selector(Coordinator.valueChanged(_:))
+        )
+        slider.numberOfTickMarks = 10
+        slider.tickMarkPosition = .below
+        slider.allowsTickMarkValuesOnly = true
+        slider.isContinuous = true
+        slider.setAccessibilityLabel("Stop keeping Mac awake below")
+        return slider
+    }
+
+    func updateNSView(_ slider: NSSlider, context: Context) {
+        context.coordinator.value = $value
+        slider.doubleValue = value
+        slider.isEnabled = isEnabled
+        slider.setAccessibilityValueDescription("\(Int(value)) percent")
+        slider.setAccessibilityHelp(isEnabled
+            ? "Sets the battery level where Let It Brew releases its sleep hold"
+            : "Unavailable because Let It Brew is limited to connected power")
+    }
+
+    final class Coordinator: NSObject {
+        var value: Binding<Double>
+
+        init(value: Binding<Double>) {
+            self.value = value
+        }
+
+        @MainActor @objc func valueChanged(_ slider: NSSlider) {
+            value.wrappedValue = slider.doubleValue
+        }
+    }
+}
+
 private struct ProtectionRow: View {
     let title: String
     let detail: String
@@ -710,21 +797,23 @@ private struct ProtectionRow: View {
     let accent: Color
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: systemImage)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(accent)
-                .frame(width: 26, height: 26)
-                .background(accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 7))
-                .accessibilityHidden(true)
+        HStack(alignment: .center, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(accent)
+                    .frame(width: 26, height: 26)
+                    .background(accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 7))
+                    .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.callout.weight(.medium))
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.callout.weight(.medium))
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             Spacer(minLength: 8)
@@ -732,8 +821,9 @@ private struct ProtectionRow: View {
             Label(status, systemImage: "checkmark")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.green)
-                .fixedSize()
+                .frame(width: 122, alignment: .leading)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
     }
 }
@@ -762,52 +852,58 @@ private struct WatchedAgentRow: View {
     let isWatched: Bool
     let isWorking: Bool
     let setWatched: (Bool) -> Void
-    let retry: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Toggle(isOn: Binding(
-                get: { isWatched },
-                set: { watched in setWatched(watched) }
-            )) {
-                HStack(spacing: 12) {
-                    AgentLogo(toolID: health.id)
-                        .frame(width: 28, height: 28)
-                    Text(health.name)
-                }
-            }
-            .toggleStyle(.switch)
-            .disabled(isWorking)
-            .accessibilityHint(isWatched
-                ? "Stop watching \(health.name) sessions"
-                : "Watch \(health.name) sessions")
+        HStack(spacing: 12) {
+            AgentLogo(toolID: health.id)
+                .frame(width: 28, height: 28)
 
-            if isWatched && health.state == .connecting {
-                ProgressView("Checking…")
-                    .controlSize(.small)
-                    .padding(.leading, 40)
-                    .accessibilityLabel("Checking \(health.name)")
-            } else if showsRecovery, let detail = health.details.first {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Label {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(health.name)
+
+                    if isWatched && health.state == .connecting {
+                        ProgressView()
+                            .controlSize(.mini)
+                            .accessibilityLabel("Checking \(health.name)")
+                    }
+                }
+
+                if showsRecovery, let detail = health.details.first {
+                    HStack(alignment: .firstTextBaseline, spacing: 5) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                            .accessibilityHidden(true)
                         Text(detail)
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
                             .textSelection(.enabled)
-                    } icon: {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
                     }
-
-                    Spacer(minLength: 8)
-
-                    Button("Retry", action: retry)
-                        .disabled(isWorking)
+                    .help(detail)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("\(health.name) connection needs attention: \(detail)")
                 }
             }
+
+            Spacer(minLength: 12)
+
+            Toggle("Watch \(health.name)", isOn: Binding(
+                get: { isWatched },
+                set: { watched in setWatched(watched) }
+            ))
+            .labelsHidden()
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+            .disabled(isWorking)
+            .accessibilityLabel("Watch \(health.name)")
+            .accessibilityHint(isWatched
+                ? "Stop watching \(health.name) sessions"
+                : "Watch \(health.name) sessions")
         }
-        .padding(12)
+        .frame(minHeight: 54)
         .accessibilityElement(children: .contain)
     }
 

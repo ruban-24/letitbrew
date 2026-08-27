@@ -100,6 +100,7 @@ public enum OperationRecoveryCatalog {
 
     public static func uninstall(
         step: UninstallStep,
+        failureInstruction: String? = nil,
         diagnostic: String?
     ) -> RecoveryGuidance {
         switch step {
@@ -195,7 +196,8 @@ public enum OperationRecoveryCatalog {
                 summary: "Let It Brew preferences may remain.",
                 steps: [
                     "Quit Let It Brew.",
-                    "Open Terminal and run: defaults delete com.ruban24.letitbrew",
+                    failureInstruction
+                        ?? "Reopen this copy of Let It Brew and try uninstalling again.",
                 ],
                 actions: [],
                 diagnostic: diagnostic
