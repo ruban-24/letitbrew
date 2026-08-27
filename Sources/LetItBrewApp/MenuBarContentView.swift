@@ -63,6 +63,26 @@ private struct PopoverFlaskMark: View {
     }
 }
 
+private struct PopoverHoverHighlight: ViewModifier {
+    let cornerRadius: CGFloat
+    @State private var isHovered = false
+
+    func body(content: Content) -> some View {
+        content
+            .background(
+                isHovered ? Color.primary.opacity(0.08) : .clear,
+                in: RoundedRectangle(cornerRadius: cornerRadius)
+            )
+            .onHover { isHovered = $0 }
+    }
+}
+
+private extension View {
+    func popoverHoverHighlight(cornerRadius: CGFloat = 6) -> some View {
+        modifier(PopoverHoverHighlight(cornerRadius: cornerRadius))
+    }
+}
+
 struct MenuBarContentView: View {
     @EnvironmentObject private var model: LetItBrewAppModel
     @Environment(\.openSettings) private var openSettings
@@ -85,20 +105,21 @@ struct MenuBarContentView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
 
+            if let batteryPresentation {
+                supplementaryRow(.battery(batteryPresentation))
+            }
+
             if !model.sessions.isEmpty {
-                Divider()
                 sessionBoard
+                    .padding(.top, 2)
             }
 
-            if !supplementaryRows.isEmpty {
-                Divider()
-                supplementaryRowsView
+            if !otherSupplementaryRows.isEmpty {
+                supplementaryRowsView(otherSupplementaryRows)
+                    .padding(.top, 2)
             }
 
-            Divider()
             footer
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
         }
         .frame(width: 344)
         .background(.regularMaterial)
@@ -150,9 +171,6 @@ struct MenuBarContentView: View {
             PopoverFlaskMark(state: model.presentationState)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text("Let It Brew")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
                 Text(model.reason)
                     .font(.headline)
                     .foregroundStyle(headerColor)
@@ -172,19 +190,16 @@ struct MenuBarContentView: View {
             ))
             .labelsHidden()
             .toggleStyle(.switch)
+            .controlSize(.small)
             .accessibilityHint("Controls whether working agents may keep this Mac awake")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var supplementaryRowsView: some View {
-        VStack(spacing: 0) {
-            ForEach(Array(supplementaryRows.enumerated()), id: \.offset) { index, row in
+    private func supplementaryRowsView(_ rows: [MenuSupplementaryRow]) -> some View {
+        VStack(spacing: 2) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                 supplementaryRow(row)
-                if index < supplementaryRows.count - 1 {
-                    Divider()
-                        .padding(.leading, 44)
-                }
             }
         }
     }
@@ -219,7 +234,9 @@ struct MenuBarContentView: View {
             } icon: {
                 Image(systemName: presentation.isAttention
                       ? "exclamationmark.triangle.fill"
-                      : "battery.100percent")
+                      : MenuBatteryIconPolicy.systemImageName(
+                        percent: model.currentPower.batteryPercent
+                      ))
                     .accessibilityHidden(true)
             }
             .foregroundStyle(presentation.isAttention ? Color.orange : Color.secondary)
@@ -255,8 +272,8 @@ struct MenuBarContentView: View {
         ScrollView {
             // Plain VStack, not Lazy: this single outer scroll view is capped by
             // the presentation policy and preserves insertion/removal transitions.
-            VStack(spacing: 0) {
-                ForEach(Array(sessionLayoutItems.enumerated()), id: \.element.id) { index, item in
+            VStack(spacing: 2) {
+                ForEach(sessionLayoutItems) { item in
                     Group {
                         switch item {
                         case .header(let group):
@@ -273,11 +290,6 @@ struct MenuBarContentView: View {
                                 shortID: item.shortSessionID,
                                 onStopTracking: { stopTracking(session.session) }
                             )
-                        }
-                    }
-                    .overlay(alignment: .bottom) {
-                        if index < sessionLayoutItems.count - 1 {
-                            Divider()
                         }
                     }
                     .transition(.opacity.combined(with: .move(edge: .top)))
@@ -331,27 +343,47 @@ struct MenuBarContentView: View {
             Button {
                 showSettings()
             } label: {
-                LabeledContent("Settings…", value: "⌘,")
-                    .contentShape(Rectangle())
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 7)
+                HStack {
+                    Text("Settings…")
+                    Spacer(minLength: 12)
+                    Text("⌘,")
+                        .foregroundStyle(.secondary)
+                }
+                    .padding(.horizontal, 20)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(height: 32)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .frame(height: 32)
+            .popoverHoverHighlight(cornerRadius: 0)
+            .overlay(alignment: .top) {
+                Divider()
+                    .opacity(0.5)
+            }
             .keyboardShortcut(",")
-
-            Divider()
 
             Button {
                 model.cleanQuit()
             } label: {
-                LabeledContent("Quit Let It Brew", value: "⌘Q")
-                    .contentShape(Rectangle())
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 7)
+                HStack {
+                    Text("Quit Let It Brew")
+                    Spacer(minLength: 12)
+                    Text("⌘Q")
+                        .foregroundStyle(.secondary)
+                }
+                    .padding(.horizontal, 20)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(height: 32)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .frame(height: 32)
+            .popoverHoverHighlight(cornerRadius: 0)
+            .overlay(alignment: .top) {
+                Divider()
+                    .opacity(0.5)
+            }
             .keyboardShortcut("q")
         }
         .font(.caption)
@@ -370,14 +402,18 @@ struct MenuBarContentView: View {
         .primary
     }
 
-    private var supplementaryRows: [MenuSupplementaryRow] {
+    private var batteryPresentation: MenuBatteryPresentation? {
+        MenuBatteryPresentationPolicy.resolve(
+            power: model.currentPower,
+            batteryFloor: Int(model.batteryFloor),
+            releaseConstraint: model.releaseConstraint
+        )
+    }
+
+    private var otherSupplementaryRows: [MenuSupplementaryRow] {
         MenuSupplementaryRowPolicy.rows(
             holdReleaseFailure: model.holdReleaseFailure,
-            battery: MenuBatteryPresentationPolicy.resolve(
-                power: model.currentPower,
-                batteryFloor: Int(model.batteryFloor),
-                releaseConstraint: model.releaseConstraint
-            ),
+            battery: nil,
             availableVersion: model.availableUpdate?.version
         )
     }
@@ -498,6 +534,7 @@ private struct SessionRowView: View {
                     .frame(width: 24, height: 24)
             }
             .buttonStyle(.plain)
+            .popoverHoverHighlight()
             .help("Stop watching this session")
             .accessibilityLabel("Stop watching \(session.project)")
         }

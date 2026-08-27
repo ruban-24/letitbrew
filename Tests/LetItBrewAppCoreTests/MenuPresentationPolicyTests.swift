@@ -34,7 +34,7 @@ import LetItBrewCore
         releaseConstraint: .powerUnavailable
     ) == "Power status unavailable — your Mac can sleep")
     #expect(MenuHeaderCopy.resolve(isPaused: false, isKeepingAwake: false)
-        == "Watching for coding agents")
+        == "Watching for agents")
 }
 
 @Test func headerDetailDescribesOnlyWorkingRows() {
@@ -82,6 +82,19 @@ import LetItBrewCore
     )?.isAttention == true)
 }
 
+@Test func batteryIconUsesNativeSteppedLevelsAndOnlyShowsFullAtOneHundred() {
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 0) == "battery.0percent")
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 24) == "battery.0percent")
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 25) == "battery.25percent")
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 49) == "battery.25percent")
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 50) == "battery.50percent")
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 74) == "battery.50percent")
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 75) == "battery.75percent")
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 86) == "battery.75percent")
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 99) == "battery.75percent")
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 100) == "battery.100percent")
+}
+
 @Test func supplementaryRowsKeepReleaseFailureBeforeBatteryAndUpdate() throws {
     let battery = MenuBatteryPresentation(
         text: "Battery 68% · Sleep hold stops below 20%",
@@ -104,7 +117,7 @@ import LetItBrewCore
     #expect(MenuHeaderCopy.resolve(
         isPaused: false,
         isKeepingAwake: false
-    ) == "Watching for coding agents")
+    ) == "Watching for agents")
     #expect(MenuHeaderDetailCopy.resolve(
         context: .idle,
         rows: []

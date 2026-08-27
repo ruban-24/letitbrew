@@ -359,7 +359,7 @@ public enum MenuHeaderCopy {
         if isPaused { return "Let It Brew is paused" }
         if isKeepingAwake { return "Keeping your Mac awake" }
         if let releaseConstraint { return releaseConstraint.message }
-        return "Watching for coding agents"
+        return "Watching for agents"
     }
 }
 
@@ -370,6 +370,23 @@ public struct MenuBatteryPresentation: Equatable, Sendable {
     public init(text: String, isAttention: Bool) {
         self.text = text
         self.isAttention = isAttention
+    }
+}
+
+public enum MenuBatteryIconPolicy {
+    public static func systemImageName(percent: Int) -> String {
+        switch percent {
+        case 100:
+            "battery.100percent"
+        case 75...:
+            "battery.75percent"
+        case 50...:
+            "battery.50percent"
+        case 25...:
+            "battery.25percent"
+        default:
+            "battery.0percent"
+        }
     }
 }
 
