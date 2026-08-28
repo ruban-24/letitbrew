@@ -375,14 +375,14 @@ public struct MenuBatteryPresentation: Equatable, Sendable {
 
 public enum MenuBatteryIconPolicy {
     public static func systemImageName(percent: Int) -> String {
-        switch percent {
-        case 100:
+        switch min(100, max(0, percent)) {
+        case 88...:
             "battery.100percent"
-        case 75...:
+        case 63...:
             "battery.75percent"
-        case 50...:
+        case 38...:
             "battery.50percent"
-        case 25...:
+        case 13...:
             "battery.25percent"
         default:
             "battery.0percent"

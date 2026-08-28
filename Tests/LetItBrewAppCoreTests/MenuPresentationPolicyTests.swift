@@ -82,16 +82,21 @@ import LetItBrewCore
     )?.isAttention == true)
 }
 
-@Test func batteryIconUsesNativeSteppedLevelsAndOnlyShowsFullAtOneHundred() {
+@Test func batteryIconUsesTheNearestNativeSteppedLevel() {
     #expect(MenuBatteryIconPolicy.systemImageName(percent: 0) == "battery.0percent")
-    #expect(MenuBatteryIconPolicy.systemImageName(percent: 24) == "battery.0percent")
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 12) == "battery.0percent")
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 13) == "battery.25percent")
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 24) == "battery.25percent")
     #expect(MenuBatteryIconPolicy.systemImageName(percent: 25) == "battery.25percent")
-    #expect(MenuBatteryIconPolicy.systemImageName(percent: 49) == "battery.25percent")
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 37) == "battery.25percent")
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 38) == "battery.50percent")
     #expect(MenuBatteryIconPolicy.systemImageName(percent: 50) == "battery.50percent")
-    #expect(MenuBatteryIconPolicy.systemImageName(percent: 74) == "battery.50percent")
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 62) == "battery.50percent")
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 63) == "battery.75percent")
     #expect(MenuBatteryIconPolicy.systemImageName(percent: 75) == "battery.75percent")
-    #expect(MenuBatteryIconPolicy.systemImageName(percent: 86) == "battery.75percent")
-    #expect(MenuBatteryIconPolicy.systemImageName(percent: 99) == "battery.75percent")
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 87) == "battery.75percent")
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 88) == "battery.100percent")
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 99) == "battery.100percent")
     #expect(MenuBatteryIconPolicy.systemImageName(percent: 100) == "battery.100percent")
 }
 

@@ -54,6 +54,11 @@ private struct LetItBrewMenuBarApp: App {
                 )) { _ in
                     model.applicationDidBecomeActive()
                 }
+                .onReceive(NotificationCenter.default.publisher(
+                    for: Notification.Name.NSProcessInfoPowerStateDidChange
+                )) { _ in
+                    model.refreshNow()
+                }
         }
         .menuBarExtraStyle(.window)
 

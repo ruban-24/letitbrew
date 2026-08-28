@@ -7,6 +7,8 @@ struct LetItBrewSettingsView: View {
     @State private var selectedPane: SettingsPane = .general
     @State private var hoveredPane: SettingsPane?
     @State private var presentedRecovery: RecoveryGuidance?
+    @State private var uninstallHovered = false
+    @Environment(\.colorScheme) private var colorScheme
     @FocusState private var focusedPane: SettingsPane?
 
     var body: some View {
@@ -33,6 +35,11 @@ struct LetItBrewSettingsView: View {
         .padding(.bottom, 10)
     }
 
+    private func selectionOpacity(hovered: Bool) -> Double {
+        let base = colorScheme == .dark ? 0.22 : 0.12
+        return hovered ? base + 0.05 : base
+    }
+
     private func settingsButton(for pane: SettingsPane) -> some View {
         let isSelected = selectedPane == pane
         let isFocused = focusedPane == pane
@@ -48,7 +55,7 @@ struct LetItBrewSettingsView: View {
                     .font(.caption.weight(isSelected ? .semibold : .regular))
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
-                    .frame(height: 26, alignment: .center)
+                    .frame(height: 26, alignment: .top)
             }
             .frame(width: 74, height: 64)
             .contentShape(RoundedRectangle(cornerRadius: 8))
@@ -57,7 +64,7 @@ struct LetItBrewSettingsView: View {
         .background {
             RoundedRectangle(cornerRadius: 8)
                 .fill(isSelected
-                      ? Color.accentColor.opacity(hoveredPane == pane ? 0.20 : 0.16)
+                      ? Color.accentColor.opacity(selectionOpacity(hovered: hoveredPane == pane))
                       : hoveredPane == pane
                         ? Color.primary.opacity(0.06)
                         : Color.clear)
@@ -173,6 +180,20 @@ struct LetItBrewSettingsView: View {
             closedLidEnabled: model.keepWorkingWithLidClosed,
             recoveryState: model.daemonRecoveryState
         )
+        let helperStatusColor: Color = if !model.keepWorkingWithLidClosed {
+            .secondary
+        } else {
+            switch model.daemonRecoveryState {
+            case .ready:
+                .green
+            case .approvalRequired:
+                .orange
+            case .retryableFailure, .ineligible:
+                .red
+            case .checking, .finishingUpdate, .restartingSupport, .deferredUntilEnabled:
+                .secondary
+            }
+        }
 
         return Form {
             Section("Background helper") {
@@ -184,7 +205,7 @@ struct LetItBrewSettingsView: View {
                             : helper.showsProgress
                               ? "clock"
                               : "checkmark.circle.fill")
-                        .foregroundStyle(helper.requiresAttention ? .orange : .secondary)
+                        .foregroundStyle(helperStatusColor)
 
                     Spacer()
 
@@ -264,16 +285,14 @@ struct LetItBrewSettingsView: View {
                     title: "Thermal protection",
                     detail: "Releases sleep holds under serious or critical thermal pressure.",
                     status: "Always on",
-                    systemImage: "thermometer.high",
-                    accent: Color(.brewPurple)
+                    systemImage: "thermometer.high"
                 )
 
                 ProtectionRow(
                     title: "Helper fail-safe",
                     detail: "Releases the closed-lid hold if the app and helper stop communicating.",
                     status: "Always on",
-                    systemImage: "bolt.slash",
-                    accent: Color(.brewPurple)
+                    systemImage: "bolt.slash"
                 )
 
                 ProtectionRow(
@@ -282,8 +301,7 @@ struct LetItBrewSettingsView: View {
                         ? "Displays may sleep while the system sleep hold remains active."
                         : "Display idle sleep is held only while an agent keeps the Mac awake.",
                     status: model.allowDisplaysToSleep ? "Can sleep" : "Held while working",
-                    systemImage: "display",
-                    accent: Color(.brewPurple)
+                    systemImage: "display"
                 )
 
                 if model.lidCloseDisplaySleepInProgress {
@@ -303,55 +321,65 @@ struct LetItBrewSettingsView: View {
     }
 
     private var about: some View {
-        ScrollView {
-            VStack(spacing: 10) {
-                Image(nsImage: NSApp.applicationIconImage)
-                    .resizable()
-                    .interpolation(.high)
-                    .frame(width: 80, height: 80)
-                    .accessibilityHidden(true)
-                Text("Let It Brew")
-                    .font(.title2.weight(.semibold))
-                Text(versionDescription)
-                    .foregroundStyle(.secondary)
-                Text("Keeps your Mac awake while local agents work, then lets it sleep when they finish.")
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 360)
-                    .foregroundStyle(.secondary)
-                updateControl
-                    .padding(.top, 6)
-
-                HStack(alignment: .firstTextBaseline, spacing: 16) {
-                    Link("GitHub", destination: ProductLinks.repository)
-                        .accessibilityHint("Open the Let It Brew repository")
-                    Link("Release Notes", destination: ProductLinks.releases)
-                        .accessibilityHint("Open Let It Brew releases")
-                    Menu {
-                        Link(destination: ProductLinks.reportIssue) {
-                            Label("Report an Issue", systemImage: "exclamationmark.bubble")
-                        }
-                        Link(destination: ProductLinks.privacy) {
-                            Label("Privacy", systemImage: "hand.raised")
-                        }
-                    } label: {
-                        Text("More…")
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(spacing: 0) {
+                    VStack(spacing: 6) {
+                        Image(nsImage: NSApp.applicationIconImage)
+                            .resizable()
+                            .interpolation(.high)
+                            .frame(width: 72, height: 72)
+                            .accessibilityHidden(true)
+                        Text("Let It Brew")
+                            .font(.title2.weight(.semibold))
+                        Text(versionDescription)
                             .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
-                    .menuStyle(.borderlessButton)
-                    .controlSize(.small)
-                    .tint(Color(nsColor: .linkColor))
-                    .fixedSize()
-                }
-                .font(.caption)
-                .frame(maxWidth: 360)
-                .padding(.top, 8)
 
-                uninstallControl
+                    VStack(spacing: 18) {
+                        Text("Keeps your Mac awake while local agents work, then lets it sleep when they finish.")
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: 340)
+                            .foregroundStyle(.secondary)
+                        updateControl
+                    }
                     .padding(.top, 16)
+
+                    Spacer(minLength: 28)
+
+                    VStack(spacing: 12) {
+                        HStack(alignment: .firstTextBaseline, spacing: 16) {
+                            Link("GitHub", destination: ProductLinks.repository)
+                                .accessibilityHint("Open the Let It Brew repository")
+                            Link("Release Notes", destination: ProductLinks.releases)
+                                .accessibilityHint("Open Let It Brew releases")
+                            Link("Report Issue", destination: ProductLinks.reportIssue)
+                                .accessibilityHint("Open a new Let It Brew issue")
+                            Link("Privacy", destination: ProductLinks.privacy)
+                                .accessibilityHint("Open the Let It Brew privacy notice")
+                        }
+                        .font(.caption)
+                        // Link paints itself with NSColor.linkColor, so the app
+                        // accent has to be applied explicitly here.
+                        .foregroundStyle(Color.accentColor)
+
+                        Divider()
+                            .frame(maxWidth: 280)
+
+                        uninstallControl
+                    }
+                }
+                .frame(
+                    maxWidth: .infinity,
+                    // ponytail: keeps the footer on the bottom edge while the
+                    // ScrollView still rescues tall update/uninstall failure text.
+                    minHeight: proxy.size.height - 56,
+                    alignment: .top
+                )
+                .padding(28)
             }
-            .frame(maxWidth: .infinity)
-            .padding(28)
         }
         .confirmationDialog(
             updateConfirmationTitle,
@@ -437,7 +465,9 @@ struct LetItBrewSettingsView: View {
             Button("Uninstall Let It Brew…") { model.beginUninstall() }
                 .disabled(model.uninstallInProgress || model.updateBlocksOtherActions)
                 .buttonStyle(.plain)
-                .foregroundStyle(.red)
+                .font(.caption)
+                .foregroundStyle(uninstallHovered ? Color.red : Color.secondary)
+                .onHover { uninstallHovered = $0 }
             if case .blocked(let failure, let offersDiagnostic) = model.uninstallState {
                 let guidance = OperationRecoveryCatalog.uninstall(
                     step: failure.step,
@@ -675,13 +705,7 @@ struct LetItBrewSettingsView: View {
         let version = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
         ) as? String ?? "Development"
-        guard let build = Bundle.main.object(
-            forInfoDictionaryKey: "CFBundleVersion"
-        ) as? String,
-              !build.isEmpty else {
-            return "Version \(version)"
-        }
-        return "Version \(version) (\(build))"
+        return "Version \(version)"
     }
 }
 
@@ -794,16 +818,18 @@ private struct ProtectionRow: View {
     let detail: String
     let status: String
     let systemImage: String
-    let accent: Color
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: systemImage)
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(accent)
+                    .foregroundStyle(.secondary)
                     .frame(width: 26, height: 26)
-                    .background(accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 7))
+                    .background(
+                        Color.primary.opacity(0.06),
+                        in: RoundedRectangle(cornerRadius: 7)
+                    )
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 3) {
@@ -818,9 +844,9 @@ private struct ProtectionRow: View {
 
             Spacer(minLength: 8)
 
-            Label(status, systemImage: "checkmark")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.green)
+            Text(status)
+                .font(.caption)
+                .foregroundStyle(.secondary)
                 .frame(width: 122, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

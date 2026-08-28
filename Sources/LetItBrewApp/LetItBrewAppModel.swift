@@ -236,7 +236,10 @@ final class LetItBrewAppModel: ObservableObject {
         didSet { defaults.set(onlyWhileConnectedToPower, forKey: Keys.onlyWhileConnectedToPower) }
     }
     @Published var respectLowPowerMode: Bool {
-        didSet { defaults.set(respectLowPowerMode, forKey: Keys.respectLowPowerMode) }
+        didSet {
+            defaults.set(respectLowPowerMode, forKey: Keys.respectLowPowerMode)
+            refreshNow()
+        }
     }
     @Published var allowDisplaysToSleep: Bool {
         didSet { defaults.set(allowDisplaysToSleep, forKey: Keys.allowDisplaysToSleep) }
