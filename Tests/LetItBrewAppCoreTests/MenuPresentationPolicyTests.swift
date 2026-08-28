@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import LetItBrewAppCore
+import LetItBrewCore
 
 @Test func headerCopyPrioritizesPausedThenAwakeThenSafetyRelease() {
     #expect(MenuHeaderCopy.resolve(isPaused: true, isKeepingAwake: true)
@@ -33,7 +34,7 @@ import Testing
         releaseConstraint: .powerUnavailable
     ) == "Power status unavailable — your Mac can sleep")
     #expect(MenuHeaderCopy.resolve(isPaused: false, isKeepingAwake: false)
-        == "Your Mac can sleep")
+        == "Watching for agents")
 }
 
 @Test func headerDetailDescribesOnlyWorkingRows() {
@@ -46,11 +47,69 @@ import Testing
     #expect(MenuHeaderDetailCopy.resolve(context: .awake, rows: rows)
         == "1 agent is working")
     #expect(MenuHeaderDetailCopy.resolve(context: .idle, rows: rows)
-        == "No agents are working")
+        == "Your Mac can sleep normally")
     #expect(MenuHeaderDetailCopy.resolve(context: .paused, rows: rows)
-        == "Agent sessions remain visible")
+        == "Agents will not keep your Mac awake")
     #expect(MenuHeaderDetailCopy.resolve(context: .paused, rows: [])
-        == "No agents are working")
+        == "Agents will not keep your Mac awake")
+}
+
+@Test func batteryRowIsConditionalAndProtectionAware() {
+    let battery = PowerState(onBattery: true, batteryPercent: 68, thermal: .nominal)
+    #expect(MenuBatteryPresentationPolicy.resolve(
+        power: battery,
+        batteryFloor: 20,
+        releaseConstraint: nil
+    )?.text == "Battery 68% · Sleep hold stops below 20%")
+
+    let plugged = PowerState(onBattery: false, batteryPercent: 100, thermal: .nominal)
+    #expect(MenuBatteryPresentationPolicy.resolve(
+        power: plugged,
+        batteryFloor: 20,
+        releaseConstraint: nil
+    ) == nil)
+
+    #expect(MenuBatteryPresentationPolicy.resolve(
+        power: plugged,
+        batteryFloor: 20,
+        releaseConstraint: .lowPowerMode
+    )?.text == "Low Power Mode released the sleep hold")
+
+    #expect(MenuBatteryPresentationPolicy.resolve(
+        power: battery,
+        batteryFloor: 20,
+        releaseConstraint: .battery(percent: 20)
+    )?.isAttention == true)
+}
+
+@Test func batteryIconUsesTheNearestNativeSteppedLevel() {
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 0) == "battery.0percent")
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 12) == "battery.0percent")
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 13) == "battery.25percent")
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 24) == "battery.25percent")
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 25) == "battery.25percent")
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 37) == "battery.25percent")
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 38) == "battery.50percent")
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 50) == "battery.50percent")
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 62) == "battery.50percent")
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 63) == "battery.75percent")
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 75) == "battery.75percent")
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 87) == "battery.75percent")
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 88) == "battery.100percent")
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 99) == "battery.100percent")
+    #expect(MenuBatteryIconPolicy.systemImageName(percent: 100) == "battery.100percent")
+}
+
+@Test func supplementaryRowsKeepReleaseFailureBeforeUpdate() throws {
+    let version = try #require(StableUpdateVersion("0.6.6"))
+
+    #expect(MenuSupplementaryRowPolicy.rows(
+        holdReleaseFailure: "Release failed",
+        availableVersion: version
+    ) == [
+        .holdReleaseFailure("Release failed"),
+        .update(version),
+    ])
 }
 
 @Test func popupConnectionAttentionAppearsOnlyAtZeroConnectedAgents() {
@@ -81,6 +140,21 @@ import Testing
         closedLidNeedsAttention: true,
         connectedAgentCount: 0
     ))?.title == "Finish closed-lid setup")
+}
+
+@Test func headerCopyMatchesEnabledIdleAndPausedStates() {
+    #expect(MenuHeaderCopy.resolve(
+        isPaused: false,
+        isKeepingAwake: false
+    ) == "Watching for agents")
+    #expect(MenuHeaderDetailCopy.resolve(
+        context: .idle,
+        rows: []
+    ) == "Your Mac can sleep normally")
+    #expect(MenuHeaderDetailCopy.resolve(
+        context: .paused,
+        rows: []
+    ) == "Agents will not keep your Mac awake")
 }
 
 @Test func sessionRowsAndRepositorySummaryUseAllFourCatalogNames() throws {
@@ -413,11 +487,11 @@ import Testing
     #expect(MenuActivityViewportMetrics.height(for: MenuRepositoryLayoutPolicy.items(
         for: headerPlusFourRows,
         isExpanded: true
-    )) == 294)
+    )) == 302)
     #expect(MenuActivityViewportMetrics.height(for: MenuRepositoryLayoutPolicy.items(
         for: headerPlusFiveRows,
         isExpanded: true
-    )) == 294)
+    )) == 302)
     #expect(MenuActivityViewportMetrics.height(for: MenuRepositoryLayoutPolicy.items(
         for: singleSession,
         isExpanded: false

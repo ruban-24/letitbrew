@@ -320,13 +320,15 @@ public enum MenuActivityViewportMetrics {
     public static func height(for items: [MenuRepositoryLayoutItem]) -> CGFloat {
         min(items.reduce(CGFloat.zero) { partialResult, item in
             partialResult + (item.isSession ? 60 : 54)
-        }, 294)
+        } + CGFloat(max(0, items.count - 1) * 2), 302)
     }
 }
 
 public enum MenuHeaderCopy {
     public enum ReleaseConstraint: Equatable, Sendable {
         case battery(percent: Int)
+        case connectedPowerOnly
+        case lowPowerMode
         case thermal
         case powerUnavailable
 
@@ -334,6 +336,10 @@ public enum MenuHeaderCopy {
             switch self {
             case .battery(let percent):
                 "Battery at \(percent)% — your Mac can sleep"
+            case .connectedPowerOnly:
+                "Battery power released the sleep hold"
+            case .lowPowerMode:
+                "Low Power Mode released the sleep hold"
             case .thermal:
                 "Mac is too warm — it can sleep"
             case .powerUnavailable:
@@ -350,7 +356,92 @@ public enum MenuHeaderCopy {
         if isPaused { return "Let It Brew is paused" }
         if isKeepingAwake { return "Keeping your Mac awake" }
         if let releaseConstraint { return releaseConstraint.message }
-        return "Your Mac can sleep"
+        return "Watching for agents"
+    }
+}
+
+public struct MenuBatteryPresentation: Equatable, Sendable {
+    public let text: String
+    public let isAttention: Bool
+
+    public init(text: String, isAttention: Bool) {
+        self.text = text
+        self.isAttention = isAttention
+    }
+}
+
+public enum MenuBatteryIconPolicy {
+    public static func systemImageName(percent: Int) -> String {
+        switch min(100, max(0, percent)) {
+        case 88...:
+            "battery.100percent"
+        case 63...:
+            "battery.75percent"
+        case 38...:
+            "battery.50percent"
+        case 13...:
+            "battery.25percent"
+        default:
+            "battery.0percent"
+        }
+    }
+}
+
+public enum MenuBatteryPresentationPolicy {
+    public static func resolve(
+        power: PowerState,
+        batteryFloor: Int,
+        releaseConstraint: MenuHeaderCopy.ReleaseConstraint?
+    ) -> MenuBatteryPresentation? {
+        if releaseConstraint == .lowPowerMode {
+            return MenuBatteryPresentation(
+                text: "Low Power Mode released the sleep hold",
+                isAttention: true
+            )
+        }
+
+        guard power.onBattery else { return nil }
+
+        if case .battery(let percent) = releaseConstraint {
+            return MenuBatteryPresentation(
+                text: "Battery \(percent)% · Sleep hold stops below \(batteryFloor)%",
+                isAttention: true
+            )
+        }
+
+        if releaseConstraint == .connectedPowerOnly {
+            return MenuBatteryPresentation(
+                text: "Battery power released the sleep hold",
+                isAttention: true
+            )
+        }
+
+        return MenuBatteryPresentation(
+            text: "Battery \(power.batteryPercent)% · Sleep hold stops below \(batteryFloor)%",
+            isAttention: false
+        )
+    }
+}
+
+public enum MenuSupplementaryRow: Equatable, Sendable {
+    case holdReleaseFailure(String)
+    case battery(MenuBatteryPresentation)
+    case update(StableUpdateVersion)
+}
+
+public enum MenuSupplementaryRowPolicy {
+    public static func rows(
+        holdReleaseFailure: String?,
+        availableVersion: StableUpdateVersion?
+    ) -> [MenuSupplementaryRow] {
+        var rows: [MenuSupplementaryRow] = []
+        if let holdReleaseFailure {
+            rows.append(.holdReleaseFailure(holdReleaseFailure))
+        }
+        if let availableVersion {
+            rows.append(.update(availableVersion))
+        }
+        return rows
     }
 }
 
@@ -372,11 +463,9 @@ public enum MenuHeaderDetailCopy {
             if workingCount > 1 { return "\(workingCount) agents are working" }
             return "No agents are working"
         case .idle:
-            return "No agents are working"
+            return "Your Mac can sleep normally"
         case .paused:
-            return rows.isEmpty
-                ? "No agents are working"
-                : "Agent sessions remain visible"
+            return "Agents will not keep your Mac awake"
         }
     }
 }
@@ -417,21 +506,18 @@ public enum MenuSetupAttentionPolicy {
                 detail: "Open Settings to see what changed"
             )
         }
-
         if input.closedLidNeedsAttention {
             return MenuSetupAttentionPresentation(
                 title: "Finish closed-lid setup",
                 detail: "Complete the remaining step in Settings"
             )
         }
-
         if input.connectedAgentCount == 0 {
             return MenuSetupAttentionPresentation(
                 title: "Connect an agent",
                 detail: "Open Settings to connect your coding agent."
             )
         }
-
         return nil
     }
 }

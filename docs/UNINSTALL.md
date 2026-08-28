@@ -11,23 +11,23 @@ The privileged background service must be unregistered **while the app that owns
 it is still present**. Deleting the app first strands a registered service with
 no owner, and your Mac may keep a modified sleep setting.
 
-1. In **Settings → Agents**, use each connected agent's `…` menu to
-   **Disconnect**. Do this for Claude Code, Codex, OpenCode, and GitHub
-   Copilot CLI when connected. Disconnect removes only Let It Brew-owned JSON
-   entries, or only the owned `letitbrew.js` OpenCode plugin; it does not remove
-   any foreign hook entry, plugin, project, team, or enterprise configuration.
+1. In **Settings → Agents**, turn off each watched-agent switch. Do this for
+   Claude Code, Codex, OpenCode, and GitHub Copilot CLI when watched. Turning a
+   switch off removes only Let It Brew-owned JSON entries, or only the owned
+   `letitbrew.js` OpenCode plugin; it does not remove any foreign hook entry,
+   plugin, project, team, or enterprise configuration.
 2. Turn off Launch at Login.
-3. Turn off the closed-lid option, choose **Pause Let It Brew**, and confirm the
-   popover reads **Let It Brew is paused**.
-4. Quit Let It Brew.
-5. Unregister the background service, and wait for it to confirm:
+3. Turn off closed-lid operation.
+4. Turn the popup master switch off.
+5. Quit Let It Brew.
+6. Unregister the background service, and wait for it to confirm:
 
    ```sh
    '/Applications/Let It Brew.app/Contents/MacOS/LetItBrew' --unregister-daemon
    ```
 
-6. Move `/Applications/Let It Brew.app` to the Trash.
-7. Optionally remove `~/Library/Application Support/LetItBrew/`.
+7. Move `/Applications/Let It Brew.app` to the Trash.
+8. Optionally remove `~/Library/Application Support/LetItBrew/`.
 
 ## Do not force the sleep setting
 
@@ -44,7 +44,7 @@ pmset -g | grep SleepDisabled
 ```
 
 If that value is not what you expect after uninstalling, please
-[open an issue](https://github.com/ruban-24/letitbrew/issues) with the reading
+[open an issue](https://github.com/ruban-24/letitbrew/issues/new/choose) with the reading
 rather than overwriting it. A wrong baseline is a bug worth fixing.
 
 ## Verifying the removal

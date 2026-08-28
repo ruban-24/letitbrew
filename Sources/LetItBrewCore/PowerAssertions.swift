@@ -12,6 +12,15 @@ public protocol PowerAsserting: AnyObject, Sendable {
     /// `IOPMAssertionRelease` failure instead of it being silently discarded.
     @discardableResult
     func setSystemHold(_ on: Bool, reason: String) -> Bool
+
+    @discardableResult
+    func setDisplayHold(_ on: Bool, reason: String) -> Bool
+}
+
+private struct AssertionSlot {
+    var id: IOPMAssertionID = 0
+    var held = false
+    var appliedReason = ""
 }
 
 public final class IOKitPowerAssertion: PowerAsserting, @unchecked Sendable {
@@ -22,14 +31,13 @@ public final class IOKitPowerAssertion: PowerAsserting, @unchecked Sendable {
     // `releaseFailureKeepsHeldTrueForTheNextTickToRetry` in
     // PowerAssertionsTests.swift. Setters stay private; only the getters are
     // testable.
-    private(set) var assertionID: IOPMAssertionID = 0
-    private(set) var held = false
-    // The reason last applied to the live assertion's name — either at
-    // creation or via a subsequent `IOPMAssertionSetProperty`. Tracked so the
-    // property is only written when `reason` actually changed: this runs
-    // once a second and a syscall every tick regardless would be wasted
-    // churn.
-    private var appliedReason = ""
+    private var systemSlot = AssertionSlot()
+    private var displaySlot = AssertionSlot()
+
+    var assertionID: IOPMAssertionID { systemSlot.id }
+    var held: Bool { systemSlot.held }
+    var displayAssertionID: IOPMAssertionID { displaySlot.id }
+    var displayHeld: Bool { displaySlot.held }
 
     public init() {}
 
@@ -38,10 +46,37 @@ public final class IOKitPowerAssertion: PowerAsserting, @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
-        if on, !held {
+        return Self.setHold(
+            on,
+            reason: reason,
+            assertionType: kIOPMAssertPreventUserIdleSystemSleep as CFString,
+            slot: &systemSlot
+        )
+    }
+
+    @discardableResult
+    public func setDisplayHold(_ on: Bool, reason: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+
+        return Self.setHold(
+            on,
+            reason: reason,
+            assertionType: kIOPMAssertPreventUserIdleDisplaySleep as CFString,
+            slot: &displaySlot
+        )
+    }
+
+    private static func setHold(
+        _ on: Bool,
+        reason: String,
+        assertionType: CFString,
+        slot: inout AssertionSlot
+    ) -> Bool {
+        if on, !slot.held {
             var newID: IOPMAssertionID = 0
             let status = IOPMAssertionCreateWithName(
-                kIOPMAssertPreventUserIdleSystemSleep as CFString,
+                assertionType,
                 IOPMAssertionLevel(kIOPMAssertionLevelOn),
                 reason as CFString,
                 &newID
@@ -49,10 +84,10 @@ public final class IOKitPowerAssertion: PowerAsserting, @unchecked Sendable {
             // Leave `held` false on failure so a later tick retries instead
             // of the object believing it holds something it doesn't.
             guard status == kIOReturnSuccess else { return false }
-            assertionID = newID
-            held = true
-            appliedReason = reason
-        } else if on, held, reason != appliedReason {
+            slot.id = newID
+            slot.held = true
+            slot.appliedReason = reason
+        } else if on, slot.held, reason != slot.appliedReason {
             // The hold already exists; only its label is stale. Update the
             // name IN PLACE rather than releasing and recreating — a
             // release+recreate would leave a real window with no assertion
@@ -62,7 +97,7 @@ public final class IOKitPowerAssertion: PowerAsserting, @unchecked Sendable {
             // leaving the name frozen at whatever was true when the hold was
             // first taken reports something actively false there.
             guard IOPMAssertionSetProperty(
-                assertionID, kIOPMAssertionNameKey as CFString, reason as CFString
+                slot.id, kIOPMAssertionNameKey as CFString, reason as CFString
             ) == kIOReturnSuccess else {
                 // Keep the assertion and `held` true either way — a stale
                 // label is bad, but dropping the hold over a failed rename
@@ -72,23 +107,24 @@ public final class IOKitPowerAssertion: PowerAsserting, @unchecked Sendable {
                 // not a failure to report to the caller.
                 return true
             }
-            appliedReason = reason
-        } else if !on, held {
+            slot.appliedReason = reason
+        } else if !on, slot.held {
             // IMPORTANT 3: only clear `held` on a CONFIRMED release. If the
             // release fails while the assertion is still valid, clearing
             // `held` anyway would make the watcher believe it let go when it
             // didn't, and nothing would ever retry — the assertion (and the
             // sleep-prevention it holds) would leak for the life of the
             // process.
-            guard IOPMAssertionRelease(assertionID) == kIOReturnSuccess else { return false }
-            assertionID = 0
-            held = false
-            appliedReason = ""
+            guard IOPMAssertionRelease(slot.id) == kIOReturnSuccess else { return false }
+            slot.id = 0
+            slot.held = false
+            slot.appliedReason = ""
         }
-        return held == on
+        return slot.held == on
     }
 
     deinit {
-        if held { IOPMAssertionRelease(assertionID) }
+        if systemSlot.held { IOPMAssertionRelease(systemSlot.id) }
+        if displaySlot.held { IOPMAssertionRelease(displaySlot.id) }
     }
 }

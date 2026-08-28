@@ -2,6 +2,30 @@ import Testing
 import IOKit.pwr_mgt
 @testable import LetItBrewCore
 
+@Test func displayAndSystemAssertionsHaveIndependentLifecycles() {
+    let assertion = IOKitPowerAssertion()
+    #expect(assertion.setSystemHold(true, reason: "system"))
+    #expect(assertion.setDisplayHold(true, reason: "display"))
+    #expect(assertion.held)
+    #expect(assertion.displayHeld)
+
+    #expect(assertion.setDisplayHold(false, reason: "display release"))
+    #expect(assertion.held)
+    #expect(!assertion.displayHeld)
+
+    #expect(assertion.setSystemHold(false, reason: "system release"))
+    #expect(!assertion.held)
+}
+
+@Test func displayHoldIsIdempotent() {
+    let assertion = IOKitPowerAssertion()
+    #expect(assertion.setDisplayHold(true, reason: "first"))
+    let id = assertion.displayAssertionID
+    #expect(assertion.setDisplayHold(true, reason: "second"))
+    #expect(assertion.displayAssertionID == id)
+    #expect(assertion.setDisplayHold(false, reason: "cleanup"))
+}
+
 // MARK: - Important 3: a failed IOPMAssertionRelease must not be ignored
 
 @Test func releaseFailureKeepsHeldTrueForTheNextTickToRetry() {

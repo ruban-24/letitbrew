@@ -8,6 +8,7 @@ source "$RELEASE_SCRIPT_DIR/lib-direct-distribution.sh"
 
 RELEASE_DMG_STAGE=""
 RELEASE_DMG_MOUNT=""
+RELEASE_DMG_WORKING=""
 RELEASE_DMG_OWNS_LOCK=0
 
 release_dmg_ditto() {
@@ -20,6 +21,14 @@ release_dmg_codesign() {
 
 release_dmg_hdiutil() {
     /usr/bin/hdiutil "$@"
+}
+
+release_dmg_setfile() {
+    /usr/bin/SetFile "$@"
+}
+
+release_dmg_osascript() {
+    /usr/bin/osascript "$@"
 }
 
 release_dmg_verify_artifact() {
@@ -36,6 +45,9 @@ release_dmg_cleanup() {
     if [ -n "$RELEASE_DMG_MOUNT" ] && [ -d "$RELEASE_DMG_MOUNT" ]; then
         release_detach_disk_image release_dmg_hdiutil "$RELEASE_DMG_MOUNT" || true
         /bin/rmdir "$RELEASE_DMG_MOUNT" >/dev/null 2>&1 || true
+    fi
+    if [ -n "$RELEASE_DMG_WORKING" ] && [ -f "$RELEASE_DMG_WORKING" ]; then
+        /bin/rm -f "$RELEASE_DMG_WORKING"
     fi
     if [ -n "$RELEASE_DMG_STAGE" ] && [ -d "$RELEASE_DMG_STAGE" ]; then
         /bin/rm -rf "$RELEASE_DMG_STAGE"
@@ -65,29 +77,55 @@ release_dmg_identity_is_valid() {
 
 release_dmg_create_image() {
     local stage="$1" destination="$2" volume_name="$3"
+    local working="${destination%.dmg}.read-write.$$.dmg" finder_disk
+    [ ! -e "$working" ] && [ ! -L "$working" ] || return 1
+    RELEASE_DMG_WORKING="$working"
     release_dmg_hdiutil create \
         -fs 'HFS+' \
-        -format UDZO \
+        -format UDRW \
         -volname "$volume_name" \
         -srcfolder "$stage" \
         -nospotlight \
-        "$destination"
+        "$working" >/dev/null || return 1
+    RELEASE_DMG_MOUNT="$(/usr/bin/mktemp -d /private/tmp/LetItBrewDMGMount.XXXXXX)" || return 1
+    release_dmg_hdiutil attach \
+        -readwrite \
+        -noverify \
+        -noautoopen \
+        -mountpoint "$RELEASE_DMG_MOUNT" \
+        "$working" >/dev/null || return 1
+    finder_disk="$(/usr/bin/basename "$RELEASE_DMG_MOUNT")" || return 1
+    release_dmg_osascript "$RELEASE_SCRIPT_DIR/configure-release-dmg.applescript" "$finder_disk" || return 1
+    release_dmg_setfile -c icnC "$RELEASE_DMG_MOUNT/.VolumeIcon.icns" || return 1
+    release_dmg_setfile -a V "$RELEASE_DMG_MOUNT/.VolumeIcon.icns" || return 1
+    release_dmg_setfile -a V "$RELEASE_DMG_MOUNT/.background" || return 1
+    release_dmg_setfile -a C "$RELEASE_DMG_MOUNT" || return 1
+    /bin/rm -rf "$RELEASE_DMG_MOUNT/.fseventsd" || return 1
+    release_dmg_payload_is_valid "$RELEASE_DMG_MOUNT" || return 1
+    release_detach_disk_image release_dmg_hdiutil "$RELEASE_DMG_MOUNT" || return 1
+    /bin/rmdir "$RELEASE_DMG_MOUNT" || return 1
+    RELEASE_DMG_MOUNT=""
+    release_dmg_hdiutil convert \
+        "$working" \
+        -format UDZO \
+        -imagekey zlib-level=9 \
+        -o "$destination" >/dev/null || return 1
+    [ -f "$destination" ] && [ ! -L "$destination" ] || return 1
+    /bin/rm "$working" || return 1
+    RELEASE_DMG_WORKING=""
 }
 
 release_dmg_verify_image() {
     local dmg="$1" expected_version="$2" expected_build="$3"
-    local mounted_app mounted_version mounted_build entry_count package_count
+    local mounted_app mounted_version mounted_build
     release_dmg_hdiutil verify "$dmg" || return 1
     RELEASE_DMG_MOUNT="$(/usr/bin/mktemp -d /private/tmp/LetItBrewDMGMount.XXXXXX)" || return 1
-    release_dmg_hdiutil attach -readonly -nobrowse -mountpoint "$RELEASE_DMG_MOUNT" "$dmg" >/dev/null || return 1
+    release_dmg_hdiutil attach -readonly -nobrowse -noautoopen -mountpoint "$RELEASE_DMG_MOUNT" "$dmg" >/dev/null || return 1
     mounted_app="$RELEASE_DMG_MOUNT/Let It Brew.app"
-    [ -d "$mounted_app" ] && [ ! -L "$mounted_app" ] || { release_error "DMG does not contain one ordinary Let It Brew.app."; return 1; }
-    [ -L "$RELEASE_DMG_MOUNT/Applications" ] || { release_error "DMG Applications item is not a symlink."; return 1; }
-    [ "$(/usr/bin/readlink "$RELEASE_DMG_MOUNT/Applications")" = /Applications ] || { release_error "DMG Applications symlink has the wrong target."; return 1; }
-    entry_count="$(/usr/bin/find "$RELEASE_DMG_MOUNT" -mindepth 1 -maxdepth 1 -print | /usr/bin/awk 'END { print NR + 0 }')"
-    [ "$entry_count" -eq 2 ] || { release_error "DMG must contain exactly Let It Brew.app and Applications; found $entry_count top-level items."; return 1; }
-    package_count="$(/usr/bin/find "$RELEASE_DMG_MOUNT" -name '*.pkg' -print | /usr/bin/awk 'END { print NR + 0 }')"
-    [ "$package_count" -eq 0 ] || { release_error "DMG contains a forbidden installer package."; return 1; }
+    release_dmg_payload_is_valid "$RELEASE_DMG_MOUNT" || {
+        release_error "DMG payload or hidden presentation assets do not match the release contract."
+        return 1
+    }
     mounted_version="$(release_plist_value "$mounted_app/Contents/Info.plist" CFBundleShortVersionString)" || return 1
     mounted_build="$(release_plist_value "$mounted_app/Contents/Info.plist" CFBundleVersion)" || return 1
     [ "$mounted_version" = "$expected_version" ] && [ "$mounted_build" = "$expected_build" ] || {
@@ -108,6 +146,7 @@ release_dmg_main() {
     local requested_root="${1:-}"
     local replace=0 root manifest version build commit identity app info
     local target temporary name phase app_stapled existing_sha
+    local background volume_icon stage_entry_count stage_background_count
     [ -n "$requested_root" ] || { release_dmg_usage; return 2; }
     shift || true
     while [ "$#" -gt 0 ]; do
@@ -145,7 +184,11 @@ release_dmg_main() {
     }
     app="$root/export/Let It Brew.app"
     info="$app/Contents/Info.plist"
+    background="$RELEASE_SCRIPT_DIR/assets/dmg-background.png"
+    volume_icon="$app/Contents/Resources/AppIcon.icns"
     [ -d "$app" ] && [ ! -L "$app" ] || { release_error "missing exported Let It Brew.app."; return 1; }
+    [ -f "$background" ] && [ ! -L "$background" ] || { release_error "missing trusted DMG background."; return 1; }
+    [ -f "$volume_icon" ] && [ ! -L "$volume_icon" ] || { release_error "release app is missing AppIcon.icns."; return 1; }
     [ "$(release_plist_value "$info" CFBundleShortVersionString)" = "$version" ] || { release_error "app marketing version drifted from manifest."; return 1; }
     [ "$(release_plist_value "$info" CFBundleVersion)" = "$build" ] || { release_error "app build drifted from manifest."; return 1; }
     release_dmg_verify_artifact "$app" || return 1
@@ -174,8 +217,13 @@ release_dmg_main() {
     RELEASE_DMG_STAGE="$(/usr/bin/mktemp -d /private/tmp/LetItBrewDMGStage.XXXXXX)" || return 1
     /bin/chmod 700 "$RELEASE_DMG_STAGE" || return 1
     release_dmg_ditto "$app" "$RELEASE_DMG_STAGE/Let It Brew.app" || return 1
+    /bin/mkdir "$RELEASE_DMG_STAGE/.background" || return 1
+    release_dmg_ditto "$background" "$RELEASE_DMG_STAGE/.background/dmg-background.png" || return 1
+    release_dmg_ditto "$volume_icon" "$RELEASE_DMG_STAGE/.VolumeIcon.icns" || return 1
     /bin/ln -s /Applications "$RELEASE_DMG_STAGE/Applications" || return 1
-    [ "$(/usr/bin/find "$RELEASE_DMG_STAGE" -mindepth 1 -maxdepth 1 -print | /usr/bin/awk 'END { print NR + 0 }')" -eq 2 ] || return 1
+    stage_entry_count="$(/usr/bin/find "$RELEASE_DMG_STAGE" -mindepth 1 -maxdepth 1 -print | /usr/bin/awk 'END { print NR + 0 }')" || return 1
+    stage_background_count="$(/usr/bin/find "$RELEASE_DMG_STAGE/.background" -mindepth 1 -maxdepth 1 -print | /usr/bin/awk 'END { print NR + 0 }')" || return 1
+    [ "$stage_entry_count" -eq 4 ] && [ "$stage_background_count" -eq 1 ] || return 1
     [ "$(/usr/bin/find "$RELEASE_DMG_STAGE" -name '*.pkg' -print | /usr/bin/awk 'END { print NR + 0 }')" -eq 0 ] || {
         release_error "refusing to package an installer package."
         return 1
@@ -194,7 +242,8 @@ release_dmg_main() {
     release_manifest_set "$manifest" DMG_PHASE "$phase" || return 1
     release_manifest_set "$manifest" DMG_SHA256 "$(release_sha256 "$target")" || return 1
     release_manifest_set "$manifest" DMG_APPLICATIONS_SYMLINK /Applications || return 1
-    release_manifest_set "$manifest" DMG_TOP_LEVEL_ENTRIES 'Applications,Let It Brew.app' || return 1
+    release_manifest_set "$manifest" DMG_TOP_LEVEL_ENTRIES '.DS_Store,.VolumeIcon.icns,.background,Applications,Let It Brew.app' || return 1
+    release_manifest_set "$manifest" DMG_BACKGROUND_ENTRY '.background/dmg-background.png' || return 1
 
     release_dmg_cleanup || return 1
     RELEASE_DMG_STAGE=""

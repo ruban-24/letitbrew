@@ -228,6 +228,66 @@ public struct DaemonRecoveryPresentation: Equatable, Sendable {
     }
 }
 
+public struct BackgroundHelperPresentation: Equatable, Sendable {
+    public let status: String
+    public let detail: String
+    public let actions: [DaemonRecoveryUserAction]
+    public let showsProgress: Bool
+    public let requiresAttention: Bool
+
+    public init(
+        status: String,
+        detail: String,
+        actions: [DaemonRecoveryUserAction],
+        showsProgress: Bool,
+        requiresAttention: Bool
+    ) {
+        self.status = status
+        self.detail = detail
+        self.actions = actions
+        self.showsProgress = showsProgress
+        self.requiresAttention = requiresAttention
+    }
+}
+
+public enum BackgroundHelperPresentationPolicy {
+    public static func resolve(
+        closedLidEnabled: Bool,
+        recoveryState: DaemonRecoveryState
+    ) -> BackgroundHelperPresentation {
+        guard closedLidEnabled else {
+            return BackgroundHelperPresentation(
+                status: "Not in use",
+                detail: "Closed-lid support is disabled.",
+                actions: [],
+                showsProgress: false,
+                requiresAttention: false
+            )
+        }
+
+        let recovery = DaemonRecoveryPresentation(state: recoveryState)
+        let status: String = switch recoveryState {
+        case .checking:
+            "Checking"
+        case .finishingUpdate, .restartingSupport:
+            "Repairing"
+        case .ready:
+            "Running normally"
+        case .approvalRequired, .retryableFailure, .ineligible:
+            "Needs attention"
+        case .deferredUntilEnabled:
+            "Not in use"
+        }
+        return BackgroundHelperPresentation(
+            status: status,
+            detail: recovery.detail ?? recovery.headline,
+            actions: recovery.actions,
+            showsProgress: recovery.showsProgress,
+            requiresAttention: recovery.requiresAttention
+        )
+    }
+}
+
 public enum DaemonRecoveryPolicyDecision: Equatable, Sendable {
     case acceptHealthy
     case requestAutomaticRefresh

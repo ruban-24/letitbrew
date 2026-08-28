@@ -17,17 +17,17 @@ extension LetItBrewAppModel: UninstallEnvironment {
     }
 
     func releaseHolds() async -> Result<Void, UninstallFailure> {
-        // Exactly the user-facing pause path: clears the power assertion, the
+        // Exactly the user-facing pause path: clears both power assertions, the
         // lid hold, and the daemon hold, and persists the choice — but,
-        // unlike the plain Release action, this waits for both releases to
-        // actually be confirmed rather than firing and forgetting, so a real
-        // refusal (see PowerAssertions.swift IMPORTANT 3) blocks instead of
-        // being silently discarded.
+        // unlike the plain Release action, this waits for connected-daemon and
+        // local releases to settle. If the live connection is already gone,
+        // the next gate performs a fresh daemon reconciliation before any
+        // removal. A real refusal still blocks instead of being discarded.
         guard await releaseHoldsAwaitingConfirmation() else {
             return failure(
                 .releaseHolds,
                 "Let It Brew could not confirm this Mac's sleep settings were fully restored. Nothing was removed.",
-                "power assertion release or daemon lid-hold release did not confirm"
+                "system/display power assertion release or daemon lid-hold release did not confirm"
             )
         }
         return .success(())
@@ -128,14 +128,14 @@ extension LetItBrewAppModel: UninstallEnvironment {
         guard let result = results.first else {
             return failure(
                 step,
-                "To remove Let It Brew's \(agentName) hooks, open Let It Brew—restoring it from the Trash first if needed—then choose Settings → Agents → \(agentName) → Disconnect before uninstalling again. Until then, the hooks are inert.",
+                "To remove Let It Brew's \(agentName) hooks, restore Let It Brew from the Trash if needed, open it, turn off the \(agentName) watched-agent switch, then try uninstalling again. Until then, the hooks are inert.",
                 "no result"
             )
         }
         guard result.succeeded else {
             return failure(
                 step,
-                "To remove Let It Brew's \(agentName) hooks, open Let It Brew—restoring it from the Trash first if needed—then choose Settings → Agents → \(agentName) → Disconnect before uninstalling again. Until then, the hooks are inert.",
+                "To remove Let It Brew's \(agentName) hooks, restore Let It Brew from the Trash if needed, open it, turn off the \(agentName) watched-agent switch, then try uninstalling again. Until then, the hooks are inert.",
                 result.timedOut ? "timed out" : "status \(result.status): \(result.output)"
             )
         }
@@ -191,6 +191,7 @@ extension LetItBrewAppModel: UninstallEnvironment {
         guard let domain = Bundle.main.bundleIdentifier else {
             return failure(.clearPreferences, "Let It Brew could not identify its own preferences.", "nil bundleIdentifier")
         }
+        await quiesceAutomaticUpdate()
         // One domain removal, not a key list: a hand-maintained list would
         // drift from HoldSettingsPreferenceKey as settings are added.
         // ponytail: cfprefsd can re-flush a cached domain, so the app quits

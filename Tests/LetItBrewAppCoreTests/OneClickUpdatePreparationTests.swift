@@ -305,3 +305,40 @@ private func preparationRelease(
         }
     }
 }
+
+@Test func preparationStagesHaveTotalSemanticFailureMapping() {
+    let cases: [(OneClickUpdatePreparationStage, OneClickUpdateFailure.Kind)] = [
+        (.createWorkspace, .replacement),
+        (.downloadChecksums, .download),
+        (.verifyChecksums, .verification),
+        (.downloadDiskImage, .download),
+        (.verifyDiskImageDigest, .verification),
+        (.verifyDiskImage, .verification),
+        (.mountDiskImage, .verification),
+        (.verifyMountedCandidate, .verification),
+        (.stageCandidate, .replacement),
+        (.verifyStagedCandidate, .replacement),
+        (.detachDiskImage, .replacement),
+        (.copySignedSupport, .relaunch),
+        (.launchRunner, .relaunch),
+    ]
+
+    for (stage, kind) in cases {
+        #expect(stage.failureKind == kind)
+    }
+}
+
+@Test func preparationFailureUsesTheStageSemanticKind() async {
+    let operations = RecordingPreparationOperations()
+    operations.throwAt = "downloadDiskImage"
+    let result = await OneClickUpdatePreparationWorkflow(
+        installedBuild: 14,
+        operations: operations
+    ).prepareAndLaunch(release: preparationRelease())
+
+    guard case .failure(let failure) = result else {
+        Issue.record("expected the injected download failure")
+        return
+    }
+    #expect(failure.kind == .download)
+}

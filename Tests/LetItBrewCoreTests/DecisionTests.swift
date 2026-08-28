@@ -164,3 +164,71 @@ private let plugged = PowerState(onBattery: false, batteryPercent: 100, thermal:
     #expect(decision.holdSystem)
     #expect(!decision.holdLidClosed)
 }
+
+@Test func connectedPowerOnlyReleasesOnBattery() {
+    var settings = Settings()
+    settings.onlyWhileConnectedToPower = true
+    let power = PowerState(
+        onBattery: true,
+        batteryPercent: 90,
+        thermal: .nominal
+    )
+    let decision = decide(
+        sessions: [session(.working)], now: now,
+        settings: settings, power: power
+    )
+    #expect(!decision.holdSystem)
+    #expect(!decision.holdLidClosed)
+    #expect(!decision.holdDisplay)
+    #expect(decision.reason == "battery power")
+}
+
+@Test func connectedPowerOnlyOutranksBatteryFloor() {
+    var settings = Settings()
+    settings.onlyWhileConnectedToPower = true
+    let decision = decide(
+        sessions: [session(.working)], now: now,
+        settings: settings,
+        power: PowerState(onBattery: true, batteryPercent: 20, thermal: .nominal)
+    )
+    #expect(decision.reason == "battery power")
+}
+
+@Test func respectedLowPowerModeReleasesOnACAndBattery() {
+    var settings = Settings()
+    #expect(!settings.respectLowPowerMode)
+    settings.respectLowPowerMode = true
+    for onBattery in [false, true] {
+        let power = PowerState(
+            onBattery: onBattery,
+            batteryPercent: 90,
+            thermal: .nominal,
+            lowPowerModeEnabled: true
+        )
+        let decision = decide(
+            sessions: [session(.working)], now: now,
+            settings: settings, power: power
+        )
+        #expect(!decision.holdSystem)
+        #expect(decision.reason == "low power mode")
+    }
+}
+
+@Test func displayIntentIsIndependentFromSystemHold() {
+    var settings = Settings()
+    settings.allowDisplaysToSleep = false
+    let awake = decide(
+        sessions: [session(.working)], now: now,
+        settings: settings, power: plugged
+    )
+    #expect(awake.holdSystem)
+    #expect(awake.holdDisplay)
+
+    settings.allowDisplaysToSleep = true
+    let displaySleepAllowed = decide(
+        sessions: [session(.working)], now: now,
+        settings: settings, power: plugged
+    )
+    #expect(displaySleepAllowed.holdSystem)
+    #expect(!displaySleepAllowed.holdDisplay)
+}

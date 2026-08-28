@@ -884,3 +884,50 @@ func blockedReconciliationNeverStopsTheDaemon(
         #expect(presentation.requiresAttention == attention)
     }
 }
+
+@Test func disabledClosedLidSupportIsNotAnError() {
+    let presentation = BackgroundHelperPresentationPolicy.resolve(
+        closedLidEnabled: false,
+        recoveryState: .deferredUntilEnabled
+    )
+
+    #expect(presentation.status == "Not in use")
+    #expect(!presentation.requiresAttention)
+    #expect(presentation.actions.isEmpty)
+}
+
+@Test func backgroundHelperMapsRecoveryToCompactStatuses() {
+    let cases: [(DaemonRecoveryState, String, [DaemonRecoveryUserAction], Bool, Bool)] = [
+        (.checking, "Checking", [], true, false),
+        (.finishingUpdate, "Repairing", [], true, false),
+        (.restartingSupport, "Repairing", [], true, false),
+        (.ready, "Running normally", [], false, false),
+        (
+            .approvalRequired(message: "Approval needed."),
+            "Needs attention",
+            [.openBackgroundItems],
+            false,
+            true
+        ),
+        (
+            .retryableFailure(.handshakeTimedOut),
+            "Needs attention",
+            [.retry],
+            false,
+            true
+        ),
+        (.ineligible(message: "Wrong location."), "Needs attention", [], false, true),
+        (.deferredUntilEnabled, "Not in use", [], false, false),
+    ]
+
+    for (state, status, actions, progress, attention) in cases {
+        let presentation = BackgroundHelperPresentationPolicy.resolve(
+            closedLidEnabled: true,
+            recoveryState: state
+        )
+        #expect(presentation.status == status)
+        #expect(presentation.actions == actions)
+        #expect(presentation.showsProgress == progress)
+        #expect(presentation.requiresAttention == attention)
+    }
+}

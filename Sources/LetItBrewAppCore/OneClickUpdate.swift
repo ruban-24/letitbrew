@@ -1,6 +1,6 @@
 import Foundation
 
-public struct StableUpdateVersion: Comparable, CustomStringConvertible, Equatable, Sendable {
+public struct StableUpdateVersion: Comparable, CustomStringConvertible, Codable, Equatable, Sendable {
     public let major: UInt64
     public let minor: UInt64
     public let patch: UInt64
@@ -31,7 +31,7 @@ public struct StableUpdateVersion: Comparable, CustomStringConvertible, Equatabl
     }
 }
 
-public struct UpdateAsset: Equatable, Sendable {
+public struct UpdateAsset: Codable, Equatable, Sendable {
     public let name: String
     public let downloadURL: URL
     public let size: Int64
@@ -50,7 +50,7 @@ public struct UpdateAsset: Equatable, Sendable {
     }
 }
 
-public struct StableUpdateRelease: Equatable, Sendable {
+public struct StableUpdateRelease: Codable, Equatable, Sendable {
     public let version: StableUpdateVersion
     public let dmg: UpdateAsset
     public let checksums: UpdateAsset
@@ -140,6 +140,25 @@ public enum StableUpdateReleaseParser {
         return StableUpdateRelease(version: version, dmg: dmg, checksums: checksums)
     }
 
+    public static func validated(
+        _ release: StableUpdateRelease
+    ) throws -> StableUpdateRelease {
+        let releaseTag = "v\(release.version)"
+        try validate(
+            release.dmg,
+            named: "LetItBrew-\(release.version).dmg",
+            maximumSize: maximumDMGSize,
+            releaseTag: releaseTag
+        )
+        try validate(
+            release.checksums,
+            named: "LetItBrew-\(release.version)-SHA256SUMS",
+            maximumSize: maximumChecksumSize,
+            releaseTag: releaseTag
+        )
+        return release
+    }
+
     private static func asset(
         named name: String,
         in assets: [GitHubAssetResponse],
@@ -152,16 +171,6 @@ public enum StableUpdateReleaseParser {
         }
         guard matches.count == 1, let match = matches.first else {
             throw UpdateReleaseValidationFailure.duplicateAsset(name)
-        }
-        guard trustedReleaseAssetURL(
-            match.downloadURL,
-            releaseTag: releaseTag,
-            assetName: name
-        ) else {
-            throw UpdateReleaseValidationFailure.invalidAssetURL(name)
-        }
-        guard match.size > 0, match.size <= maximumSize else {
-            throw UpdateReleaseValidationFailure.invalidAssetSize(name)
         }
         let digest: String?
         if let githubDigest = match.digest {
@@ -177,12 +186,43 @@ public enum StableUpdateReleaseParser {
         } else {
             digest = nil
         }
-        return UpdateAsset(
+        let asset = UpdateAsset(
             name: name,
             downloadURL: match.downloadURL,
             size: match.size,
             githubSHA256: digest
         )
+        try validate(
+            asset,
+            named: name,
+            maximumSize: maximumSize,
+            releaseTag: releaseTag
+        )
+        return asset
+    }
+
+    private static func validate(
+        _ asset: UpdateAsset,
+        named name: String,
+        maximumSize: Int64,
+        releaseTag: String
+    ) throws {
+        guard asset.name == name else {
+            throw UpdateReleaseValidationFailure.missingAsset(name)
+        }
+        guard trustedReleaseAssetURL(
+            asset.downloadURL,
+            releaseTag: releaseTag,
+            assetName: name
+        ) else {
+            throw UpdateReleaseValidationFailure.invalidAssetURL(name)
+        }
+        guard asset.size > 0, asset.size <= maximumSize else {
+            throw UpdateReleaseValidationFailure.invalidAssetSize(name)
+        }
+        guard asset.githubSHA256.map(isSHA256) ?? true else {
+            throw UpdateReleaseValidationFailure.invalidAssetDigest(name)
+        }
     }
 
     private static func trustedReleaseAssetURL(
@@ -286,10 +326,20 @@ public enum UpdateChecksumParser {
 }
 
 public struct OneClickUpdateFailure: Error, Equatable, Sendable {
+    public enum Kind: String, Codable, Equatable, Sendable {
+        case discovery
+        case download
+        case verification
+        case replacement
+        case relaunch
+    }
+
+    public let kind: Kind
     public let message: String
     public let diagnostic: String
 
-    public init(message: String, diagnostic: String) {
+    public init(kind: Kind, message: String, diagnostic: String) {
+        self.kind = kind
         self.message = message
         self.diagnostic = diagnostic
     }
@@ -400,6 +450,11 @@ public final class OneClickUpdateCoordinator {
         case .failure(let failure):
             state = .failed(failure, retry: .check)
         }
+    }
+
+    public func present(_ release: StableUpdateRelease) {
+        guard !isBusy, release.version > installedVersion else { return }
+        state = .available(release)
     }
 
     public func confirmInstall() async {
