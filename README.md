@@ -9,12 +9,14 @@
 A macOS menu-bar app that keeps your Mac awake while supported local coding
 agents work. It lets your Mac sleep as soon as the work stops.
 
-[![Download](https://img.shields.io/github/v/release/ruban-24/letitbrew?label=Download%20DMG&color=E8912D)](https://github.com/ruban-24/letitbrew/releases/latest/download/LetItBrew.dmg)
+<a href="https://github.com/ruban-24/letitbrew/releases/latest/download/LetItBrew.dmg">
+  <img src=".github/assets/macos-download-badge.svg" alt="Download Let It Brew for macOS" width="194">
+</a>
+
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)](https://www.apple.com/macos/)
 [![CI](https://github.com/ruban-24/letitbrew/actions/workflows/ci.yml/badge.svg)](https://github.com/ruban-24/letitbrew/actions/workflows/ci.yml)
 
-[**Download DMG**](https://github.com/ruban-24/letitbrew/releases/latest/download/LetItBrew.dmg) &middot;
 [Release notes and SHA-256](https://github.com/ruban-24/letitbrew/releases/latest) &middot;
 [letitbrew.app](https://letitbrew.app)
 
@@ -66,16 +68,17 @@ Let It Brew observes local sessions only. Remote, cloud, SSH, and unsupported
 hook scopes are not observed.
 
 Connections are optional. Let It Brew changes no agent configuration until you
-choose **Connect**, and **Disconnect** removes only the entry or plugin that Let
-It Brew owns. See the [agent hook contracts](docs/AGENT-HOOK-CONTRACTS.md) for
-the exact integration boundaries.
+turn on an agent's watched switch. Turning it off removes only the entry or
+plugin that Let It Brew owns. See the
+[agent hook contracts](docs/AGENT-HOOK-CONTRACTS.md) for the exact integration
+boundaries.
 
 ## Install
 
 1. [Download the latest signed and notarized DMG](https://github.com/ruban-24/letitbrew/releases/latest/download/LetItBrew.dmg).
 2. Check it against the SHA-256 on the [latest release](https://github.com/ruban-24/letitbrew/releases/latest), then drag **Let It Brew.app** into `/Applications`.
-3. Launch the app, open **Settings → Agents**, and choose **Connect** for each
-   local agent you want Let It Brew to follow.
+3. Launch the app, open **Settings → Agents**, and turn on the watched switch
+   for each local agent you want Let It Brew to follow.
 
 Requires macOS 14 or later. The universal app supports Apple silicon and Intel.
 The signed DMG is the only install channel; Let It Brew is not distributed
@@ -89,8 +92,9 @@ subfolder, on the mounted DMG, or in Downloads cannot manage the privileged
 closed-lid service.
 
 Codex requires one manual trust step. Run `/hooks` in Codex, trust the Let It
-Brew entries, then return to **Settings → Agents** and choose **Check Again**.
-Sessions that were already open when hooks changed may need to be restarted.
+Brew entries, then return to **Settings → Agents**. The connection refreshes
+automatically; **Refresh Connections** remains available as a fallback. Sessions
+that were already open when hooks changed may need to be restarted.
 
 ## Safety and privacy
 
@@ -111,8 +115,10 @@ paths it uses.
 
 ## Updating and uninstalling
 
-Open **Settings → About → Check for Updates…** to download and install a verified
-release. Settings, agent connections, and session records stay in place.
+Let It Brew checks GitHub for a newer release about 30 seconds after launch, no
+more than once per day. It never downloads an update without confirmation. You
+can also open **Settings → About → Check for Updates…** at any time. Settings,
+agent connections, and session records stay in place.
 
 To remove the app, open **Settings → About → Uninstall Let It Brew…**. Let It
 Brew releases its holds, disconnects its agent integrations, unregisters its
