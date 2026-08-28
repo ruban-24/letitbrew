@@ -100,22 +100,46 @@ import LetItBrewCore
     #expect(MenuBatteryIconPolicy.systemImageName(percent: 100) == "battery.100percent")
 }
 
-@Test func supplementaryRowsKeepReleaseFailureBeforeBatteryAndUpdate() throws {
-    let battery = MenuBatteryPresentation(
-        text: "Battery 68% · Sleep hold stops below 20%",
-        isAttention: false
-    )
+@Test func supplementaryRowsKeepReleaseFailureBeforeUpdate() throws {
     let version = try #require(StableUpdateVersion("0.6.6"))
 
     #expect(MenuSupplementaryRowPolicy.rows(
         holdReleaseFailure: "Release failed",
-        battery: battery,
         availableVersion: version
     ) == [
         .holdReleaseFailure("Release failed"),
-        .battery(battery),
         .update(version),
     ])
+}
+
+@Test func popupConnectionAttentionAppearsOnlyAtZeroConnectedAgents() {
+    #expect(MenuSetupAttentionPolicy.presentation(for: MenuSetupAttentionInput(
+        hasUpdateResult: false,
+        closedLidNeedsAttention: false,
+        connectedAgentCount: 0
+    )) == MenuSetupAttentionPresentation(
+        title: "Connect an agent",
+        detail: "Open Settings to connect your coding agent."
+    ))
+
+    #expect(MenuSetupAttentionPolicy.presentation(for: MenuSetupAttentionInput(
+        hasUpdateResult: false,
+        closedLidNeedsAttention: false,
+        connectedAgentCount: 1
+    )) == nil)
+}
+
+@Test func updateAndClosedLidWarningsRemainIndependent() {
+    #expect(MenuSetupAttentionPolicy.presentation(for: MenuSetupAttentionInput(
+        hasUpdateResult: true,
+        closedLidNeedsAttention: true,
+        connectedAgentCount: 0
+    ))?.title == "Review update result")
+    #expect(MenuSetupAttentionPolicy.presentation(for: MenuSetupAttentionInput(
+        hasUpdateResult: false,
+        closedLidNeedsAttention: true,
+        connectedAgentCount: 0
+    ))?.title == "Finish closed-lid setup")
 }
 
 @Test func headerCopyMatchesEnabledIdleAndPausedStates() {
@@ -463,11 +487,11 @@ import LetItBrewCore
     #expect(MenuActivityViewportMetrics.height(for: MenuRepositoryLayoutPolicy.items(
         for: headerPlusFourRows,
         isExpanded: true
-    )) == 294)
+    )) == 302)
     #expect(MenuActivityViewportMetrics.height(for: MenuRepositoryLayoutPolicy.items(
         for: headerPlusFiveRows,
         isExpanded: true
-    )) == 294)
+    )) == 302)
     #expect(MenuActivityViewportMetrics.height(for: MenuRepositoryLayoutPolicy.items(
         for: singleSession,
         isExpanded: false

@@ -53,6 +53,9 @@ private final class BoundedHTTPSResourceDelegate:
 
     private var continuation: CheckedContinuation<Data, Error>?
     private var session: URLSession?
+    private let cancellationLock = NSLock()
+    private var dataTask: URLSessionDataTask?
+    private var cancellationRequested = false
     private var fileHandle: FileHandle?
     private var buffer = Data()
     private var receivedBytes: Int64 = 0
@@ -79,24 +82,41 @@ private final class BoundedHTTPSResourceDelegate:
             fileHandle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
         }
 
-        return try await withCheckedThrowingContinuation { continuation in
-            self.continuation = continuation
-            let configuration = URLSessionConfiguration.ephemeral
-            configuration.timeoutIntervalForRequest = 30
-            configuration.timeoutIntervalForResource = 180
-            configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
-            configuration.urlCache = nil
-            let delegateQueue = OperationQueue()
-            delegateQueue.name = "Let It Brew bounded update download"
-            delegateQueue.maxConcurrentOperationCount = 1
-            let session = URLSession(
-                configuration: configuration,
-                delegate: self,
-                delegateQueue: delegateQueue
-            )
-            self.session = session
-            session.dataTask(with: request).resume()
-        }
+        return try await withTaskCancellationHandler(
+            operation: {
+                try await withCheckedThrowingContinuation { continuation in
+                    self.continuation = continuation
+                    let configuration = URLSessionConfiguration.ephemeral
+                    configuration.timeoutIntervalForRequest = 30
+                    configuration.timeoutIntervalForResource = 180
+                    configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+                    configuration.urlCache = nil
+                    let delegateQueue = OperationQueue()
+                    delegateQueue.name = "Let It Brew bounded update download"
+                    delegateQueue.maxConcurrentOperationCount = 1
+                    let session = URLSession(
+                        configuration: configuration,
+                        delegate: self,
+                        delegateQueue: delegateQueue
+                    )
+                    self.session = session
+                    let task = session.dataTask(with: request)
+                    cancellationLock.lock()
+                    dataTask = task
+                    let shouldCancel = cancellationRequested
+                    cancellationLock.unlock()
+                    task.resume()
+                    if shouldCancel { task.cancel() }
+                }
+            },
+            onCancel: {
+                self.cancellationLock.lock()
+                self.cancellationRequested = true
+                let task = self.dataTask
+                self.cancellationLock.unlock()
+                task?.cancel()
+            }
+        )
     }
 
     func urlSession(
@@ -222,6 +242,9 @@ private final class BoundedHTTPSResourceDelegate:
             continuation?.resume(returning: buffer)
         }
         continuation = nil
+        cancellationLock.lock()
+        dataTask = nil
+        cancellationLock.unlock()
         session?.finishTasksAndInvalidate()
         session = nil
     }

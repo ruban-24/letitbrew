@@ -140,6 +140,25 @@ public enum StableUpdateReleaseParser {
         return StableUpdateRelease(version: version, dmg: dmg, checksums: checksums)
     }
 
+    public static func validated(
+        _ release: StableUpdateRelease
+    ) throws -> StableUpdateRelease {
+        let releaseTag = "v\(release.version)"
+        try validate(
+            release.dmg,
+            named: "LetItBrew-\(release.version).dmg",
+            maximumSize: maximumDMGSize,
+            releaseTag: releaseTag
+        )
+        try validate(
+            release.checksums,
+            named: "LetItBrew-\(release.version)-SHA256SUMS",
+            maximumSize: maximumChecksumSize,
+            releaseTag: releaseTag
+        )
+        return release
+    }
+
     private static func asset(
         named name: String,
         in assets: [GitHubAssetResponse],
@@ -152,16 +171,6 @@ public enum StableUpdateReleaseParser {
         }
         guard matches.count == 1, let match = matches.first else {
             throw UpdateReleaseValidationFailure.duplicateAsset(name)
-        }
-        guard trustedReleaseAssetURL(
-            match.downloadURL,
-            releaseTag: releaseTag,
-            assetName: name
-        ) else {
-            throw UpdateReleaseValidationFailure.invalidAssetURL(name)
-        }
-        guard match.size > 0, match.size <= maximumSize else {
-            throw UpdateReleaseValidationFailure.invalidAssetSize(name)
         }
         let digest: String?
         if let githubDigest = match.digest {
@@ -177,12 +186,43 @@ public enum StableUpdateReleaseParser {
         } else {
             digest = nil
         }
-        return UpdateAsset(
+        let asset = UpdateAsset(
             name: name,
             downloadURL: match.downloadURL,
             size: match.size,
             githubSHA256: digest
         )
+        try validate(
+            asset,
+            named: name,
+            maximumSize: maximumSize,
+            releaseTag: releaseTag
+        )
+        return asset
+    }
+
+    private static func validate(
+        _ asset: UpdateAsset,
+        named name: String,
+        maximumSize: Int64,
+        releaseTag: String
+    ) throws {
+        guard asset.name == name else {
+            throw UpdateReleaseValidationFailure.missingAsset(name)
+        }
+        guard trustedReleaseAssetURL(
+            asset.downloadURL,
+            releaseTag: releaseTag,
+            assetName: name
+        ) else {
+            throw UpdateReleaseValidationFailure.invalidAssetURL(name)
+        }
+        guard asset.size > 0, asset.size <= maximumSize else {
+            throw UpdateReleaseValidationFailure.invalidAssetSize(name)
+        }
+        guard asset.githubSHA256.map(isSHA256) ?? true else {
+            throw UpdateReleaseValidationFailure.invalidAssetDigest(name)
+        }
     }
 
     private static func trustedReleaseAssetURL(

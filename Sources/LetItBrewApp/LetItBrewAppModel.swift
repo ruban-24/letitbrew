@@ -49,14 +49,6 @@ struct AgentHookHealth: Identifiable, Equatable, Sendable {
         )
     }
 
-    var symbol: String {
-        switch state {
-        case .connecting: "clock"
-        case .connected: "checkmark.circle.fill"
-        case .actionNeeded: "exclamationmark.circle.fill"
-        case .couldNotConnect: "exclamationmark.triangle.fill"
-        }
-    }
 }
 
 private struct HelperRunResult: Sendable {
@@ -225,15 +217,15 @@ final class LetItBrewAppModel: ObservableObject {
     }
     @Published private(set) var presentationState: LetItBrewPresentationState = .idle
     @Published private(set) var reason = "Your Mac can sleep"
-    @Published private(set) var batteryDescription = "Reading power state…"
     @Published private(set) var daemonAvailable = false
-    @Published private(set) var daemonMessage = "Checking closed-lid support…"
-    @Published private(set) var daemonSetupInProgress = false
     @Published private(set) var daemonRecoveryState: DaemonRecoveryState = .checking
     @Published private(set) var ownsHold = false
     @Published private(set) var isPaused: Bool
     @Published var onlyWhileConnectedToPower: Bool {
-        didSet { defaults.set(onlyWhileConnectedToPower, forKey: Keys.onlyWhileConnectedToPower) }
+        didSet {
+            defaults.set(onlyWhileConnectedToPower, forKey: Keys.onlyWhileConnectedToPower)
+            refreshNow()
+        }
     }
     @Published var respectLowPowerMode: Bool {
         didSet {
@@ -242,7 +234,10 @@ final class LetItBrewAppModel: ObservableObject {
         }
     }
     @Published var allowDisplaysToSleep: Bool {
-        didSet { defaults.set(allowDisplaysToSleep, forKey: Keys.allowDisplaysToSleep) }
+        didSet {
+            defaults.set(allowDisplaysToSleep, forKey: Keys.allowDisplaysToSleep)
+            refreshNow()
+        }
     }
     @Published private(set) var currentPower = PowerState(
         onBattery: false,
@@ -389,7 +384,7 @@ final class LetItBrewAppModel: ObservableObject {
         respectLowPowerMode = Self.persistedBool(
             defaults,
             key: Keys.respectLowPowerMode,
-            fallback: true
+            fallback: false
         )
         allowDisplaysToSleep = Self.persistedBool(
             defaults,
@@ -416,9 +411,9 @@ final class LetItBrewAppModel: ObservableObject {
         isPaused = loadedPauseController.isPaused
         readsLiveState = startsPolling
         keepWorkingWithLidClosed = migratedSettings.isClosedLidEnabled
-        batteryFloor = Self.persistedDouble(
+        batteryFloor = (Self.persistedDouble(
             defaults, key: Keys.batteryFloor, allowed: 5...50, fallback: 20
-        )
+        ) / 5).rounded() * 5
         launchAtLoginChoiceWasSaved = defaults.object(forKey: Keys.launchAtLogin) != nil
         launchAtLogin = defaults.bool(forKey: Keys.launchAtLogin)
         showLaunchAtLoginOnboarding = !launchAtLoginChoiceWasSaved
@@ -475,16 +470,9 @@ final class LetItBrewAppModel: ObservableObject {
         !isPaused
     }
 
-    var lidControlHelp: String? {
-        daemonAvailable ? nil : daemonMessage
-    }
-
-    var daemonRecoveryPresentation: DaemonRecoveryPresentation {
-        DaemonRecoveryPresentation(state: daemonRecoveryState)
-    }
-
     var daemonNeedsSetupAttention: Bool {
-        keepWorkingWithLidClosed && daemonRecoveryPresentation.requiresAttention
+        keepWorkingWithLidClosed
+            && DaemonRecoveryPresentation(state: daemonRecoveryState).requiresAttention
     }
 
     func setKeepWorkingWithLidClosed(_ enabled: Bool) {
@@ -557,26 +545,29 @@ final class LetItBrewAppModel: ObservableObject {
     /// `synchronizeDaemonHold()` and moves on — that call's XPC completion
     /// runs later, asynchronously, on its own. This waits for that attempt
     /// (or one a poll tick already had in flight) to actually settle and
-    /// reports whether both local assertions and the daemon hold are
-    /// confirmed released, so a real refusal blocks uninstall instead of
-    /// vanishing into a completion handler nobody awaited. See
+    /// reports whether both local assertions and a connected daemon hold are
+    /// confirmed released. An unavailable daemon is verified by uninstall's
+    /// fresh reconciliation gate immediately afterward. See
     /// PowerAssertions.swift's IMPORTANT 3 for the same discipline applied to
     /// the local assertion.
     func releaseHoldsAwaitingConfirmation() async -> Bool {
         let daemonConfirmationRequired = daemonAvailable
-            || daemonHoldRequestState.releaseConfirmationRequired
         let localHoldsReleased = allowMacToSleep()
         guard daemonConfirmationRequired else { return localHoldsReleased }
 
         // Bounded: a wedged daemon completion must not hang uninstall
         // forever. Not settling within two seconds is treated as failure.
-        for _ in 0..<20 where daemonHoldRequestState.isInFlight {
-            try? await Task.sleep(for: .milliseconds(100))
-        }
+        await waitForDaemonHoldRequest()
         let daemonReleased = !daemonHoldRequestState.isInFlight
             && daemonAvailable
             && daemonHoldRequestState.isReleaseConfirmed
         return localHoldsReleased && daemonReleased
+    }
+
+    private func waitForDaemonHoldRequest() async {
+        for _ in 0..<20 where daemonHoldRequestState.isInFlight {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
     }
 
     private lazy var uninstallCoordinator = UninstallCoordinator(environment: self)
@@ -923,10 +914,12 @@ final class LetItBrewAppModel: ObservableObject {
 
     func applicationDidBecomeActive() {
         refreshCodexTrustIfNeeded()
-        refreshBackgroundHelper()
+        refreshBackgroundHelper(trigger: .userRequestedRetry)
     }
 
-    func refreshBackgroundHelper() {
+    func refreshBackgroundHelper(
+        trigger: DaemonRecoveryTrigger = .automaticLaunch
+    ) {
         guard keepWorkingWithLidClosed,
               !uninstallInProgress,
               !updateBlocksOtherActions,
@@ -944,7 +937,7 @@ final class LetItBrewAppModel: ObservableObject {
         case .synchronizeHold:
             synchronizeDaemonHold(force: true)
         case .recover:
-            runDaemonRecovery(trigger: .automaticLaunch)
+            runDaemonRecovery(trigger: trigger)
         }
     }
 
@@ -999,10 +992,6 @@ final class LetItBrewAppModel: ObservableObject {
                 self.hookMessage = messageAfterRefresh
             }
         }
-    }
-
-    func installOrRepairHooks() {
-        refreshAgentHooks()
     }
 
     func uninstallHooks() {
@@ -1069,13 +1058,6 @@ final class LetItBrewAppModel: ObservableObject {
         } else {
             disconnectAgent(id)
         }
-    }
-
-    /// Explicit per-agent model API for a UI "Check Again" action. This does
-    /// not silently reverse a user's durable Disconnect choice.
-    func retryAgentConnection(_ id: String) {
-        guard AgentID(rawValue: id) != nil, connectedAgentIDs.contains(id) else { return }
-        refreshAgentHooks(agentIDs: [id])
     }
 
     func setLaunchAtLogin(_ enabled: Bool) {
@@ -1964,13 +1946,6 @@ final class LetItBrewAppModel: ObservableObject {
 
     private func applyDaemonRecoveryState(_ state: DaemonRecoveryState) {
         daemonRecoveryState = state
-        let presentation = DaemonRecoveryPresentation(state: state)
-        daemonMessage = if let detail = presentation.detail {
-            "\(presentation.headline) \(detail)"
-        } else {
-            presentation.headline
-        }
-        daemonSetupInProgress = presentation.showsProgress
     }
 
     private func apply(_ snapshot: LetItBrewSnapshot) {
@@ -2063,12 +2038,10 @@ final class LetItBrewAppModel: ObservableObject {
             )
         }
         synchronizeDaemonHold()
-        if isPaused {
-            updateHoldReleaseFailure(
-                systemReleased: systemSettled,
-                displayReleased: displaySettled
-            )
-        }
+        updateHoldReleaseFailure(
+            systemReleased: intent.system || systemSettled,
+            displayReleased: intent.display || displaySettled
+        )
         updateHoldOwnership()
 
         if daemonAvailable,
@@ -2120,14 +2093,6 @@ final class LetItBrewAppModel: ObservableObject {
             isKeepingAwake: isKeepingAwake,
             releaseConstraint: releaseConstraint
         )
-
-        if snapshot.power.onBattery {
-            batteryDescription = "Battery \(snapshot.power.batteryPercent)%"
-        } else if snapshot.power.trusted {
-            batteryDescription = "Power adapter"
-        } else {
-            batteryDescription = "Power state unavailable"
-        }
 
     }
 
@@ -2270,8 +2235,9 @@ final class LetItBrewAppModel: ObservableObject {
         systemReleased: Bool,
         displayReleased: Bool
     ) {
-        guard isPaused else { return }
-        let daemonReleaseUnconfirmed = daemonHoldRequestState.releaseConfirmationRequired
+        let daemonReleaseUnconfirmed = !requestedLidHold
+            && !daemonHoldRequestState.isInFlight
+            && daemonHoldRequestState.releaseConfirmationRequired
             && !daemonHoldRequestState.isReleaseConfirmed
         if !systemReleased || !displayReleased || daemonReleaseUnconfirmed {
             holdReleaseFailure = "Let It Brew could not confirm that every sleep hold was released. Try again or quit Let It Brew."
@@ -2293,11 +2259,16 @@ final class LetItBrewAppModel: ObservableObject {
         powerAssertion.setSystemHold(false, reason: "Let It Brew quit")
         powerAssertion.setDisplayHold(false, reason: "Let It Brew quit")
         synchronizeDaemonHold()
-        daemonConnection?.invalidate()
-        daemonConnection = nil
         updateHoldOwnership()
-        DispatchQueue.main.async {
-            NSApp.terminate(nil)
+        Task { [weak self] in
+            guard let self else { return }
+            await self.waitForDaemonHoldRequest()
+            self.daemonConnection?.invalidate()
+            self.daemonConnection = nil
+            self.updateHoldOwnership()
+            DispatchQueue.main.async {
+                NSApp.terminate(nil)
+            }
         }
     }
 

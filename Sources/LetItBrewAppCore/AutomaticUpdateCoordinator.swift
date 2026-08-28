@@ -35,8 +35,10 @@ public final class AutomaticUpdateCoordinator {
         self.environment = environment
         self.persistence = persistence
         snapshot = persistence.load()
-        if let release = snapshot.availableRelease, release.version > installedVersion {
-            availableRelease = release
+        if let release = snapshot.availableRelease,
+           release.version > installedVersion,
+           let validated = try? StableUpdateReleaseParser.validated(release) {
+            availableRelease = validated
         } else if snapshot.availableRelease != nil {
             snapshot.availableRelease = nil
             persistence.save(snapshot)

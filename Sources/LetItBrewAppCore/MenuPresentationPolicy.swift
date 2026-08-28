@@ -320,7 +320,7 @@ public enum MenuActivityViewportMetrics {
     public static func height(for items: [MenuRepositoryLayoutItem]) -> CGFloat {
         min(items.reduce(CGFloat.zero) { partialResult, item in
             partialResult + (item.isSession ? 60 : 54)
-        }, 294)
+        } + CGFloat(max(0, items.count - 1) * 2), 302)
     }
 }
 
@@ -331,7 +331,6 @@ public enum MenuHeaderCopy {
         case lowPowerMode
         case thermal
         case powerUnavailable
-        case holdReleaseFailed
 
         fileprivate var message: String {
             switch self {
@@ -345,8 +344,6 @@ public enum MenuHeaderCopy {
                 "Mac is too warm — it can sleep"
             case .powerUnavailable:
                 "Power status unavailable — your Mac can sleep"
-            case .holdReleaseFailed:
-                "Couldn’t release the sleep hold"
             }
         }
     }
@@ -435,15 +432,11 @@ public enum MenuSupplementaryRow: Equatable, Sendable {
 public enum MenuSupplementaryRowPolicy {
     public static func rows(
         holdReleaseFailure: String?,
-        battery: MenuBatteryPresentation?,
         availableVersion: StableUpdateVersion?
     ) -> [MenuSupplementaryRow] {
         var rows: [MenuSupplementaryRow] = []
         if let holdReleaseFailure {
             rows.append(.holdReleaseFailure(holdReleaseFailure))
-        }
-        if let battery {
-            rows.append(.battery(battery))
         }
         if let availableVersion {
             rows.append(.update(availableVersion))
@@ -474,5 +467,57 @@ public enum MenuHeaderDetailCopy {
         case .paused:
             return "Agents will not keep your Mac awake"
         }
+    }
+}
+
+public struct MenuSetupAttentionInput: Equatable, Sendable {
+    public let hasUpdateResult: Bool
+    public let closedLidNeedsAttention: Bool
+    public let connectedAgentCount: Int
+
+    public init(
+        hasUpdateResult: Bool,
+        closedLidNeedsAttention: Bool,
+        connectedAgentCount: Int
+    ) {
+        self.hasUpdateResult = hasUpdateResult
+        self.closedLidNeedsAttention = closedLidNeedsAttention
+        self.connectedAgentCount = connectedAgentCount
+    }
+}
+
+public struct MenuSetupAttentionPresentation: Equatable, Sendable {
+    public let title: String
+    public let detail: String
+
+    public init(title: String, detail: String) {
+        self.title = title
+        self.detail = detail
+    }
+}
+
+public enum MenuSetupAttentionPolicy {
+    public static func presentation(
+        for input: MenuSetupAttentionInput
+    ) -> MenuSetupAttentionPresentation? {
+        if input.hasUpdateResult {
+            return MenuSetupAttentionPresentation(
+                title: "Review update result",
+                detail: "Open Settings to see what changed"
+            )
+        }
+        if input.closedLidNeedsAttention {
+            return MenuSetupAttentionPresentation(
+                title: "Finish closed-lid setup",
+                detail: "Complete the remaining step in Settings"
+            )
+        }
+        if input.connectedAgentCount == 0 {
+            return MenuSetupAttentionPresentation(
+                title: "Connect an agent",
+                detail: "Open Settings to connect your coding agent."
+            )
+        }
+        return nil
     }
 }

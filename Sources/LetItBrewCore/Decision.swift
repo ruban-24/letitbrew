@@ -4,7 +4,7 @@ public struct Settings: Equatable, Sendable {
     /// Release below this charge, on battery only.
     public var batteryFloor: Int = 20
     public var onlyWhileConnectedToPower = false
-    public var respectLowPowerMode = true
+    public var respectLowPowerMode = false
     public var allowDisplaysToSleep = true
     /// Whether lid-closed mode follows the session automatically.
     public var lidClosedFollowsSession: Bool = true

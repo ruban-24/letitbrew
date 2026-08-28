@@ -195,6 +195,9 @@ private let plugged = PowerState(onBattery: false, batteryPercent: 100, thermal:
 }
 
 @Test func respectedLowPowerModeReleasesOnACAndBattery() {
+    var settings = Settings()
+    #expect(!settings.respectLowPowerMode)
+    settings.respectLowPowerMode = true
     for onBattery in [false, true] {
         let power = PowerState(
             onBattery: onBattery,
@@ -204,7 +207,7 @@ private let plugged = PowerState(onBattery: false, batteryPercent: 100, thermal:
         )
         let decision = decide(
             sessions: [session(.working)], now: now,
-            settings: Settings(), power: power
+            settings: settings, power: power
         )
         #expect(!decision.holdSystem)
         #expect(decision.reason == "low power mode")

@@ -119,6 +119,39 @@ struct MenuBarContentView: View {
                     .padding(.top, 2)
             }
 
+            if let setupAttention {
+                Button {
+                    showSettings()
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .font(.system(size: 18))
+                            .foregroundStyle(.orange)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(setupAttention.title)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.orange)
+                            Text(setupAttention.detail)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer(minLength: 8)
+
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .contentShape(Rectangle())
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.orange.opacity(0.07))
+            }
+
             footer
         }
         .frame(width: 344)
@@ -130,6 +163,7 @@ struct MenuBarContentView: View {
         .onDisappear {
             expandedRepositoryID = nil
             initializedExpansion = false
+            model.cancelUpdate()
         }
         .onChange(of: model.hasLoadedSessionSnapshot) {
             updateExpansionState()
@@ -413,9 +447,18 @@ struct MenuBarContentView: View {
     private var otherSupplementaryRows: [MenuSupplementaryRow] {
         MenuSupplementaryRowPolicy.rows(
             holdReleaseFailure: model.holdReleaseFailure,
-            battery: nil,
             availableVersion: model.availableUpdate?.version
         )
+    }
+
+    private var setupAttention: MenuSetupAttentionPresentation? {
+        MenuSetupAttentionPolicy.presentation(for: MenuSetupAttentionInput(
+            hasUpdateResult: model.updateCompletionReport != nil,
+            closedLidNeedsAttention: model.daemonNeedsSetupAttention,
+            connectedAgentCount: model.agentHooks.filter {
+                $0.state == .connected && $0.disposition == .managed
+            }.count
+        ))
     }
 
     private var updateConfirmationTitle: String {

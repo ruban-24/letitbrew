@@ -21,6 +21,9 @@ struct LetItBrewSettingsView: View {
         .padding(12)
         .sheet(isPresented: updateCompletionReportBinding) { updateCompletionReport }
         .sheet(isPresented: uninstallReportBinding) { uninstallReport }
+        .sheet(item: $presentedRecovery) { guidance in
+            recoverySheet(guidance)
+        }
     }
 
     private var settingsNavigation: some View {
@@ -152,21 +155,29 @@ struct LetItBrewSettingsView: View {
             } header: {
                 Text("Watched Agents")
             } footer: {
-                Button {
-                    model.refreshAgentConnections()
-                } label: {
-                    Label("Refresh Connections", systemImage: "arrow.clockwise")
+                VStack(alignment: .leading, spacing: 8) {
+                    if let message = displayedHookMessage {
+                        Text(message)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+
+                    Button {
+                        model.refreshAgentConnections()
+                    } label: {
+                        Label("Refresh Connections", systemImage: "arrow.clockwise")
+                    }
+                    .controlSize(.small)
+                    .disabled(
+                        model.hookActionInProgress
+                            || model.uninstallInProgress
+                            || model.updateBlocksOtherActions
+                            || !model.agentHooks.contains {
+                                model.isAgentWatched($0.id) || $0.disposition == .disconnectFailed
+                            }
+                    )
+                    .accessibilityHint("Retry failed cleanup and check watched agent connections again")
                 }
-                .controlSize(.small)
-                .disabled(
-                    model.hookActionInProgress
-                        || model.uninstallInProgress
-                        || model.updateBlocksOtherActions
-                        || !model.agentHooks.contains {
-                            model.isAgentWatched($0.id) || $0.disposition == .disconnectFailed
-                        }
-                )
-                .accessibilityHint("Retry failed cleanup and check watched agent connections again")
             }
         }
         .formStyle(.grouped)
@@ -375,7 +386,7 @@ struct LetItBrewSettingsView: View {
                     maxWidth: .infinity,
                     // ponytail: keeps the footer on the bottom edge while the
                     // ScrollView still rescues tall update/uninstall failure text.
-                    minHeight: proxy.size.height - 56,
+                    minHeight: max(0, proxy.size.height - 56),
                     alignment: .top
                 )
                 .padding(28)
@@ -400,9 +411,6 @@ struct LetItBrewSettingsView: View {
             Button("Cancel", role: .cancel) { model.cancelUninstall() }
         } message: {
             Text("This disconnects all connected agent integrations, stops Let It Brew's background service, removes its settings and session records, and moves Let It Brew to the Trash.")
-        }
-        .sheet(item: $presentedRecovery) { guidance in
-            recoverySheet(guidance)
         }
     }
 
@@ -552,9 +560,6 @@ struct LetItBrewSettingsView: View {
         .interactiveDismissDisabled()
         .onAppear { model.uninstallReportDidAppear() }
         .onDisappear { model.uninstallReportDidDisappear() }
-        .sheet(item: $presentedRecovery) { guidance in
-            recoverySheet(guidance)
-        }
     }
 
     @ViewBuilder
@@ -597,9 +602,6 @@ struct LetItBrewSettingsView: View {
             }
             .padding(24)
             .frame(width: 460)
-            .sheet(item: $presentedRecovery) { guidance in
-                recoverySheet(guidance)
-            }
         }
     }
 
@@ -695,6 +697,19 @@ struct LetItBrewSettingsView: View {
     private func copyToPasteboard(_ text: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    private var displayedHookMessage: String? {
+        AgentConnectionMessagePolicy.displayedMessage(
+            operationMessage: model.hookMessage,
+            connections: model.agentHooks.map {
+                AgentConnectionMessageInput(
+                    name: $0.name,
+                    state: $0.state,
+                    disposition: $0.disposition
+                )
+            }
+        )
     }
 
     private var closedLidDescription: String {

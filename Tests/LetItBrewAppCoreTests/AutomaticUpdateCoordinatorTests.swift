@@ -203,6 +203,30 @@ private func release(version: String) -> StableUpdateRelease? {
     #expect(store.snapshot.availableRelease == nil)
 }
 
+@Test @MainActor func initializationDiscardsUntrustedCachedRelease() throws {
+    let store = AutomaticUpdateStore()
+    let valid = try #require(release(version: "0.6.6"))
+    store.snapshot.availableRelease = StableUpdateRelease(
+        version: valid.version,
+        dmg: UpdateAsset(
+            name: valid.dmg.name,
+            downloadURL: URL(string: "https://evil.example/LetItBrew.dmg")!,
+            size: valid.dmg.size,
+            githubSHA256: valid.dmg.githubSHA256
+        ),
+        checksums: valid.checksums
+    )
+
+    let coordinator = AutomaticUpdateCoordinator(
+        installedVersion: try #require(StableUpdateVersion("0.6.5")),
+        environment: UpdateEnvironment(fetchResult: .success(valid)),
+        persistence: store
+    )
+
+    #expect(coordinator.availableRelease == nil)
+    #expect(store.snapshot.availableRelease == nil)
+}
+
 @Test @MainActor func interactiveUpdateStateKeepsAvailabilityInSync() throws {
     let store = AutomaticUpdateStore()
     let available = try #require(release(version: "0.6.6"))

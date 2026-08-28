@@ -19,10 +19,10 @@ extension LetItBrewAppModel: UninstallEnvironment {
     func releaseHolds() async -> Result<Void, UninstallFailure> {
         // Exactly the user-facing pause path: clears both power assertions, the
         // lid hold, and the daemon hold, and persists the choice — but,
-        // unlike the plain Release action, this waits for all releases to
-        // actually be confirmed rather than firing and forgetting, so a real
-        // refusal (see PowerAssertions.swift IMPORTANT 3) blocks instead of
-        // being silently discarded.
+        // unlike the plain Release action, this waits for connected-daemon and
+        // local releases to settle. If the live connection is already gone,
+        // the next gate performs a fresh daemon reconciliation before any
+        // removal. A real refusal still blocks instead of being discarded.
         guard await releaseHoldsAwaitingConfirmation() else {
             return failure(
                 .releaseHolds,
