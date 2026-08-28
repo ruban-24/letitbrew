@@ -119,6 +119,21 @@ release_version_is_canonical() {
     [[ "$1" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
 }
 
+release_dmg_payload_is_valid() {
+    local root="$1" entry_count background_count package_count
+    [ -d "$root/Let It Brew.app" ] && [ ! -L "$root/Let It Brew.app" ] || return 1
+    [ -L "$root/Applications" ] && [ "$(/usr/bin/readlink "$root/Applications")" = /Applications ] || return 1
+    [ -f "$root/.DS_Store" ] && [ ! -L "$root/.DS_Store" ] || return 1
+    [ -f "$root/.VolumeIcon.icns" ] && [ ! -L "$root/.VolumeIcon.icns" ] || return 1
+    [ -d "$root/.background" ] && [ ! -L "$root/.background" ] || return 1
+    [ -f "$root/.background/dmg-background.png" ] && [ ! -L "$root/.background/dmg-background.png" ] || return 1
+
+    entry_count="$(/usr/bin/find "$root" -mindepth 1 -maxdepth 1 -print | /usr/bin/awk 'END { print NR + 0 }')" || return 1
+    background_count="$(/usr/bin/find "$root/.background" -mindepth 1 -maxdepth 1 -print | /usr/bin/awk 'END { print NR + 0 }')" || return 1
+    package_count="$(/usr/bin/find "$root" -name '*.pkg' -print | /usr/bin/awk 'END { print NR + 0 }')" || return 1
+    [ "$entry_count" -eq 5 ] && [ "$background_count" -eq 1 ] && [ "$package_count" -eq 0 ]
+}
+
 release_read_project_version() {
     local project_file="$1"
     RELEASE_MARKETING_VERSION="$(release_project_value "$project_file" MARKETING_VERSION)" || {

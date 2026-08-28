@@ -193,18 +193,14 @@ release_notary_finalize_app() {
 
 release_notary_final_verify_dmg() {
     local dmg="$1" version="$2" build="$3"
-    local mounted_app entry_count package_count
+    local mounted_app
     release_notary_xcrun stapler validate "$dmg" || return 1
     release_notary_codesign --verify --strict "$dmg" || return 1
     release_notary_hdiutil verify "$dmg" || return 1
     RELEASE_NOTARY_MOUNT="$(/usr/bin/mktemp -d /private/tmp/LetItBrewNotaryMount.XXXXXX)" || return 1
-    release_notary_hdiutil attach -readonly -nobrowse -mountpoint "$RELEASE_NOTARY_MOUNT" "$dmg" >/dev/null || return 1
+    release_notary_hdiutil attach -readonly -nobrowse -noautoopen -mountpoint "$RELEASE_NOTARY_MOUNT" "$dmg" >/dev/null || return 1
     mounted_app="$RELEASE_NOTARY_MOUNT/Let It Brew.app"
-    [ -d "$mounted_app" ] && [ ! -L "$mounted_app" ] || return 1
-    [ -L "$RELEASE_NOTARY_MOUNT/Applications" ] && [ "$(/usr/bin/readlink "$RELEASE_NOTARY_MOUNT/Applications")" = /Applications ] || return 1
-    entry_count="$(/usr/bin/find "$RELEASE_NOTARY_MOUNT" -mindepth 1 -maxdepth 1 -print | /usr/bin/awk 'END { print NR + 0 }')"
-    package_count="$(/usr/bin/find "$RELEASE_NOTARY_MOUNT" -name '*.pkg' -print | /usr/bin/awk 'END { print NR + 0 }')"
-    [ "$entry_count" -eq 2 ] && [ "$package_count" -eq 0 ] || return 1
+    release_dmg_payload_is_valid "$RELEASE_NOTARY_MOUNT" || return 1
     [ "$(release_plist_value "$mounted_app/Contents/Info.plist" CFBundleShortVersionString)" = "$version" ] || return 1
     [ "$(release_plist_value "$mounted_app/Contents/Info.plist" CFBundleVersion)" = "$build" ] || return 1
     release_notary_xcrun stapler validate "$mounted_app" || return 1

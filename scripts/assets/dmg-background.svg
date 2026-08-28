@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="660" height="420" viewBox="0 0 660 420">
+  <defs>
+    <linearGradient id="spill" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#A875EE"/>
+      <stop offset="1" stop-color="#7135C7"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="660" height="420" fill="#FBFAFF"/>
+
+  <path
+    d="M0 0H184C171 10 165 23 150 25C132 27 125 19 109 31C97 40 95 57 77 56C61 55 57 42 40 45C24 48 18 61 0 59Z"
+    fill="url(#spill)"
+  />
+  <path
+    d="M660 420H456C469 411 481 404 498 403C517 402 525 408 541 396C553 387 556 371 575 373C590 374 597 386 613 382C632 378 640 366 660 370Z"
+    fill="#7B43D4"
+    fill-opacity=".78"
+  />
+  <circle cx="64" cy="93" r="5" fill="#7B43D4" fill-opacity=".15"/>
+  <circle cx="598" cy="333" r="3" fill="#7B43D4" fill-opacity=".13"/>
+
+  <text
+    x="330"
+    y="70"
+    fill="#281C35"
+    font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif"
+    font-size="24"
+    font-weight="700"
+    letter-spacing="-.4"
+    text-anchor="middle"
+  >Drag Let It Brew to Applications</text>
+  <text
+    x="330"
+    y="96"
+    fill="#675A73"
+    font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif"
+    font-size="13"
+    font-weight="500"
+    text-anchor="middle"
+  >One quick drag, then open it from Applications.</text>
+
+  <g fill="none" stroke="#7B43D4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M270 220H382" stroke-width="6"/>
+    <path d="M369 207L387 220L369 233" stroke-width="6"/>
+  </g>
+  <text
+    x="330"
+    y="252"
+    fill="#6530B2"
+    font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif"
+    font-size="10"
+    font-weight="700"
+    letter-spacing="1.2"
+    text-anchor="middle"
+  >DRAG TO INSTALL</text>
+</svg>

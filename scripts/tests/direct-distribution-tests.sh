@@ -89,6 +89,7 @@ make_fake_app() {
     /usr/bin/install -m 644 "$SCRIPT_DIR/../LICENSE" "$app/Contents/Resources/Legal/LICENSE"
     /usr/bin/install -m 644 "$SCRIPT_DIR/../NOTICE" "$app/Contents/Resources/Legal/NOTICE"
     /usr/bin/install -m 644 "$SCRIPT_DIR/../TRADEMARKS.md" "$app/Contents/Resources/Legal/TRADEMARKS.md"
+    printf 'fake icon\n' >"$app/Contents/Resources/AppIcon.icns"
 }
 
 verify_legal_resources_only() {
@@ -366,6 +367,16 @@ expect_true "accepts entitlement-free runtime slices with CDHashes" release_buil
 
 echo
 echo "-- DMG payload, naming, signing, verification, and replacement --"
+dmg_payload="$TEST_ROOT/dmg-payload"
+/bin/mkdir -p "$dmg_payload/Let It Brew.app" "$dmg_payload/.background"
+/bin/ln -s /Applications "$dmg_payload/Applications"
+/usr/bin/touch "$dmg_payload/.DS_Store" "$dmg_payload/.VolumeIcon.icns" "$dmg_payload/.background/dmg-background.png"
+expect_true "accepts the exact styled DMG payload" release_dmg_payload_is_valid "$dmg_payload"
+/usr/bin/touch "$dmg_payload/unexpected.txt"
+expect_false "rejects an unexpected DMG payload entry" release_dmg_payload_is_valid "$dmg_payload"
+/bin/rm "$dmg_payload/unexpected.txt" "$dmg_payload/.background/dmg-background.png"
+expect_false "rejects a missing trusted DMG background" release_dmg_payload_is_valid "$dmg_payload"
+
 TEST_DETACH_ATTEMPTS=0
 TEST_DETACH_FAILURES=2
 release_dmg_hdiutil() {
@@ -392,7 +403,9 @@ release_dmg_create_image() {
     event create-image
     [ -d "$stage/Let It Brew.app" ] || return 1
     [ -L "$stage/Applications" ] && [ "$(/usr/bin/readlink "$stage/Applications")" = /Applications ] || return 1
-    [ "$(/usr/bin/find "$stage" -mindepth 1 -maxdepth 1 -print | /usr/bin/awk 'END { print NR + 0 }')" -eq 2 ] || return 1
+    [ -f "$stage/.VolumeIcon.icns" ] && [ ! -L "$stage/.VolumeIcon.icns" ] || return 1
+    [ -f "$stage/.background/dmg-background.png" ] && [ ! -L "$stage/.background/dmg-background.png" ] || return 1
+    [ "$(/usr/bin/find "$stage" -mindepth 1 -maxdepth 1 -print | /usr/bin/awk 'END { print NR + 0 }')" -eq 4 ] || return 1
     [ "$(/usr/bin/find "$stage" -name '*.pkg' -print | /usr/bin/awk 'END { print NR + 0 }')" -eq 0 ] || return 1
     printf 'unsigned dmg bytes\n' >"$destination"
 }
@@ -410,7 +423,8 @@ expect_true "creates isolated stable version-named DMG" release_dmg_main "$build
 expect_true "DMG has stable marketing-version name" test -f "$build_root/LetItBrew-${TEST_VERSION}.dmg"
 dmg_events="$(/usr/bin/tr '\n' ',' <"$TEST_LEDGER")"
 expect_contains <(printf '%s\n' "$dmg_events") 'dmg-app-verify,create-image,dmg-codesign:--force --sign 0123456789ABCDEF0123456789ABCDEF01234567 --timestamp .*\.new\.[0-9]+\.dmg,dmg-codesign:--verify --strict .*\.new\.[0-9]+\.dmg,verify-image,' "DMG is release-verified, built, signed, then image-verified"
-expect_equal "$(release_manifest_get "$build_manifest" DMG_TOP_LEVEL_ENTRIES)" "Applications,Let It Brew.app" "manifest records the exact two-item payload"
+expect_equal "$(release_manifest_get "$build_manifest" DMG_TOP_LEVEL_ENTRIES)" ".DS_Store,.VolumeIcon.icns,.background,Applications,Let It Brew.app" "manifest records the exact visible and hidden DMG payload"
+expect_equal "$(release_manifest_get "$build_manifest" DMG_BACKGROUND_ENTRY)" ".background/dmg-background.png" "manifest records the trusted Finder background"
 expect_false "ordinary DMG creation refuses overwrite" release_dmg_main "$build_root"
 release_dmg_cleanup >/dev/null 2>&1 || true
 release_manifest_set "$build_manifest" APP_STAPLED 1
