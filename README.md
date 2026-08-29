@@ -13,6 +13,8 @@ agents work. It lets your Mac sleep as soon as the work stops.
   <img src=".github/assets/macos-download-badge.svg" alt="Download Let It Brew for macOS" width="194">
 </a>
 
+<br>
+
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)](https://www.apple.com/macos/)
 [![CI](https://github.com/ruban-24/letitbrew/actions/workflows/ci.yml/badge.svg)](https://github.com/ruban-24/letitbrew/actions/workflows/ci.yml)
