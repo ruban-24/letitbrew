@@ -4,6 +4,10 @@
 
 # Let It Brew
 
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)](https://www.apple.com/macos/)
+[![CI](https://github.com/ruban-24/letitbrew/actions/workflows/ci.yml/badge.svg)](https://github.com/ruban-24/letitbrew/actions/workflows/ci.yml)
+
 **Your Mac sleeps. Your agent dies. Let It Brew fixes that.**
 
 A macOS menu-bar app that keeps your Mac awake while supported local coding
@@ -14,10 +18,6 @@ agents work. It lets your Mac sleep as soon as the work stops.
 </a>
 
 <br>
-
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)](https://www.apple.com/macos/)
-[![CI](https://github.com/ruban-24/letitbrew/actions/workflows/ci.yml/badge.svg)](https://github.com/ruban-24/letitbrew/actions/workflows/ci.yml)
 
 [Release notes and SHA-256](https://github.com/ruban-24/letitbrew/releases/latest) &middot;
 [letitbrew.app](https://letitbrew.app)
