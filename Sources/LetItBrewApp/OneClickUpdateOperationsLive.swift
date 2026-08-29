@@ -445,22 +445,28 @@ final class LiveOneClickUpdateOperations:
     }
 
     private func validateMountedPayload(_ image: MountedUpdateImage) throws {
-        let entries = try fileManager.contentsOfDirectory(
+        switch MountedUpdatePayloadValidator.validate(
             at: image.mountPoint,
-            includingPropertiesForKeys: nil,
-            options: []
-        )
-        guard Set(entries.map(\.lastPathComponent)) == ["Applications", "Let It Brew.app"],
-              entries.count == 2,
-              try directoryIsOrdinary(image.appBundle)
-        else {
-            throw LiveUpdateOperationError.invalidDiskImage("payload is not exactly Let It Brew.app and Applications")
-        }
-        let applications = image.mountPoint.appendingPathComponent("Applications")
-        guard isSymbolicLink(applications),
-              try fileManager.destinationOfSymbolicLink(atPath: applications.path) == "/Applications"
-        else {
-            throw LiveUpdateOperationError.invalidDiskImage("Applications is not the expected symlink")
+            fileManager: fileManager
+        ) {
+        case .valid:
+            return
+        case .invalidApplicationsLink:
+            throw LiveUpdateOperationError.invalidDiskImage(
+                "Applications is not the expected symlink"
+            )
+        case .invalidPresentation:
+            throw LiveUpdateOperationError.invalidDiskImage(
+                "guided presentation assets were missing, unsafe, or unexpected"
+            )
+        case .invalidInventory:
+            throw LiveUpdateOperationError.invalidDiskImage(
+                "payload inventory is not an accepted Let It Brew installer layout"
+            )
+        case .invalidAppBundle:
+            throw LiveUpdateOperationError.invalidDiskImage(
+                "Let It Brew.app is missing or is not an ordinary directory"
+            )
         }
     }
 

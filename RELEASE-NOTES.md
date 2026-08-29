@@ -12,6 +12,28 @@ against the SHA-256 published with the release.
 
 ---
 
+## 0.7.1 (build 28)
+
+Fixed:
+
+- The one-click updater now accepts both the original two-entry DMG and the
+  exact guided DMG layout introduced in v0.7.0. It still rejects unexpected
+  files, altered presentation assets, unsafe symlinks, and an app bundle that
+  is not an ordinary directory.
+- v0.7.0 was withdrawn from the stable update channel after its guided DMG was
+  found to be incompatible with the payload check inside earlier app versions.
+  The check stopped the update before the installed app was changed.
+
+Updating from v0.6.5 or earlier:
+
+- The updater inside v0.6.5 and earlier cannot install the guided v0.7.1 DMG.
+  Quit Let It Brew, download v0.7.1 from GitHub Releases, open the DMG, drag
+  **Let It Brew.app** to **Applications**, choose **Replace**, and relaunch it.
+  Do not uninstall first; settings and agent connections are preserved. This is
+  a one-time manual replacement: future in-app updates use the corrected
+  payload check. Anyone who installed the withdrawn v0.7.0 should follow the
+  same steps.
+
 ## 0.7.0 (build 27)
 
 New:

@@ -64,16 +64,55 @@ for image_target in $image_targets; do
     fi
 done
 
-if ! grep -qE '^[[:space:]]+MARKETING_VERSION: 0\.7\.0$' project.yml; then
-    fail "project.yml MARKETING_VERSION is not 0.7.0"
+if ! grep -qE '^[[:space:]]+MARKETING_VERSION: 0\.7\.1$' project.yml; then
+    fail "project.yml MARKETING_VERSION is not 0.7.1"
 fi
 
-if ! grep -qE '^[[:space:]]+CURRENT_PROJECT_VERSION: 27$' project.yml; then
-    fail "project.yml CURRENT_PROJECT_VERSION is not 27"
+if ! grep -qE '^[[:space:]]+CURRENT_PROJECT_VERSION: 28$' project.yml; then
+    fail "project.yml CURRENT_PROJECT_VERSION is not 28"
 fi
 
-if ! grep -Fq 'print("letitbrew 0.7.0")' Sources/letitbrew/main.swift; then
-    fail "letitbrew --version source is not 0.7.0"
+if ! grep -Fq 'print("letitbrew 0.7.1")' Sources/letitbrew/main.swift; then
+    fail "letitbrew --version source is not 0.7.1"
+fi
+
+if ! grep -Fq '## 0.7.1 (build 28)' RELEASE-NOTES.md \
+    || ! grep -Fq 'Do not uninstall first' RELEASE-NOTES.md \
+    || ! grep -Fq 'settings and agent connections are preserved' RELEASE-NOTES.md; then
+    fail "0.7.1 release notes are missing the one-time manual replacement bridge"
+fi
+
+if ! grep -Fq '0.6.5 or earlier' SUPPORT.md \
+    || ! grep -Fq 'choose **Replace**' SUPPORT.md \
+    || ! grep -Fq 'Do not uninstall first' SUPPORT.md; then
+    fail "SUPPORT.md is missing the one-time manual replacement instructions"
+fi
+
+if ! grep -Fq '## v0.7.1 release scope' docs/ATTENDED-UAT.md \
+    || ! grep -Fq 'Record version 0.7.1, build 28' docs/ATTENDED-UAT.md; then
+    fail "attended UAT release scope is not 0.7.1 build 28"
+fi
+
+if ! grep -Fq '## Manual replacement bridge' docs/ATTENDED-UAT.md \
+    || ! grep -Fq 'signed v0.6.5' docs/ATTENDED-UAT.md \
+    || ! grep -Fq 'choose **Replace**' docs/ATTENDED-UAT.md \
+    || ! grep -Fq 'signed version newer than v0.7.1' docs/ATTENDED-UAT.md; then
+    fail "attended UAT is missing the signed 0.6.5 manual bridge and corrected-updater gates"
+fi
+
+if ! awk '
+    $0 == "</a>" {
+        if ((getline blank) <= 0 || blank != "") exit 1
+        if ((getline badges) <= 0 || badges !~ /^\[!\[License:/) exit 1
+        found = 1
+    }
+    END { if (!found) exit 1 }
+' README.md; then
+    fail "README download button must be followed by one blank line and then the other badges"
+fi
+
+if ! grep -Fq 'MountedUpdatePayloadValidator.validate' Sources/LetItBrewApp/OneClickUpdateOperationsLive.swift; then
+    fail "live updater does not use the shared mounted-payload validator"
 fi
 
 if [ "$(/usr/bin/grep -m 1 -v '^$' LICENSE)" != "                                 Apache License" ] \

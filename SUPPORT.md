@@ -60,6 +60,14 @@ seconds after launch, Let It Brew checks GitHub for release metadata if it has
 not attempted an automatic check in the previous 24 hours. You can also check
 manually from **Settings → About**. Downloads always require confirmation.
 
+**How do I update from v0.6.5 or earlier to v0.7.1?** Quit Let It Brew,
+download v0.7.1 from GitHub Releases, open the DMG, drag **Let It Brew.app** to
+**Applications**, choose **Replace**, and relaunch it. Do not uninstall first;
+your settings, agent connections, and session data stay in place. This is a
+one-time manual replacement because the updater inside v0.6.5 and earlier
+rejects the guided installer layout. Future in-app updates use the corrected
+check. Follow the same steps if you installed the withdrawn v0.7.0.
+
 **Is Let It Brew available through Homebrew or the App Store?** No. The signed,
 notarized DMG on [GitHub Releases](https://github.com/ruban-24/letitbrew/releases/latest)
 is the only install channel.
