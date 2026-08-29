@@ -102,13 +102,15 @@ fi
 
 if ! awk '
     $0 == "</a>" {
-        if ((getline blank) <= 0 || blank != "") exit 1
+        if ((getline blank_before) <= 0 || blank_before != "") exit 1
+        if ((getline spacer) <= 0 || spacer != "<br>") exit 1
+        if ((getline blank_after) <= 0 || blank_after != "") exit 1
         if ((getline badges) <= 0 || badges !~ /^\[!\[License:/) exit 1
         found = 1
     }
     END { if (!found) exit 1 }
 ' README.md; then
-    fail "README download button must be followed by one blank line and then the other badges"
+    fail "README download button must have a visible spacer before the other badges"
 fi
 
 if ! grep -Fq 'MountedUpdatePayloadValidator.validate' Sources/LetItBrewApp/OneClickUpdateOperationsLive.swift; then
