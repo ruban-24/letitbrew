@@ -398,7 +398,7 @@ struct LetItBrewSettingsView: View {
             titleVisibility: .visible
         ) {
             Button("Install Update") { model.confirmUpdate() }
-            Button("Cancel", role: .cancel) { model.cancelUpdate() }
+            Button("Cancel", role: .cancel) { model.cancelUpdate(from: .settings) }
         } message: {
             Text(updateConfirmationMessage)
         }
@@ -618,13 +618,18 @@ struct LetItBrewSettingsView: View {
 
     private var updateConfirmationBinding: Binding<Bool> {
         Binding(
-            get: { if case .available = model.updateState { true } else { false } },
+            get: {
+                guard model.updateConfirmationSurface == .settings,
+                      case .available = model.updateState
+                else { return false }
+                return true
+            },
             // SwiftUI also writes false after the Install button. The model
             // marks that operation in progress synchronously, so only a real
             // dismissal reaches cancelUpdate().
             set: { presented in
                 if !presented && !model.updateInProgress {
-                    model.cancelUpdate()
+                    model.cancelUpdate(from: .settings)
                 }
             }
         )

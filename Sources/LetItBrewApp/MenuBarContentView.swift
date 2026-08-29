@@ -73,6 +73,14 @@ private extension View {
     func popoverHoverHighlight(cornerRadius: CGFloat = 6) -> some View {
         modifier(PopoverHoverHighlight(cornerRadius: cornerRadius))
     }
+
+    func popoverActionRowAffordance() -> some View {
+        popoverHoverHighlight(cornerRadius: 0)
+            .overlay(alignment: .top) {
+                Divider()
+                    .opacity(0.5)
+            }
+    }
 }
 
 struct MenuBarContentView: View {
@@ -155,7 +163,7 @@ struct MenuBarContentView: View {
         .onDisappear {
             expandedRepositoryID = nil
             initializedExpansion = false
-            model.cancelUpdate()
+            model.cancelUpdate(from: .menuBar)
         }
         .onChange(of: model.hasLoadedSessionSnapshot) {
             updateExpansionState()
@@ -170,7 +178,7 @@ struct MenuBarContentView: View {
             titleVisibility: .visible
         ) {
             Button("Install Update") { model.confirmUpdate() }
-            Button("Cancel", role: .cancel) { model.cancelUpdate() }
+            Button("Cancel", role: .cancel) { model.cancelUpdate(from: .menuBar) }
         } message: {
             Text(updateConfirmationMessage)
         }
@@ -272,7 +280,7 @@ struct MenuBarContentView: View {
 
         case .update(let version):
             Button {
-                model.presentAvailableUpdate()
+                model.presentAvailableUpdate(on: .menuBar)
             } label: {
                 HStack(spacing: 10) {
                     Image(systemName: "arrow.down.circle.fill")
@@ -291,6 +299,7 @@ struct MenuBarContentView: View {
                 .padding(.vertical, 10)
             }
             .buttonStyle(.plain)
+            .popoverActionRowAffordance()
         }
     }
 
@@ -382,11 +391,7 @@ struct MenuBarContentView: View {
             }
             .buttonStyle(.plain)
             .frame(height: 32)
-            .popoverHoverHighlight(cornerRadius: 0)
-            .overlay(alignment: .top) {
-                Divider()
-                    .opacity(0.5)
-            }
+            .popoverActionRowAffordance()
             .keyboardShortcut(",")
 
             Button {
@@ -405,11 +410,7 @@ struct MenuBarContentView: View {
             }
             .buttonStyle(.plain)
             .frame(height: 32)
-            .popoverHoverHighlight(cornerRadius: 0)
-            .overlay(alignment: .top) {
-                Divider()
-                    .opacity(0.5)
-            }
+            .popoverActionRowAffordance()
             .keyboardShortcut("q")
         }
         .font(.caption)
@@ -466,10 +467,15 @@ struct MenuBarContentView: View {
 
     private var updateConfirmationBinding: Binding<Bool> {
         Binding(
-            get: { if case .available = model.updateState { true } else { false } },
+            get: {
+                guard model.updateConfirmationSurface == .menuBar,
+                      case .available = model.updateState
+                else { return false }
+                return true
+            },
             set: { presented in
                 if !presented && !model.updateInProgress {
-                    model.cancelUpdate()
+                    model.cancelUpdate(from: .menuBar)
                 }
             }
         )

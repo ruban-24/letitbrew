@@ -204,6 +204,11 @@ private struct UserDefaultsLetItBrewSettingsMigrationPersistence:
     }
 }
 
+enum UpdateConfirmationSurface {
+    case menuBar
+    case settings
+}
+
 @MainActor
 final class LetItBrewAppModel: ObservableObject {
     private static let logger = Logger(
@@ -272,6 +277,7 @@ final class LetItBrewAppModel: ObservableObject {
     @Published private(set) var uninstallReportIsPresented = false
     @Published private(set) var updateState: OneClickUpdateState = .idle
     @Published private(set) var updateInProgress = false
+    @Published private(set) var updateConfirmationSurface: UpdateConfirmationSurface?
     @Published private(set) var updateCompletionReport: UpdateCompletionReport?
     @Published private(set) var keepWorkingWithLidClosed: Bool {
         didSet {
@@ -580,10 +586,13 @@ final class LetItBrewAppModel: ObservableObject {
         )
     }()
 
-    func presentAvailableUpdate() {
+    func presentAvailableUpdate(on surface: UpdateConfirmationSurface) {
         guard let release = availableUpdate, let updateCoordinator else { return }
         updateCoordinator.present(release)
         updateState = updateCoordinator.state
+        if case .available = updateState {
+            updateConfirmationSurface = surface
+        }
     }
 
     var updateBlocksOtherActions: Bool {
@@ -597,7 +606,10 @@ final class LetItBrewAppModel: ObservableObject {
     }
 
     func checkForUpdates() {
-        runUpdate(beginning: .checking) { await $0.check() }
+        runUpdate(
+            beginning: .checking,
+            availableConfirmationSurface: .settings
+        ) { await $0.check() }
     }
 
     func confirmUpdate() {
@@ -605,14 +617,15 @@ final class LetItBrewAppModel: ObservableObject {
         runUpdate(beginning: .installing(release)) { await $0.confirmInstall() }
     }
 
-    func cancelUpdate() {
-        guard !updateInProgress else { return }
+    func cancelUpdate(from surface: UpdateConfirmationSurface) {
+        guard !updateInProgress, updateConfirmationSurface == surface else { return }
         if let updateCoordinator {
             updateCoordinator.cancelInstall()
             updateState = updateCoordinator.state
         } else {
             updateState = .idle
         }
+        updateConfirmationSurface = nil
     }
 
     func retryUpdate() {
@@ -623,7 +636,16 @@ final class LetItBrewAppModel: ObservableObject {
         case .install(let release):
             .installing(release)
         }
-        runUpdate(beginning: beginning) { await $0.retry() }
+        let availableConfirmationSurface: UpdateConfirmationSurface? = switch retry {
+        case .check:
+            .settings
+        case .install:
+            nil
+        }
+        runUpdate(
+            beginning: beginning,
+            availableConfirmationSurface: availableConfirmationSurface
+        ) { await $0.retry() }
     }
 
     func dismissUpdateStatus() {
@@ -634,6 +656,7 @@ final class LetItBrewAppModel: ObservableObject {
         } else {
             updateState = .idle
         }
+        updateConfirmationSurface = nil
     }
 
     func updateDiagnostic(for failure: OneClickUpdateFailure) -> String {
@@ -653,6 +676,7 @@ final class LetItBrewAppModel: ObservableObject {
 
     private func runUpdate(
         beginning state: OneClickUpdateState,
+        availableConfirmationSurface: UpdateConfirmationSurface? = nil,
         _ operation: @escaping (OneClickUpdateCoordinator) async -> Void
     ) {
         guard !updateInProgress,
@@ -663,6 +687,7 @@ final class LetItBrewAppModel: ObservableObject {
               updateCompletionReport == nil
         else { return }
         guard let updateCoordinator else {
+            updateConfirmationSurface = nil
             updateState = .failed(
                 OneClickUpdateFailure(
                     kind: .discovery,
@@ -678,6 +703,7 @@ final class LetItBrewAppModel: ObservableObject {
         // to false after every button, including Install; this distinguishes
         // the confirmed operation from a real cancellation.
         updateInProgress = true
+        updateConfirmationSurface = nil
         updateState = state
         Task { [weak self] in
             guard let self else { return }
@@ -686,6 +712,11 @@ final class LetItBrewAppModel: ObservableObject {
             self.automaticUpdateCoordinator?.recordInteractiveState(self.updateState)
             self.availableUpdate = self.automaticUpdateCoordinator?.availableRelease
             self.updateInProgress = false
+            if case .available = self.updateState {
+                self.updateConfirmationSurface = availableConfirmationSurface
+            } else {
+                self.updateConfirmationSurface = nil
+            }
             if case .readyToQuit = self.updateState {
                 // Give SwiftUI one main-actor turn to dismiss the dialog before
                 // asking AppKit to terminate, matching the proven uninstall
