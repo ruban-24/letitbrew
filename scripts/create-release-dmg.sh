@@ -241,9 +241,9 @@ release_dmg_main() {
     release_manifest_set "$manifest" DMG_FILENAME "$name" || return 1
     release_manifest_set "$manifest" DMG_PHASE "$phase" || return 1
     release_manifest_set "$manifest" DMG_SHA256 "$(release_sha256 "$target")" || return 1
-    release_manifest_set "$manifest" DMG_APPLICATIONS_SYMLINK /Applications || return 1
-    release_manifest_set "$manifest" DMG_TOP_LEVEL_ENTRIES '.DS_Store,.VolumeIcon.icns,.background,Applications,Let It Brew.app' || return 1
-    release_manifest_set "$manifest" DMG_BACKGROUND_ENTRY '.background/dmg-background.png' || return 1
+    release_manifest_set "$manifest" DMG_APPLICATIONS_SYMLINK "$LETITBREW_DMG_APPLICATIONS_SYMLINK" || return 1
+    release_manifest_set "$manifest" DMG_TOP_LEVEL_ENTRIES "$LETITBREW_DMG_TOP_LEVEL_ENTRIES" || return 1
+    release_manifest_set "$manifest" DMG_BACKGROUND_ENTRY "$LETITBREW_DMG_BACKGROUND_ENTRY" || return 1
 
     release_dmg_cleanup || return 1
     RELEASE_DMG_STAGE=""

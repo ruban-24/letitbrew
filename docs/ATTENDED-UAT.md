@@ -14,14 +14,40 @@ If a safety or power test fails, stop with physical access to the Mac, preserve
 the original `SleepDisabled` baseline, record the exact reproduction, and stop
 using the affected feature until it is understood.
 
-## v0.7.0 release scope
+## v0.7.1 release scope
 
-v0.7.0 changes power and display assertion policies, menu and Settings controls,
-passive update discovery, helper/update/uninstall recovery, and the guided DMG
-installer. All applicable checklists in this document are required for the
-signed release candidate; evidence from an earlier release is not a substitute.
-Record version 0.7.0, build 27, the full commit, and artifact hashes with the
-results.
+v0.7.1 carries the v0.7.0 power, display, menu, Settings, passive-update,
+recovery, and guided-installer changes, and corrects the mounted-DMG payload
+check. Record version 0.7.1, build 28, the full commit, and artifact hashes with
+the results. The completed v0.7.0 UAT remains evidence for unchanged behavior;
+repeat the fresh-install and one-click-update paths with the signed v0.7.1
+candidate because packaging and update validation are the affected release
+boundaries.
+
+## Manual replacement bridge
+
+Run this once from a signed v0.6.5 install to the signed v0.7.1 candidate. It
+proves the path required for existing users; do not substitute a fresh install.
+
+1. With v0.6.5 installed at `/Applications/Let It Brew.app`, record its version
+   and build, relevant preferences, agent connection states, a harmless session
+   data fixture, daemon registration and health, and the exact `SleepDisabled`
+   value.
+2. Quit Let It Brew. Do not uninstall it or disconnect its agents.
+3. Verify the v0.7.1 DMG against the candidate's generated checksum and release
+   manifest. Open it, drag **Let It Brew.app** to **Applications**, and choose **Replace**.
+4. Relaunch from Applications and confirm version 0.7.1, build 28.
+5. Confirm the recorded preferences, agent connections, and session fixture are
+   unchanged. Confirm the daemon's registered/absent state and health match the
+   pre-replacement state with the v0.7.1 identity.
+6. Confirm `pmset -g` has the exact recorded `SleepDisabled` value and there is
+   no unexpected sleep debt, updater workspace, staged app, or backup.
+
+This bridge bypasses the updater inside v0.6.5; it does not exercise the
+corrected mounted-DMG validator. That validator requires a separate one-click
+update from signed v0.7.1 to a signed version newer than v0.7.1 whose DMG uses
+the guided layout. Run the checklist below when that authorized candidate
+exists.
 
 ## One-click update
 

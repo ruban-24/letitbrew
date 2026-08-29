@@ -2,6 +2,10 @@
 # Shared, source-only helpers for Let It Brew's direct-distribution scripts.
 # This file never signs, builds, mounts, submits, staples, or publishes by itself.
 
+RELEASE_DMG_CONTRACT_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && /bin/pwd -P)/dmg-payload-contract.sh"
+# shellcheck source=dmg-payload-contract.sh
+source "$RELEASE_DMG_CONTRACT_FILE"
+
 LETITBREW_RELEASE_TEAM_ID="MV2UL94MDC"
 LETITBREW_RELEASE_APP_ID="com.ruban24.letitbrew"
 RELEASE_WORKFLOW_LOCK_DIR="${RELEASE_WORKFLOW_LOCK_DIR:-}"
@@ -120,18 +124,35 @@ release_version_is_canonical() {
 }
 
 release_dmg_payload_is_valid() {
-    local root="$1" entry_count background_count package_count
+    local root="$1" actual_entries expected_entries background_directory background_count package_count
+    background_directory="${LETITBREW_DMG_BACKGROUND_ENTRY%/*}"
     [ -d "$root/Let It Brew.app" ] && [ ! -L "$root/Let It Brew.app" ] || return 1
-    [ -L "$root/Applications" ] && [ "$(/usr/bin/readlink "$root/Applications")" = /Applications ] || return 1
+    [ -L "$root/Applications" ] \
+        && [ "$(/usr/bin/readlink "$root/Applications")" = "$LETITBREW_DMG_APPLICATIONS_SYMLINK" ] \
+        || return 1
     [ -f "$root/.DS_Store" ] && [ ! -L "$root/.DS_Store" ] || return 1
     [ -f "$root/.VolumeIcon.icns" ] && [ ! -L "$root/.VolumeIcon.icns" ] || return 1
-    [ -d "$root/.background" ] && [ ! -L "$root/.background" ] || return 1
-    [ -f "$root/.background/dmg-background.png" ] && [ ! -L "$root/.background/dmg-background.png" ] || return 1
+    [ -d "$root/$background_directory" ] && [ ! -L "$root/$background_directory" ] || return 1
+    [ -f "$root/$LETITBREW_DMG_BACKGROUND_ENTRY" ] \
+        && [ ! -L "$root/$LETITBREW_DMG_BACKGROUND_ENTRY" ] \
+        || return 1
 
-    entry_count="$(/usr/bin/find "$root" -mindepth 1 -maxdepth 1 -print | /usr/bin/awk 'END { print NR + 0 }')" || return 1
-    background_count="$(/usr/bin/find "$root/.background" -mindepth 1 -maxdepth 1 -print | /usr/bin/awk 'END { print NR + 0 }')" || return 1
+    actual_entries="$(
+        /usr/bin/find "$root" -mindepth 1 -maxdepth 1 -exec /usr/bin/basename {} \; \
+            | LC_ALL=C /usr/bin/sort \
+            | /usr/bin/paste -sd, -
+    )" || return 1
+    expected_entries="$(
+        printf '%s\n' "$LETITBREW_DMG_TOP_LEVEL_ENTRIES" \
+            | /usr/bin/tr ',' '\n' \
+            | LC_ALL=C /usr/bin/sort \
+            | /usr/bin/paste -sd, -
+    )" || return 1
+    background_count="$(/usr/bin/find "$root/$background_directory" -mindepth 1 -maxdepth 1 -print | /usr/bin/awk 'END { print NR + 0 }')" || return 1
     package_count="$(/usr/bin/find "$root" -name '*.pkg' -print | /usr/bin/awk 'END { print NR + 0 }')" || return 1
-    [ "$entry_count" -eq 5 ] && [ "$background_count" -eq 1 ] && [ "$package_count" -eq 0 ]
+    [ "$actual_entries" = "$expected_entries" ] \
+        && [ "$background_count" -eq 1 ] \
+        && [ "$package_count" -eq 0 ]
 }
 
 release_read_project_version() {
