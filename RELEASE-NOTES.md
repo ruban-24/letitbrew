@@ -12,6 +12,23 @@ against the SHA-256 published with the release.
 
 ---
 
+## 0.7.2 (build 29)
+
+Changed:
+
+- Shortened the menu popover's battery, power, Low Power Mode, thermal, and
+  unavailable-power status titles so their meaning stays visible beside the
+  enable switch. The battery safety state now reads **Battery limit reached**
+  above **Your Mac can sleep normally** instead of truncating a full sentence.
+- The popover header now uses the Let It Brew app icon as a consistent brand
+  mark. The menu-bar flask remains state-aware, filling only while Let It Brew
+  is keeping the Mac awake.
+
+Updating:
+
+- v0.7.1 can discover and install v0.7.2 from **Settings → About → Check for
+  Updates…** using the corrected guided-DMG updater path.
+
 ## 0.7.1 (build 28)
 
 Fixed:

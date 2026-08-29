@@ -334,16 +334,16 @@ public enum MenuHeaderCopy {
 
         fileprivate var message: String {
             switch self {
-            case .battery(let percent):
-                "Battery at \(percent)% — your Mac can sleep"
+            case .battery:
+                "Battery limit reached"
             case .connectedPowerOnly:
-                "Battery power released the sleep hold"
+                "Running on battery"
             case .lowPowerMode:
-                "Low Power Mode released the sleep hold"
+                "Low Power Mode is on"
             case .thermal:
-                "Mac is too warm — it can sleep"
+                "Mac is too warm"
             case .powerUnavailable:
-                "Power status unavailable — your Mac can sleep"
+                "Power status unavailable"
             }
         }
     }
