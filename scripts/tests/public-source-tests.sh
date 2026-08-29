@@ -64,16 +64,16 @@ for image_target in $image_targets; do
     fi
 done
 
-if ! grep -qE '^[[:space:]]+MARKETING_VERSION: 0\.6\.5$' project.yml; then
-    fail "project.yml MARKETING_VERSION is not 0.6.5"
+if ! grep -qE '^[[:space:]]+MARKETING_VERSION: 0\.7\.0$' project.yml; then
+    fail "project.yml MARKETING_VERSION is not 0.7.0"
 fi
 
-if ! grep -qE '^[[:space:]]+CURRENT_PROJECT_VERSION: 26$' project.yml; then
-    fail "project.yml CURRENT_PROJECT_VERSION is not 26"
+if ! grep -qE '^[[:space:]]+CURRENT_PROJECT_VERSION: 27$' project.yml; then
+    fail "project.yml CURRENT_PROJECT_VERSION is not 27"
 fi
 
-if ! grep -Fq 'print("letitbrew 0.6.5")' Sources/letitbrew/main.swift; then
-    fail "letitbrew --version source is not 0.6.5"
+if ! grep -Fq 'print("letitbrew 0.7.0")' Sources/letitbrew/main.swift; then
+    fail "letitbrew --version source is not 0.7.0"
 fi
 
 if [ "$(/usr/bin/grep -m 1 -v '^$' LICENSE)" != "                                 Apache License" ] \

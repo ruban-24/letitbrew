@@ -12,6 +12,34 @@ against the SHA-256 published with the release.
 
 ---
 
+## 0.7.0 (build 27)
+
+New:
+
+- Added Power & Display controls for connected-power-only operation, Low Power
+  Mode, the battery floor, and whether displays may sleep while agents work.
+- Added passive update discovery about 30 seconds after launch, throttled to one
+  automatic attempt per day. Downloads still require confirmation.
+
+Changed:
+
+- Refreshed the menu and Settings around watched agents, active sessions, pause
+  state, power constraints, and clearer helper recovery actions.
+- Added a guided DMG layout for dragging Let It Brew into Applications.
+
+Safety and reliability:
+
+- System and display assertions are now managed separately, with explicit
+  release-state confirmation and retry handling for the privileged helper.
+- Update and uninstall failures now preserve the app and present recovery steps
+  when cleanup needs another attempt.
+
+Release gate:
+
+- Automated source and distribution suites cover the release metadata and
+  packaging contracts. The signed candidate still requires the full attended
+  [release UAT](docs/ATTENDED-UAT.md) before publication.
+
 ## 0.6.5 (build 26)
 
 Fixed:

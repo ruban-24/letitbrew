@@ -20,13 +20,15 @@ Confirm that:
 already open when the hooks changed.
 
 **An agent says Action needed or Couldn't connect.** In **Settings → Agents**,
-follow the message shown under that agent, then choose **Check Again**. If the
-message reports an invalid configuration, review the agent's user-scoped path
-in [Privacy and local data](docs/PRIVACY.md) and fix only the reported issue.
+follow the message shown under that agent, then choose **Refresh Connections**.
+If the message reports an invalid configuration, review the agent's user-scoped
+path in [Privacy and local data](docs/PRIVACY.md) and fix only the reported
+issue.
 
 **Codex asks me to run `/hooks`.** Codex requires explicit trust for the hooks
 Let It Brew installs. Run `/hooks` inside Codex, trust the Let It Brew entries,
-then return to **Settings → Agents** and choose **Check Again**.
+then return to **Settings → Agents**. The connection refreshes automatically;
+choose **Refresh Connections** if it does not.
 
 **My Mac sleeps while an agent appears to be running.** Confirm the session is
 listed as **Working**. Let It Brew releases its hold when a session becomes Idle,
@@ -53,8 +55,10 @@ tied to the exact signed app at `/Applications/Let It Brew.app`. Running from a
 subfolder, mounted DMG, or Downloads disables closed-lid management.
 
 **Do settings survive an update?** Yes. Updating replaces the app bundle while
-leaving preferences, agent connections, and session data in place. Update checks
-are manual; there is no background polling.
+leaving preferences, agent connections, and session data in place. About 30
+seconds after launch, Let It Brew checks GitHub for release metadata if it has
+not attempted an automatic check in the previous 24 hours. You can also check
+manually from **Settings → About**. Downloads always require confirmation.
 
 **Is Let It Brew available through Homebrew or the App Store?** No. The signed,
 notarized DMG on [GitHub Releases](https://github.com/ruban-24/letitbrew/releases/latest)
@@ -71,8 +75,8 @@ privileged background service after you approve it in System Settings. Declining
 that approval leaves ordinary open-lid holding available.
 
 Let It Brew has no account, cloud service, or telemetry. It never uploads agent
-sessions or project data. A manual update check contacts GitHub for release
-metadata and, after confirmation, downloads the DMG and checksum. See
+sessions or project data. Automatic and manual update checks contact GitHub for
+release metadata and, after confirmation, download the DMG and checksum. See
 [Privacy and local data](docs/PRIVACY.md) and the
 [architecture document](docs/ARCHITECTURE.md) for details.
 

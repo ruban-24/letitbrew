@@ -14,14 +14,14 @@ If a safety or power test fails, stop with physical access to the Mac, preserve
 the original `SleepDisabled` baseline, record the exact reproduction, and stop
 using the affected feature until it is understood.
 
-## v0.6.1 hotfix scope
+## v0.7.0 release scope
 
-The v0.6.0 release record already contains full attended OpenCode and GitHub
-Copilot CLI lifecycle passes plus the final four-agent signed smoke test. v0.6.1
-changes only the downloaded-DMG Gatekeeper assessment, version metadata, and
-release documentation. Do not repeat the full lifecycle matrices unless agent
-adapter or installation code changes. Verify the corrected assessment against
-the signed v0.6.1 DMG and run the short four-agent signed smoke test.
+v0.7.0 changes power and display assertion policies, menu and Settings controls,
+passive update discovery, helper/update/uninstall recovery, and the guided DMG
+installer. All applicable checklists in this document are required for the
+signed release candidate; evidence from an earlier release is not a substitute.
+Record version 0.7.0, build 27, the full commit, and artifact hashes with the
+results.
 
 ## One-click update
 
@@ -81,17 +81,17 @@ installed but not yet trusted:
 1. Open **Settings → Agents** and confirm Codex reports **Action needed**.
 2. In Codex, run `/hooks`, inspect the exact Let It Brew hook definitions, and
    approve them.
-3. Return to Let It Brew without clicking **Check Again**.
+3. Return to Let It Brew without clicking **Refresh Connections**.
 4. Confirm the Codex row changes to **Connected** automatically.
 5. If Let It Brew says existing Codex sessions must be restarted, confirm an
    already-open session does not count as refreshed until it is restarted.
 6. Repeat once by opening **Settings → Agents** directly and confirm pane
-   appearance also refreshes the status without **Check Again**.
+   appearance also refreshes the status without **Refresh Connections**.
 
-Keep **Check Again** available as the attended fallback. Confirm returning to
-the app does not reconnect a Codex integration that the user explicitly
-disconnected, does not recheck Claude as a side effect, and does not create a
-timer or repeated refresh while the app remains active.
+Keep **Refresh Connections** available as the attended fallback. Confirm
+returning to the app does not reconnect a Codex integration that the user
+explicitly disconnected, does not recheck Claude as a side effect, and does not
+create a timer or repeated refresh while the app remains active.
 
 ## Four-agent hook lifecycle matrix — not run by automation
 
@@ -117,8 +117,8 @@ attributes. `ctime` and link count are audit observations only: a same-directory
 rename can legitimately change them, so do not require impossible equality.
 Retain the original inode by atomically moving the original final file to a
 unique same-directory recovery name, then create a disposable test copy at the
-lexical target. Keep any lexical symlink unchanged. This lets Connect and
-Disconnect operate only on the disposable copy while the original inode remains
+lexical target. Keep any lexical symlink unchanged. This lets the watched-agent
+switch operate only on the disposable copy while the original inode remains
 recoverable.
 
 On normal cleanup, quit the Dev candidate, atomically move any test target to a
@@ -135,17 +135,17 @@ placeholder or recovery inode. After the pass, quarantine any created test file
 and verify absence again. Do not promise inode identity for a file that did not
 exist before the pass.
 
-Choose explicit **Connect**, verify its healthy state, and record whether an
-existing session needs restart. For every pass use harmless work and verify:
+Turn the agent's watched switch on, verify its healthy state, and record whether
+an existing session needs restart. For every pass use harmless work and verify:
 
 1. `SessionStart` is Idle; a prompt makes it Working; a stop makes it Idle; and
    session end removes the record.
 2. The Working → Idle → Working sequence updates the row and open-lid hold
    within two polls; removal releases it when it is the final Working record.
-3. **Disconnect** immediately hides that vendor's records and removes only the
-   owned configuration. Restore every backed-up target's exact bytes and
-   metadata after the pass, or remove a target only when true absence was
-   recorded before the pass.
+3. Turning the watched switch off immediately hides that vendor's records and
+   removes only the owned configuration. Restore every backed-up target's exact
+   bytes and metadata after the pass, or remove a target only when true absence
+   was recorded before the pass.
 
 Run these vendor-specific additions rather than claiming untested parity:
 
