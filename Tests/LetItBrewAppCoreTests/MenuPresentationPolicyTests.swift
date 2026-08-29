@@ -22,17 +22,27 @@ import LetItBrewCore
         isPaused: false,
         isKeepingAwake: false,
         releaseConstraint: .battery(percent: 20)
-    ) == "Battery at 20% — your Mac can sleep")
+    ) == "Battery limit reached")
+    #expect(MenuHeaderCopy.resolve(
+        isPaused: false,
+        isKeepingAwake: false,
+        releaseConstraint: .connectedPowerOnly
+    ) == "Running on battery")
+    #expect(MenuHeaderCopy.resolve(
+        isPaused: false,
+        isKeepingAwake: false,
+        releaseConstraint: .lowPowerMode
+    ) == "Low Power Mode is on")
     #expect(MenuHeaderCopy.resolve(
         isPaused: false,
         isKeepingAwake: false,
         releaseConstraint: .thermal
-    ) == "Mac is too warm — it can sleep")
+    ) == "Mac is too warm")
     #expect(MenuHeaderCopy.resolve(
         isPaused: false,
         isKeepingAwake: false,
         releaseConstraint: .powerUnavailable
-    ) == "Power status unavailable — your Mac can sleep")
+    ) == "Power status unavailable")
     #expect(MenuHeaderCopy.resolve(isPaused: false, isKeepingAwake: false)
         == "Watching for agents")
 }

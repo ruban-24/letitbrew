@@ -45,20 +45,12 @@ private func flaskImage(level: CGFloat, side: CGFloat) -> NSImage {
     return image
 }
 
-private struct PopoverFlaskMark: View {
-    let state: LetItBrewPresentationState
-
-    private var level: CGFloat { state == .awake ? 0.5 : 0 }
-
+private struct PopoverAppIcon: View {
     var body: some View {
-        Image(nsImage: flaskImage(level: level, side: 20))
-            .foregroundStyle(Color(.brewPurple))
+        Image(nsImage: NSApplication.shared.applicationIconImage)
+            .resizable()
+            .scaledToFit()
             .frame(width: 32, height: 32)
-            .background(Color(.brewPurple).opacity(0.12), in: RoundedRectangle(cornerRadius: 9))
-            .overlay {
-                RoundedRectangle(cornerRadius: 9)
-                    .stroke(Color(.brewPurple).opacity(0.28), lineWidth: 1)
-            }
             .accessibilityHidden(true)
     }
 }
@@ -202,7 +194,7 @@ struct MenuBarContentView: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            PopoverFlaskMark(state: model.presentationState)
+            PopoverAppIcon()
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(model.reason)
