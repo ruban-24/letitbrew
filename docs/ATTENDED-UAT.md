@@ -14,6 +14,15 @@ If a safety or power test fails, stop with physical access to the Mac, preserve
 the original `SleepDisabled` baseline, record the exact reproduction, and stop
 using the affected feature until it is understood.
 
+## v0.7.3 release scope
+
+v0.7.3 changes only the update action's menu-row affordances and confirmation
+ownership. Record version 0.7.3, build 30, the full commit, and artifact hashes
+with the results. The completed v0.7.2 release evidence remains valid for
+unchanged power, daemon, agent-hook, Settings, packaging, and recovery behavior.
+Run the signed v0.7.2 -> v0.7.3 one-click update path from the menu popover and
+confirm that it presents exactly one installer without opening Settings.
+
 ## v0.7.2 release scope
 
 v0.7.2 changes only the menu popover's compact safety-state copy and leading

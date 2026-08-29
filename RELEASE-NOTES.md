@@ -12,6 +12,24 @@ against the SHA-256 published with the release.
 
 ---
 
+## 0.7.3 (build 30)
+
+Changed:
+
+- The available-update row now uses the same divider and hover highlight as the
+  Settings and Quit actions in the menu popover.
+
+Fixed:
+
+- Choosing an available update from the menu popover now presents exactly one
+  install confirmation. It no longer also opens Settings and presents a second
+  confirmation there.
+
+Updating:
+
+- v0.7.2 can discover and install v0.7.3 directly from the menu popover or from
+  **Settings -> About -> Check for Updates...**.
+
 ## 0.7.2 (build 29)
 
 Changed:
