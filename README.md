@@ -22,7 +22,7 @@ agents work. It lets your Mac sleep as soon as the work stops.
 [Release notes and SHA-256](https://github.com/ruban-24/letitbrew/releases/latest) &middot;
 [letitbrew.app](https://letitbrew.app)
 
-<img src=".github/assets/hero-macbook.png" width="760" alt="Let It Brew's menu-bar popover reading Keeping your Mac awake, with a Codex session and a Claude Code session both working">
+<img src=".github/assets/hero-macbook.png" width="760" alt="Let It Brew's current menu showing an enabled awake hold, battery controls, and working Codex and Claude Code sessions">
 
 </div>
 
@@ -39,6 +39,8 @@ work is happening.
   thermal pressure let the Mac sleep.
 - **Works with the lid closed.** Active work can continue after you shut the
   MacBook.
+- **Follows your power rules.** Choose connected-power-only operation, set a
+  battery floor, use Low Power Mode, and decide whether displays may sleep.
 - **Stays out of the way.** It has no Dock icon, main window, or notifications.
 - **Keeps session data local.** There is no account, cloud service, or telemetry.
 
