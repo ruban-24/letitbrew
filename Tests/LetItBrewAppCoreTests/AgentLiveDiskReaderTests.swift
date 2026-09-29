@@ -35,6 +35,8 @@ import Testing
     try FileManager.default.createSymbolicLink(at: openCode, withDestinationURL: final)
     let openCodeResult = AgentLiveDiskReader.inspect(agent: .opencode, registryURL: root.appendingPathComponent("absent-registry"), defaultTarget: openCode, helperPath: "/letitbrew")
     #expect(openCodeResult.state == .invalid)
+    let piResult = AgentLiveDiskReader.inspect(agent: .pi, registryURL: root.appendingPathComponent("absent-registry"), defaultTarget: openCode, helperPath: "/letitbrew")
+    #expect(piResult.state == .invalid)
 
     let dangling = root.appendingPathComponent("dangling.json")
     try FileManager.default.createSymbolicLink(at: dangling, withDestinationURL: root.appendingPathComponent("missing.json"))
@@ -42,7 +44,8 @@ import Testing
     #expect(danglingResult.state == .invalid)
 }
 
-@Test func liveReaderResolvesOpenCodeParentSymlinksWithoutFollowingThePluginLeaf() throws {
+@Test(arguments: [AgentID.opencode, .pi])
+func liveReaderResolvesExtensionParentSymlinksWithoutFollowingTheLeaf(agent: AgentID) throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     let actualPlugins = root.appendingPathComponent("actual/plugins")
     try FileManager.default.createDirectory(at: actualPlugins, withIntermediateDirectories: true)
@@ -55,10 +58,11 @@ import Testing
     )
     let configuredPlugin = configuredRoot.appendingPathComponent("plugins/letitbrew.js")
     let actualPlugin = actualPlugins.appendingPathComponent("letitbrew.js")
-    try OpenCodePlugin.install(into: nil, cliPath: "/letitbrew").write(to: actualPlugin)
+    let bytes = agent == .pi ? try PiExtension.install(into: nil, cliPath: "/letitbrew") : try OpenCodePlugin.install(into: nil, cliPath: "/letitbrew")
+    try bytes.write(to: actualPlugin)
 
     let result = AgentLiveDiskReader.inspect(
-        agent: .opencode,
+        agent: agent,
         registryURL: root.appendingPathComponent("missing-registry.json"),
         defaultTarget: configuredPlugin,
         helperPath: "/letitbrew"

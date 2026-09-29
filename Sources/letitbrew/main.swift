@@ -14,7 +14,7 @@ case "install":
         exit(runInstall())
     }
     guard arguments.count == 2, let agent = AgentID(rawValue: arguments[1]) else {
-        FileHandle.standardError.write(Data("Usage: letitbrew install [claude|codex|opencode|copilot]\n".utf8))
+        FileHandle.standardError.write(Data("Usage: letitbrew install [claude|codex|opencode|copilot|pi]\n".utf8))
         exit(1)
     }
     exit(runInstall(agents: [agent]))
@@ -23,7 +23,7 @@ case "uninstall":
         exit(runUninstall())
     }
     guard arguments.count == 2, let agent = AgentID(rawValue: arguments[1]) else {
-        FileHandle.standardError.write(Data("Usage: letitbrew uninstall [claude|codex|opencode|copilot]\n".utf8))
+        FileHandle.standardError.write(Data("Usage: letitbrew uninstall [claude|codex|opencode|copilot|pi]\n".utf8))
         exit(1)
     }
     exit(runUninstall(agents: [agent]))
@@ -39,16 +39,16 @@ case "status":
 case "repair":
     exit(runRepair())
 case "--version":
-    print("letitbrew 0.7.3")
+    print("letitbrew 0.8.0")
     exit(0)
 default:
     print("""
     letitbrew - keep your Mac awake while AI agents work
 
     Usage:
-      letitbrew install [claude|codex|opencode|copilot]
+      letitbrew install [claude|codex|opencode|copilot|pi]
                               install hooks for all agents, or one agent
-      letitbrew uninstall [claude|codex|opencode|copilot]
+      letitbrew uninstall [claude|codex|opencode|copilot|pi]
                               remove hooks for all agents, or one agent
       letitbrew doctor         report install health per event
       letitbrew watch          hold the Mac awake while agents work
@@ -63,9 +63,9 @@ default:
       letitbrew --version
 
     Testing only:
-      LETITBREW_TEST_HOME      redirect both config paths beneath this
+      LETITBREW_TEST_HOME      redirect agent config paths beneath this
                               directory instead of the real home directory.
-                              Takes precedence over CODEX_HOME. Must be an
+                              Takes precedence over agent home overrides. Must be an
                               absolute path.
     """)
     exit(1)

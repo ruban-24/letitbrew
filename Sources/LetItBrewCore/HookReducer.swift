@@ -56,9 +56,9 @@ public enum HookReducer {
             }
             return nil
         case "UserInputRequested":
-            return agent == .opencode ? .set(.idle, detail: nil) : nil
+            return agent == .opencode || agent == .pi ? .set(.idle, detail: nil) : nil
         case "UserInputResolved":
-            return agent == .opencode ? .set(.working, detail: nil) : nil
+            return agent == .opencode || agent == .pi ? .set(.working, detail: nil) : nil
         case "Stop":
             return hasBackgroundTasks ? .set(.working, detail: nil) : .set(.idle, detail: nil)
         case "StopFailure":

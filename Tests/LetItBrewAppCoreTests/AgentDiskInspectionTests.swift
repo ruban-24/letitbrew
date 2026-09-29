@@ -12,6 +12,7 @@ private func generatedBytes(_ agent: AgentID) -> Data {
     case .claude: return try! ClaudeHooks.install(into: nil, cliPath: "/letitbrew")
     case .codex: return try! CodexHooks.install(into: nil, cliPath: "/letitbrew")
     case .opencode: return try! OpenCodePlugin.install(into: nil, cliPath: "/letitbrew")
+    case .pi: return try! PiExtension.install(into: nil, cliPath: "/letitbrew")
     case .copilot: return try! CopilotHooks.install(into: nil, cliPath: "/letitbrew")
     }
 }
@@ -80,8 +81,9 @@ func diskInspectionRejectsMalformedJSONForEveryJSONAdapter(agent: AgentID) {
     #expect(reads == 0)
 }
 
-@Test func unownedOpenCodeFileIsInvalid() {
-    let result = AgentDiskInspection.inspect(agent: .opencode, registry: .valid(nil), defaultTarget: URL(fileURLWithPath: "/plugin"), helperPath: "/letitbrew") { target, _ in
+@Test(arguments: [AgentID.opencode, .pi])
+func unownedExtensionFileIsInvalid(agent: AgentID) {
+    let result = AgentDiskInspection.inspect(agent: agent, registry: .valid(nil), defaultTarget: URL(fileURLWithPath: "/plugin"), helperPath: "/letitbrew") { target, _ in
         .regular(diskSnapshot(target.path), Data("console.log('foreign')".utf8))
     }
     #expect(result.state == .invalid)

@@ -74,6 +74,7 @@ private final class CommandFilesystem {
         case .claude: url = ClaudeHooks.settingsURL(home: homeURL)
         case .codex: url = CodexHooks.hooksURL(home: homeURL, environment: adapterEnvironment)
         case .opencode: url = OpenCodePlugin.pluginURL(home: homeURL, environment: adapterEnvironment)
+        case .pi: url = PiExtension.extensionURL(home: homeURL, environment: adapterEnvironment)
         case .copilot: url = CopilotHooks.hooksURL(home: homeURL, environment: adapterEnvironment)
         }
         return try target(at: url, resolvingParentSymlinks: true)
@@ -107,7 +108,7 @@ private func resolveJSONTarget(_ configured: ExactFileTarget, filesystem: Comman
 private func selectedTarget(_ agent: AgentID, registry: AgentInstallRegistry, connect: Bool, filesystem: CommandFilesystem) throws -> ExactFileTarget {
     if let recorded = registry.targets[agent] { return try filesystem.recordedTarget(recorded) }
     let configured = try filesystem.configuredTarget(for: agent)
-    return connect && agent != .opencode ? try resolveJSONTarget(configured, filesystem: filesystem) : configured
+    return connect && !agent.ownsWholeConfigurationFile ? try resolveJSONTarget(configured, filesystem: filesystem) : configured
 }
 
 private func replacement(agent: AgentID, data: Data?, cli: String, removing: Bool) throws -> Data? {
@@ -115,6 +116,7 @@ private func replacement(agent: AgentID, data: Data?, cli: String, removing: Boo
     case .claude: return removing ? try ClaudeHooks.remove(from: data) : try ClaudeHooks.install(into: data, cliPath: cli)
     case .codex: return removing ? try CodexHooks.remove(from: data) : try CodexHooks.install(into: data, cliPath: cli)
     case .copilot: return removing ? try CopilotHooks.remove(from: data) : try CopilotHooks.install(into: data, cliPath: cli)
+    case .pi: return removing ? try PiExtension.remove(from: data) : try PiExtension.install(into: data, cliPath: cli)
     case .opencode: return removing ? try OpenCodePlugin.remove(from: data) : try OpenCodePlugin.install(into: data, cliPath: cli)
     }
 }
@@ -124,6 +126,7 @@ private func report(agent: AgentID, data: Data?, cli: String) -> HookInstallRepo
     case .claude: ClaudeHooks.report(for: data, cliPath: cli)
     case .codex: CodexHooks.report(for: data, cliPath: cli)
     case .copilot: CopilotHooks.report(for: data, cliPath: cli)
+    case .pi: PiExtension.report(for: data, cliPath: cli)
     case .opencode: OpenCodePlugin.report(for: data, cliPath: cli)
     }
 }
@@ -168,7 +171,7 @@ func runUninstall(agents: Set<AgentID> = Set(AgentID.allCases)) -> Int32 {
             do {
                 let observed = try target.capture()
                 if let existing = observed.data {
-                    if agent == .opencode {
+                    if agent.ownsWholeConfigurationFile {
                         guard try replacement(agent: agent, data: existing, cli: cli, removing: true) == nil else { throw UnsafeTarget(path: target.displayPath) }
                         try throwTestFault("vendor-remove", filesystem: filesystem)
                         let hooks = hasTestFault("active-replacement", filesystem: filesystem)

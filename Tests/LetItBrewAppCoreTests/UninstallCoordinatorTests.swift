@@ -41,6 +41,7 @@ final class RecordingUninstallEnvironment: UninstallEnvironment, @unchecked Send
     func removeCodexHooks() async -> Result<Void, UninstallFailure> { await perform(.removeCodexHooks) }
     func removeOpenCodeHooks() async -> Result<Void, UninstallFailure> { await perform(.removeOpenCodeHooks) }
     func removeCopilotHooks() async -> Result<Void, UninstallFailure> { await perform(.removeCopilotHooks) }
+    func removePiHooks() async -> Result<Void, UninstallFailure> { await perform(.removePiHooks) }
     func disableLaunchAtLogin() async -> Result<Void, UninstallFailure> { await perform(.disableLaunchAtLogin) }
     func deleteUserData() async -> Result<Void, UninstallFailure> { await perform(.deleteUserData) }
     func clearPreferences() async -> Result<Void, UninstallFailure> { await perform(.clearPreferences) }
@@ -90,7 +91,7 @@ func makeFailure(_ step: UninstallStep) -> UninstallFailure {
     #expect(coordinator.state == .blocked(makeFailure(.reconcileDaemon), offersDiagnostic: false))
     let removalSteps: Set<UninstallStep> = [
         .unregisterDaemon, .removeClaudeHooks, .removeCodexHooks,
-        .removeOpenCodeHooks, .removeCopilotHooks,
+        .removeOpenCodeHooks, .removeCopilotHooks, .removePiHooks,
         .disableLaunchAtLogin, .deleteUserData, .clearPreferences, .trashBundle,
     ]
     #expect(environment.calls.allSatisfy { !removalSteps.contains($0) })
@@ -136,7 +137,7 @@ func makeFailure(_ step: UninstallStep) -> UninstallFailure {
         .removeClaudeHooks,
         .removeCodexHooks,
         .removeOpenCodeHooks,
-        .removeCopilotHooks,
+        .removeCopilotHooks, .removePiHooks,
         .disableLaunchAtLogin,
         .deleteUserData,
         .clearPreferences,
@@ -160,7 +161,7 @@ func makeFailure(_ step: UninstallStep) -> UninstallFailure {
         .removeClaudeHooks,
         .removeCodexHooks,
         .removeOpenCodeHooks,
-        .removeCopilotHooks,
+        .removeCopilotHooks, .removePiHooks,
         .disableLaunchAtLogin,
         .deleteUserData,
         .clearPreferences,
@@ -235,7 +236,7 @@ func makeFailure(_ step: UninstallStep) -> UninstallFailure {
         .removeClaudeHooks,
         .removeCodexHooks,
         .removeOpenCodeHooks,
-        .removeCopilotHooks,
+        .removeCopilotHooks, .removePiHooks,
         .disableLaunchAtLogin,
         .deleteUserData,
         .clearPreferences,
@@ -259,6 +260,7 @@ func makeFailure(_ step: UninstallStep) -> UninstallFailure {
     #expect(leftovers.map(\.step) == [.removeCodexHooks, .retainBundleForHookRetry])
     #expect(environment.calls.contains(.removeOpenCodeHooks))
     #expect(environment.calls.contains(.removeCopilotHooks))
+    #expect(environment.calls.contains(.removePiHooks))
     #expect(!environment.calls.contains(.disableLaunchAtLogin))
     #expect(!environment.calls.contains(.deleteUserData))
     #expect(!environment.calls.contains(.clearPreferences))
@@ -301,4 +303,20 @@ func makeFailure(_ step: UninstallStep) -> UninstallFailure {
 
     #expect(coordinator.state == .idle)
     #expect(environment.calls.isEmpty)
+}
+
+@Test @MainActor func piCleanupFailureKeepsTheAppForRetry() async {
+    let environment = RecordingUninstallEnvironment()
+    environment.failures[.removePiHooks] = makeFailure(.removePiHooks)
+    let coordinator = UninstallCoordinator(environment: environment)
+    await coordinator.beginPrecheck()
+    await coordinator.confirm()
+    #expect(coordinator.state == .report(leftovers: [
+        makeFailure(.removePiHooks),
+        UninstallFailure(step: .retainBundleForHookRetry,
+                         message: "Let It Brew was kept installed so hook removal can be retried.",
+                         diagnostic: "Application bundle retained because one or more agent hooks could not be removed.")
+    ]))
+    #expect(!environment.calls.contains(.deleteUserData))
+    #expect(!environment.calls.contains(.trashBundle))
 }

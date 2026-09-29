@@ -907,6 +907,44 @@ import Testing
     #expect(records[0].stateChangedAt == first.stateChangedAt)
 }
 
+@Test func claudeStopWithFinishedBackgroundTasksReleasesWorkingSession() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+    let id = hookUpdaterID("parent", agent: .claude)
+
+    try applyDecodedHook(
+        event: "UserPromptSubmit", json: #"{"session_id":"parent","cwd":"/work/app"}"#,
+        agent: .claude, observedAt: Date(timeIntervalSince1970: 100), storage: storage
+    )
+    try applyDecodedHook(
+        event: "Stop",
+        json: #"{"session_id":"parent","cwd":"/work/app","background_tasks":[{"id":"a","status":"completed"},{"id":"b","status":"failed"},{"id":"c","status":"killed"},{"id":"d","status":"cancelled"},{"id":"e","status":"canceled"},{"id":"f","status":"idle"}]}"#,
+        agent: .claude, observedAt: Date(timeIntervalSince1970: 200), storage: storage
+    )
+
+    let record = try #require(storage.load(id: id))
+    #expect(record.state == .idle)
+    #expect(record.lastEvent == "Stop")
+    #expect(record.accumulatedWorkingTime == 100)
+}
+
+@Test func claudeStopPreservesRunningOrUnrecognizedBackgroundWork() throws {
+    for task in [#"{"status":"running"}"#, #"{"status":"pending"}"#,
+                 #"{"status":"future-status"}"#, "{}", #"{"status":null}"#,
+                 #"{"status":42}"#] {
+        let directory = hookUpdaterTempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = SessionStorage(directory: directory)
+        try applyDecodedHook(
+            event: "Stop",
+            json: "{\"session_id\":\"parent\",\"background_tasks\":[{\"status\":\"completed\"},\(task)]}",
+            agent: .claude, observedAt: Date(timeIntervalSince1970: 100), storage: storage
+        )
+        #expect(storage.load(id: hookUpdaterID("parent", agent: .claude))?.state == .working)
+    }
+}
+
 private func applyDecodedHook(
     event: String,
     json: String,

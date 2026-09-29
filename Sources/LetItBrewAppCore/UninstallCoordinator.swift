@@ -10,6 +10,7 @@ public enum UninstallStep: String, CaseIterable, Equatable, Sendable {
     case removeCodexHooks
     case removeOpenCodeHooks
     case removeCopilotHooks
+    case removePiHooks
     case retainBundleForHookRetry
     case disableLaunchAtLogin
     case deleteUserData
@@ -25,7 +26,7 @@ public enum UninstallStep: String, CaseIterable, Equatable, Sendable {
         case .releaseHolds, .reconcileDaemon, .unregisterDaemon:
             true
         case .removeClaudeHooks, .removeCodexHooks,
-             .removeOpenCodeHooks, .removeCopilotHooks, .retainBundleForHookRetry,
+             .removeOpenCodeHooks, .removeCopilotHooks, .removePiHooks, .retainBundleForHookRetry,
              .disableLaunchAtLogin,
              .deleteUserData, .clearPreferences, .trashBundle:
             false
@@ -77,6 +78,7 @@ public protocol UninstallEnvironment: AnyObject, Sendable {
     func removeCodexHooks() async -> Result<Void, UninstallFailure>
     func removeOpenCodeHooks() async -> Result<Void, UninstallFailure>
     func removeCopilotHooks() async -> Result<Void, UninstallFailure>
+    func removePiHooks() async -> Result<Void, UninstallFailure>
     func disableLaunchAtLogin() async -> Result<Void, UninstallFailure>
     func deleteUserData() async -> Result<Void, UninstallFailure>
     func clearPreferences() async -> Result<Void, UninstallFailure>
@@ -156,6 +158,7 @@ public final class UninstallCoordinator {
             environment.removeCodexHooks,
             environment.removeOpenCodeHooks,
             environment.removeCopilotHooks,
+            environment.removePiHooks,
         ]
 
         var leftovers: [UninstallFailure] = []

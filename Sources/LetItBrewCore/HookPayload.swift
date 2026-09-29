@@ -59,9 +59,9 @@ public struct HookPayload: Decodable, Equatable, Sendable {
         agentId = try values.decodeIfPresent(String.self, forKey: .agentID)
         cwd = try values.decodeIfPresent(String.self, forKey: .cwd)
         source = try values.decodeIfPresent(String.self, forKey: .source)
-        hasBackgroundTasks = !(try values.decodeIfPresent(
+        hasBackgroundTasks = (try values.decodeIfPresent(
             [BackgroundTask].self, forKey: .backgroundTasks
-        ) ?? []).isEmpty
+        ) ?? []).contains(where: \.mayBeWorking)
         hookEventName = try values.decodeIfPresent(String.self, forKey: .hookEventName)
         toolName = try values.decodeIfPresent(String.self, forKey: .toolName)
         notificationType = try values.decodeIfPresent(String.self, forKey: .notificationType)
@@ -82,6 +82,23 @@ public struct HookPayload: Decodable, Equatable, Sendable {
     }
 }
 
-/// Decodes only the structural presence of an object in `background_tasks`.
-/// Unknown task fields are intentionally discarded.
-private struct BackgroundTask: Decodable {}
+/// Read only lifecycle status, never task descriptions, commands or output.
+/// Unknown or missing statuses remain conservative so a vendor schema change
+/// cannot silently release the keep-awake hold during background work.
+private struct BackgroundTask: Decodable {
+    let status: String?
+
+    private enum CodingKeys: String, CodingKey { case status }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        status = try? values.decode(String.self, forKey: .status)
+    }
+
+    var mayBeWorking: Bool {
+        switch status {
+        case "completed", "failed", "killed", "cancelled", "canceled", "idle": false
+        default: true
+        }
+    }
+}

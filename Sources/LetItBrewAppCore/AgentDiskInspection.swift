@@ -139,6 +139,9 @@ public enum AgentDiskInspection {
         case .opencode:
             _ = try OpenCodePlugin.install(into: data, cliPath: helperPath)
             return OpenCodePlugin.report(for: data, cliPath: helperPath)
+        case .pi:
+            _ = try PiExtension.install(into: data, cliPath: helperPath)
+            return PiExtension.report(for: data, cliPath: helperPath)
         case .copilot:
             _ = try CopilotHooks.install(into: data, cliPath: helperPath)
             return CopilotHooks.report(for: data, cliPath: helperPath)

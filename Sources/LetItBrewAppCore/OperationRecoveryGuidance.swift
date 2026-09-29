@@ -149,6 +149,8 @@ public enum OperationRecoveryCatalog {
             hookGuidance(agent: "Codex", id: "codex", diagnostic: diagnostic)
         case .removeOpenCodeHooks:
             hookGuidance(agent: "OpenCode", id: "opencode", diagnostic: diagnostic)
+        case .removePiHooks:
+            hookGuidance(agent: "Pi", id: "pi", diagnostic: diagnostic)
         case .removeCopilotHooks:
             hookGuidance(agent: "GitHub Copilot CLI", id: "copilot", diagnostic: diagnostic)
         case .retainBundleForHookRetry:

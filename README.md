@@ -53,7 +53,7 @@ work is happening.
 | **Releases when agent work stops** | ✅ Yes — automatically | ❌ No — manual switch or timer | ❌ No — ends with its session or trigger |
 | **Closed lid — with charger** | ✅ Yes | ❌ No | ✅ Yes |
 | **Closed lid — without charger** | ✅ Yes | ❌ No | ❌ No |
-| **Agent-specific integration** | ✅ Claude Code, Codex, OpenCode, and GitHub Copilot CLI | ❌ None | ❌ None |
+| **Agent-specific integration** | ✅ Claude Code, Codex, OpenCode, GitHub Copilot CLI, and Pi | ❌ None | ❌ None |
 
 See the [full comparison and guidance](https://letitbrew.app/compare/let-it-brew-vs-caffeine-vs-amphetamine).
 If you want a general-purpose keep-awake utility, Caffeine and Amphetamine are
@@ -67,13 +67,18 @@ good at that. Let It Brew follows coding-agent sessions.
 | Codex | CLI and local app sessions | Lifecycle hooks plus Codex trust approval |
 | OpenCode | Stable 1.x local CLI/app runtime | Global OpenCode plugin |
 | GitHub Copilot CLI | Local CLI | Copilot user hooks |
+| Pi 0.87.1+ | Local CLI | Global Pi extension |
+
+Pi support is new in v0.8.0. After connecting Pi in Settings → Agents,
+restart Pi or use `/reload` to load the extension. The v0.7.3 download does
+not include Pi; see [release notes](RELEASE-NOTES.md) for the release scope.
 
 Let It Brew observes local sessions only. Remote, cloud, SSH, and unsupported
 hook scopes are not observed.
 
 Connections are optional. Let It Brew changes no agent configuration until you
 turn on an agent's watched switch. Turning it off removes only the entry or
-plugin that Let It Brew owns. See the
+plugin or extension that Let It Brew owns. See the
 [agent hook contracts](docs/AGENT-HOOK-CONTRACTS.md) for the exact integration
 boundaries.
 

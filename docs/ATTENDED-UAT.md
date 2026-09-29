@@ -14,6 +14,15 @@ If a safety or power test fails, stop with physical access to the Mac, preserve
 the original `SleepDisabled` baseline, record the exact reproduction, and stop
 using the affected feature until it is understood.
 
+## v0.8.0 release scope
+
+v0.8.0 adds Pi 0.87.1+ support and filters finished/idle Claude background
+tasks on Stop. Record version 0.8.0, build 31, the full commit, and artifact
+hashes with the results. Check Pi connection, task completion, and disconnect,
+plus Claude background-agent completion. Power, daemon, and updater
+implementations are unchanged. Verify the final signed/notarized artifact
+and packaging before publication.
+
 ## v0.7.3 release scope
 
 v0.7.3 changes only the update action's menu-row affordances and confirmation

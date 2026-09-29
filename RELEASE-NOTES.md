@@ -12,6 +12,27 @@ against the SHA-256 published with the release.
 
 ---
 
+## 0.8.0 (build 31) — release candidate
+
+Added:
+
+- Pi coding-agent support for local CLI sessions on Pi 0.87.1 or later.
+  Connect Pi in Settings → Agents, then restart Pi or run `/reload`.
+- Pi tracks active work, input waits, retries, compaction, and completion.
+  Concurrent sessions are tracked independently. Disconnecting removes only
+  Let It Brew’s owned extension.
+
+Fixed:
+
+- Claude Stop events no longer keep the Mac awake solely because their
+  background-task list contains completed, failed, cancelled, killed, or idle
+  entries. Running and unknown statuses still preserve the awake hold.
+
+Updating:
+
+- The v0.8.0 release candidate is not yet published. Signing, notarization,
+  artifact verification, and the final release decision follow this PR.
+
 ## 0.7.3 (build 30)
 
 Changed:
