@@ -60,7 +60,7 @@ private func helperStub() throws -> URL {
     ])
 }
 
-@Test func allFourAgentsAreAttemptedOnceAfterAMiddleFailure() throws {
+@Test func allAgentsAreAttemptedOnceAfterAMiddleFailure() throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -70,6 +70,6 @@ private func helperStub() throws -> URL {
     let ids = AgentID.allCases.map(\.rawValue)
     let results = AgentHelperBatchRunner.run(executableURL: helper, command: "uninstall", agentIDs: ids, timeout: 5)
     #expect(results.map(\.agentID) == ids)
-    #expect(results.filter(\.succeeded).map(\.agentID) == ["claude", "codex", "copilot"])
+    #expect(results.filter(\.succeeded).map(\.agentID) == ["claude", "codex", "copilot", "pi"])
     #expect(results.first(where: { $0.agentID == "opencode" })?.status == 7)
 }

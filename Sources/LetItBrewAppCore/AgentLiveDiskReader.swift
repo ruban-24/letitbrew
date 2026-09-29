@@ -22,7 +22,7 @@ public enum AgentLiveDiskReader {
     }
 
     public static func firstConnectTarget(agent: AgentID, configured: URL) -> URL {
-        if agent == .opencode {
+        if agent.ownsWholeConfigurationFile {
             return configured.deletingLastPathComponent()
                 .resolvingSymlinksInPath()
                 .appendingPathComponent(configured.lastPathComponent)
@@ -82,7 +82,7 @@ public enum AgentLiveDiskReader {
                 if let readExactTarget {
                     return readExactTarget(requested, recorded, agent)
                 }
-                if !recorded, agent != .opencode,
+                if !recorded, !agent.ownsWholeConfigurationFile,
                    (try? FileManager.default.destinationOfSymbolicLink(atPath: requested.path)) != nil,
                    !FileManager.default.fileExists(atPath: requested.resolvingSymlinksInPath().path) {
                     return .invalid(resolvedURL: requested, reason: "Let It Brew will not follow a dangling configuration symlink.")

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Four-agent contract: all writes are contained below one explicit test home.
+# Five-agent contract: all writes are contained below one explicit test home.
 set -euo pipefail
 CLI_INPUT="${1:?usage: test-agent-hook-contracts.sh /absolute/path/to/letitbrew}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -48,14 +48,14 @@ mkdir -p "$TEST_HOME/.claude" "$TEST_HOME/.codex" "$TEST_HOME/.copilot/hooks"
 printf '{"foreign":{"claude":{"nested":[1,{"kept":true}]}}}\n' > "$TEST_HOME/.claude/settings.json"
 printf '{"description":"foreign","hooks":{"foreign":[{"nested":["codex",2]}]}}\n' > "$TEST_HOME/.codex/hooks.json"
 printf '{"version":1,"hooks":{"foreign":[{"nested":["copilot",4]}]}}\n' > "$TEST_HOME/.copilot/hooks/letitbrew.json"
-for agent in claude codex opencode copilot; do "$CLI" install "$agent" >/dev/null; done
+for agent in claude codex opencode copilot pi; do "$CLI" install "$agent" >/dev/null; done
 REGISTRY="$TEST_HOME/Library/Application Support/LetItBrew/agent-hook-targets.json"
 test "$(stat -f '%Lp' "$REGISTRY")" = "600"
 
 # Every adapter accepts a genuinely missing target.  Three JSON adapters were
 # already exercised above with existing files; exercise the OpenCode existing
 # case separately because it is an exact standalone plugin file.
-for agent in claude codex opencode copilot; do
+for agent in claude codex opencode copilot pi; do
   MISSING_HOME="$(mktemp -d /tmp/letitbrew-agent-missing.XXXXXX)"
   env LETITBREW_TEST_HOME="$MISSING_HOME" "$CLI" install "$agent" >/dev/null
   test -f "$MISSING_HOME/Library/Application Support/LetItBrew/agent-hook-targets.json"
@@ -67,6 +67,36 @@ printf '// __letitbrew_opencode_plugin\nexport default []\n' > "$OPENCODE_EXISTI
 env LETITBREW_TEST_HOME="$OPENCODE_EXISTING_HOME" "$CLI" install opencode >/dev/null
 grep -q '__letitbrew_opencode_plugin' "$OPENCODE_EXISTING_HOME/.config/opencode/plugins/letitbrew.js"
 rm -rf "$OPENCODE_EXISTING_HOME"
+
+# Pi owns exactly one extension, never settings.json or another extension.
+PI_HOME="$(mktemp -d /tmp/letitbrew-pi-install.XXXXXX)"
+PI_TARGET="$PI_HOME/.pi/agent/extensions/letitbrew.ts"
+PI_REGISTRY="$PI_HOME/Library/Application Support/LetItBrew/agent-hook-targets.json"
+mkdir -p "$(dirname "$PI_TARGET")"
+printf '{"keep":"settings"}\n' > "$PI_HOME/.pi/agent/settings.json"
+printf '// foreign extension\n' > "$PI_HOME/.pi/agent/extensions/other.ts"
+env LETITBREW_TEST_HOME="$PI_HOME" "$CLI" install pi >/dev/null
+cp "$PI_TARGET" "$PI_HOME/installed-before"
+env LETITBREW_TEST_HOME="$PI_HOME" "$CLI" install pi >/dev/null
+cmp -s "$PI_TARGET" "$PI_HOME/installed-before"
+printf '// __letitbrew_pi_extension\n// stale helper\n' > "$PI_TARGET"
+env LETITBREW_TEST_HOME="$PI_HOME" "$CLI" install pi >/dev/null
+cmp -s "$PI_TARGET" "$PI_HOME/installed-before"
+printf '// foreign replacement\n' > "$PI_TARGET"
+! env LETITBREW_TEST_HOME="$PI_HOME" "$CLI" uninstall pi >/dev/null 2>&1
+test "$(cat "$PI_TARGET")" = '// foreign replacement'
+python3 -c 'import json,sys; assert "pi" in json.load(open(sys.argv[1]))["targets"]' "$PI_REGISTRY"
+! env LETITBREW_TEST_HOME="$PI_HOME" "$CLI" install pi >/dev/null 2>&1
+cp "$PI_HOME/installed-before" "$PI_TARGET"
+env LETITBREW_TEST_HOME="$PI_HOME" "$CLI" uninstall pi >/dev/null
+! test -e "$PI_TARGET"
+test "$(cat "$PI_HOME/.pi/agent/settings.json")" = '{"keep":"settings"}'
+test "$(cat "$PI_HOME/.pi/agent/extensions/other.ts")" = '// foreign extension'
+ln -s other.ts "$PI_TARGET"
+! env LETITBREW_TEST_HOME="$PI_HOME" "$CLI" install pi >/dev/null 2>&1
+test "$(readlink "$PI_TARGET")" = 'other.ts'
+test "$(cat "$PI_HOME/.pi/agent/extensions/other.ts")" = '// foreign extension'
+rm -rf "$PI_HOME"
 
 # First-connect JSON resolves exactly one anchored final path and records that
 # final path; a final OpenCode symlink is never followed.
@@ -131,10 +161,10 @@ test "$(node "$SCRIPT_DIR/test-opencode-plugin.mjs" "$CLI" "$TEST_HOME/.config/o
 grep -q '__letitbrew_hook' "$TEST_HOME/.claude/settings.json"
 grep -q '__letitbrew_codex_hook' "$TEST_HOME/.codex/hooks.json"
 node -e 'const fs=require("fs"); const [claude,codex,copilot]=process.argv.slice(1).map(f=>JSON.parse(fs.readFileSync(f))); const actual=[claude.foreign,codex.hooks.foreign,copilot.hooks.foreign].map(JSON.stringify); const expected=[{"claude":{"nested":[1,{"kept":true}]}},[{"nested":["codex",2]}],[{"nested":["copilot",4]}]].map(JSON.stringify); if(actual.some((value,index)=>value!==expected[index])) process.exit(1)' "$TEST_HOME/.claude/settings.json" "$TEST_HOME/.codex/hooks.json" "$TEST_HOME/.copilot/hooks/letitbrew.json"
-# Exact grammar: unscoped and each four-agent scoped form are accepted; every
+# Exact grammar: unscoped and each five-agent scoped form are accepted; every
 # malformed/extra form is rejected without relying on shell word splitting.
-for agent in claude codex opencode copilot; do "$CLI" install "$agent" >/dev/null; done
-for agent in claude codex opencode copilot; do "$CLI" uninstall "$agent" >/dev/null; done
+for agent in claude codex opencode copilot pi; do "$CLI" install "$agent" >/dev/null; done
+for agent in claude codex opencode copilot pi; do "$CLI" uninstall "$agent" >/dev/null; done
 "$CLI" install >/dev/null
 "$CLI" uninstall >/dev/null
 ! "$CLI" >/dev/null 2>&1
@@ -214,6 +244,7 @@ target_for_agent() {
     claude) printf '%s/.claude/settings.json' "$2";;
     codex) printf '%s/.codex/hooks.json' "$2";;
     copilot) printf '%s/.copilot/hooks/letitbrew.json' "$2";;
+    pi) printf '%s/.pi/agent/extensions/letitbrew.ts' "$2";;
     opencode) printf '%s/.config/opencode/plugins/letitbrew.js' "$2";;
   esac
 }
@@ -225,10 +256,10 @@ seed_agent_target() {
     claude) printf '{"foreign":{"keep":1}}\n' > "$target";;
     codex) printf '{"description":"foreign","hooks":{"keep":[]}}\n' > "$target";;
     copilot) printf '{"version":1,"hooks":{"keep":[]}}\n' > "$target";;
-    opencode) : ;; # its missing file is a valid install input
+    opencode|pi) : ;; # its missing file is a valid install input
   esac
 }
-for agent in claude codex copilot opencode; do
+for agent in claude codex copilot opencode pi; do
   FAULT_HOME="$(mktemp -d /tmp/letitbrew-command-fault.XXXXXX)"
   seed_agent_target "$agent" "$FAULT_HOME"; TARGET="$(target_for_agent "$agent" "$FAULT_HOME")"
   test -e "$TARGET" && cp "$TARGET" "$FAULT_HOME/vendor-before" || : > "$FAULT_HOME/vendor-before"

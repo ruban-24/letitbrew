@@ -95,7 +95,7 @@ import Testing
 }
 
 @Test func hundredConcurrentSessionsRoundRobinEverySupportedAgentAndHoldTheSystem() async throws {
-    let directory = try pressureTempDirectory(label: "four-agent-hundred")
+    let directory = try pressureTempDirectory(label: "all-agent-hundred")
     defer { try? FileManager.default.removeItem(at: directory) }
 
     let records = try await writeConcurrentSessions(
@@ -106,7 +106,7 @@ import Testing
 
     #expect(records.count == 100)
     #expect(Set(records.map(\.tool)) == Set(AgentID.allCases.map(\.rawValue)))
-    #expect(Dictionary(grouping: records, by: \.tool).values.allSatisfy { $0.count == 25 })
+    #expect(Dictionary(grouping: records, by: \.tool).values.allSatisfy { $0.count == 100 / AgentID.allCases.count })
     let decision = decide(
         sessions: records,
         now: Date(timeIntervalSince1970: 2_000),

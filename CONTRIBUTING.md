@@ -63,6 +63,9 @@ and icon, and see [TRADEMARKS.md](TRADEMARKS.md) for the brand-use boundary.
 
 ## Testing
 
+Install Node.js alongside Swift. The Pi adapter test executes its generated
+extension and child-process transport through Node in a disposable directory.
+
 ```sh
 CLANG_MODULE_CACHE_PATH=/private/tmp/LetItBrewContribution-ClangCache \
 SWIFTPM_MODULECACHE_OVERRIDE=/private/tmp/LetItBrewContribution-SwiftPMCache \

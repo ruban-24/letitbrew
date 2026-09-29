@@ -2,7 +2,7 @@ import Testing
 @testable import LetItBrewAppCore
 @testable import LetItBrewCore
 
-@Test func uninstallClearsSelectionAndVisibilityBeforeAllFourRemovalAttempts() {
+@Test func uninstallClearsSelectionAndVisibilityBeforeAllAgentsRemovalAttempts() {
     var events: [String] = []
     var selected: Set<String> = ["claude", "codex"]
     AgentUninstallHooksCoordinator.perform(
@@ -12,7 +12,7 @@ import Testing
         launchRemoval: { events.append("remove:\($0.sorted())") }
     )
     #expect(selected.isEmpty)
-    #expect(events == ["persist:[]", "refresh:[]", "remove:[\"claude\", \"codex\", \"copilot\", \"opencode\"]"])
+    #expect(events == ["persist:[]", "refresh:[]", "remove:[\"claude\", \"codex\", \"copilot\", \"opencode\", \"pi\"]"])
 }
 
 @Test func uninstallCompletionKeepsSelectionEmptyAndProvidesExactFailureRetry() {
@@ -52,7 +52,7 @@ import Testing
     }
 }
 
-@Test func asyncUninstallCycleRunsAllFourThenOnlyFailuresAndFreshCycleResetsToAllFour() {
+@Test func asyncUninstallCycleRunsAllAgentsThenOnlyFailuresAndFreshCycleResetsToAllAgents() {
     var events: [String] = []
     var retained: (([AgentHelperOperationResult]) -> Void)?
     var cycle = AgentUninstallCycle()
@@ -70,7 +70,7 @@ import Testing
     }
 
     run(cycle.beginFresh())
-    #expect(events == ["persist:[]", "refresh:[]", "remove:[\"claude\", \"codex\", \"copilot\", \"opencode\"]"])
+    #expect(events == ["persist:[]", "refresh:[]", "remove:[\"claude\", \"codex\", \"copilot\", \"opencode\", \"pi\"]"])
     retained?(AgentID.allCases.map { agent in
         .init(agentID: agent.rawValue, status: agent == .opencode ? 1 : 0, output: "", timedOut: false)
     })
@@ -86,5 +86,5 @@ import Testing
 
     cycle.beginPositiveIntent()
     run(cycle.beginFresh())
-    #expect(events.suffix(3) == ["persist:[]", "refresh:[]", "remove:[\"claude\", \"codex\", \"copilot\", \"opencode\"]"])
+    #expect(events.suffix(3) == ["persist:[]", "refresh:[]", "remove:[\"claude\", \"codex\", \"copilot\", \"opencode\", \"pi\"]"])
 }

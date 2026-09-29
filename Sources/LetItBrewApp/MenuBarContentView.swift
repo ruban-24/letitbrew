@@ -623,6 +623,12 @@ struct AgentLogo: View {
                     .resizable()
                     .interpolation(.high)
                     .scaledToFit()
+            case "pi":
+                Image("PiAgent")
+                    .renderingMode(.template)
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
             case "copilot":
                 Image("CopilotAgent")
                     .resizable()

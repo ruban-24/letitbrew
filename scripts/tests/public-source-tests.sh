@@ -64,16 +64,16 @@ for image_target in $image_targets; do
     fi
 done
 
-if ! grep -qE '^[[:space:]]+MARKETING_VERSION: 0\.7\.3$' project.yml; then
-    fail "project.yml MARKETING_VERSION is not 0.7.3"
+if ! grep -qE '^[[:space:]]+MARKETING_VERSION: 0\.8\.0$' project.yml; then
+    fail "project.yml MARKETING_VERSION is not 0.8.0"
 fi
 
-if ! grep -qE '^[[:space:]]+CURRENT_PROJECT_VERSION: 30$' project.yml; then
-    fail "project.yml CURRENT_PROJECT_VERSION is not 30"
+if ! grep -qE '^[[:space:]]+CURRENT_PROJECT_VERSION: 31$' project.yml; then
+    fail "project.yml CURRENT_PROJECT_VERSION is not 31"
 fi
 
-if ! grep -Fq 'print("letitbrew 0.7.3")' Sources/letitbrew/main.swift; then
-    fail "letitbrew --version source is not 0.7.3"
+if ! grep -Fq 'print("letitbrew 0.8.0")' Sources/letitbrew/main.swift; then
+    fail "letitbrew --version source is not 0.8.0"
 fi
 
 if ! grep -Fq '## 0.7.1 (build 28)' RELEASE-NOTES.md \
@@ -88,9 +88,9 @@ if ! grep -Fq '0.6.5 or earlier' SUPPORT.md \
     fail "SUPPORT.md is missing the one-time manual replacement instructions"
 fi
 
-if ! grep -Fq '## v0.7.3 release scope' docs/ATTENDED-UAT.md \
-    || ! grep -Fq 'Record version 0.7.3, build 30' docs/ATTENDED-UAT.md; then
-    fail "attended UAT release scope is not 0.7.3 build 30"
+if ! grep -Fq '## v0.8.0 release scope' docs/ATTENDED-UAT.md \
+    || ! grep -Fq 'Record version 0.8.0, build 31' docs/ATTENDED-UAT.md; then
+    fail "attended UAT release scope is not 0.8.0 build 31"
 fi
 
 if ! grep -Fq '## Manual replacement bridge' docs/ATTENDED-UAT.md \

@@ -4,7 +4,7 @@
 
 Let It Brew observes local lifecycle hooks only. It does not enumerate agent
 processes, inspect CPU use, search for installed executables, parse conversations,
-or read Claude/Codex/OpenCode/Copilot prompt and response content.
+or read Claude/Codex/OpenCode/Copilot/Pi prompt and response content.
 
 ## Claude Code
 
@@ -21,9 +21,11 @@ or read Claude/Codex/OpenCode/Copilot prompt and response content.
   for subagent hooks and is combined with the parent ID for an independent
   child record.
 - `SessionStart` source `compact`, `PreCompact`, and `PostCompact` preserve
-  Working. A nonempty `background_tasks` array on Stop preserves Working;
-  an empty or absent array makes Stop Idle. `session_crons` are not treated
-  as current work.
+  Working. On Stop, background tasks with `completed`, `failed`, `killed`,
+  `cancelled`, `canceled`, or `idle` status do not preserve Working. Any
+  other, missing, or unrecognized status conservatively preserves Working.
+  An empty or absent array makes Stop Idle. Only status is read; task prose
+  and commands are discarded. `session_crons` are not treated as current work.
 - Permission events preserve prior state. API-error turns use `StopFailure`;
   user-interrupted turns have no immediate documented terminal hook.
 - Interactive settings-file hooks, including user hooks, are held until the
@@ -84,3 +86,35 @@ or read Claude/Codex/OpenCode/Copilot prompt and response content.
   so Let It Brew observes these events without allowing, denying, or blocking
   Copilot actions; execution tests prove both properties before release.
 - Copilot cloud agent is out of scope.
+
+## Pi (development branch, 0.87.1+)
+
+- Owned extension: `~/.pi/agent/extensions/letitbrew.ts`, relocated by
+  `PI_CODING_AGENT_DIR` when that variable is present in Let It Brew's
+  environment. Finder-launched apps do not inherit shell-only overrides.
+- Source: https://pi.dev/docs/latest/extensions. Verified against the installed
+  `@earendil-works/pi-coding-agent` 0.87.1 declarations, loader, and runtime.
+- `session_start` creates an Idle record. `agent_start` sets Working.
+  `agent_settled` sets Idle after automatic retries, compaction, and queued
+  continuations finish. `agent_end` alone does not change activity.
+- `session_before_compact` keeps the Mac awake for manual or automatic
+  compaction. `session_compact` and `session_compact_failed` restore the
+  underlying run state, including cancellation.
+- `ui_prompt_start` sets Idle. `ui_prompt_end` resumes Working only if a run
+  or compaction is still active; opening an idle dialog cannot create work.
+  This covers Pi's blocking extension UI, not arbitrary terminal input or
+  external third-party dialogs. Prompt titles and contents are not forwarded.
+- `session_shutdown` removes that lifetime's record. A random lifetime suffix
+  keeps separate Pi processes using the same transcript independent, and
+  prevents old shutdown events from removing a reloaded session.
+- Only session identity, cwd, and lifecycle event names reach the helper.
+  Writes are serialized because Pi dispatches UI notifications asynchronously.
+  Missing, failing, or hung helpers are ignored, with a one-second timeout per
+  event. No shell is involved in launching the helper.
+- Install, repair, and removal require the exact first-line ownership marker
+  `// __letitbrew_pi_extension`. Settings and other extensions are untouched.
+  Use `/reload` or restart Pi after connecting or refreshing the extension.
+- `--no-extensions` disables this integration. Remote agents, custom SDK hosts
+  that omit extension lifecycle events, and activity such as standalone tree
+  summaries are not claimed. Forced termination cannot emit shutdown; the
+  existing stale-session policy applies.

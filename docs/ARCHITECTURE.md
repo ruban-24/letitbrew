@@ -100,7 +100,7 @@ event may be missed; it does not bypass the app's battery, thermal, pause, power
 or daemon safety gates and is not evidence that the hold changed.
 
 The deterministic automated pressure harness qualifies 1, 10, 15, 50, and 100
-round-robin sessions across all four agents. It covers independent record
+round-robin sessions across all supported agents. It covers independent record
 identity, old-event/new-event ordering, selected-agent visibility, child-session
 isolation, aggregate hold release only after the final Working session becomes
 Idle, corrupt-record isolation, grouping, and presentation.
@@ -185,16 +185,18 @@ the closed-lid preference reads off.
 
 ## Hook installation
 
-The four adapters are deliberately narrow and user-scoped: Claude Code uses
+The adapters are deliberately narrow and user-scoped: Claude Code uses
 `~/.claude/settings.json`; Codex uses `~/.codex/hooks.json` or
 `$CODEX_HOME/hooks.json`; OpenCode writes its one global plugin at
 `~/.config/opencode/plugins/letitbrew.js` or
-`$OPENCODE_CONFIG_DIR/plugins/letitbrew.js`; and GitHub Copilot CLI uses
-`~/.copilot/hooks/letitbrew.json` or `$COPILOT_HOME/hooks/letitbrew.json`.
+`$OPENCODE_CONFIG_DIR/plugins/letitbrew.js`; GitHub Copilot CLI uses
+`~/.copilot/hooks/letitbrew.json` or `$COPILOT_HOME/hooks/letitbrew.json`; and
+Pi uses `~/.pi/agent/extensions/letitbrew.ts` or
+`$PI_CODING_AGENT_DIR/extensions/letitbrew.ts`.
 The three JSON markers are adapter-specific and frozen: Claude uses
 `__letitbrew_hook`, Codex `__letitbrew_codex_hook`, and Copilot
-`__letitbrew_copilot_hook`. OpenCode owns
-only its named plugin. The versioned registry at
+`__letitbrew_copilot_hook`. OpenCode and Pi own
+only their named plugin/extension files. The versioned registry at
 `~/Library/Application Support/LetItBrew/agent-hook-targets.json` records the
 exact selected target, so later environment changes cannot redirect an owned
 connection.
