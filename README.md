@@ -70,8 +70,9 @@ good at that. Let It Brew follows coding-agent sessions.
 | Pi 0.87.1+ | Local CLI | Global Pi extension |
 
 Pi support is new in v0.8.0. After connecting Pi in Settings → Agents,
-restart Pi or use `/reload` to load the extension. The v0.7.3 download does
-not include Pi; see [release notes](RELEASE-NOTES.md) for the release scope.
+restart Pi or use `/reload` to load the extension. Download
+[v0.8.0 or later](https://github.com/ruban-24/letitbrew/releases/latest)
+for Pi support; see [release notes](RELEASE-NOTES.md) for details.
 
 Let It Brew observes local sessions only. Remote, cloud, SSH, and unsupported
 hook scopes are not observed.
