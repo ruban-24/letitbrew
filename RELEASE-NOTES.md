@@ -12,7 +12,7 @@ against the SHA-256 published with the release.
 
 ---
 
-## 0.8.0 (build 31) — release candidate
+## 0.8.0 (build 31)
 
 Added:
 
@@ -30,8 +30,11 @@ Fixed:
 
 Updating:
 
-- The v0.8.0 release candidate is not yet published. Signing, notarization,
-  artifact verification, and the final release decision follow this PR.
+- v0.7.1–v0.7.3 users can install v0.8.0 from **Settings → About → Check for
+  Updates…**. Users on v0.7.0 or earlier should quit the app and replace it
+  manually using the DMG without uninstalling first.
+- The signed, notarized, and stapled DMG and its SHA-256 checksum are available
+  in the [v0.8.0 release](https://github.com/ruban-24/letitbrew/releases/tag/v0.8.0).
 
 ## 0.7.3 (build 30)
 
