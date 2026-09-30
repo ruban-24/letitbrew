@@ -156,9 +156,8 @@ struct MenuBarContentView: View {
         }
         .frame(width: 344)
         .background(.regularMaterial)
-        // Key animation and reconciliation to stable policy identity, never
-        // active-time copy that changes on each refresh tick.
-        .animation(.snappy, value: model.sessions.map(\.id))
+        // Polling updates content in place. Only an explicit disclosure click
+        // animates layout, so background work cannot animate the scroll area.
         .onAppear(perform: updateExpansionState)
         .onDisappear {
             expandedRepositoryID = nil

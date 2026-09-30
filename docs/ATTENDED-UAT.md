@@ -14,6 +14,19 @@ If a safety or power test fails, stop with physical access to the Mac, preserve
 the original `SleepDisabled` baseline, record the exact reproduction, and stop
 using the affected feature until it is understood.
 
+## v0.8.1 release scope
+
+v0.8.1 stabilizes the activity menu during concurrent hook updates and fixes a
+snapshot-read timing race. Record version 0.8.1, build 32, the full commit, and
+artifact hashes with the results. With five or more Working Claude sessions,
+scroll down and alternate tool activity between sessions and folders: surviving
+rows and groups must keep their positions, with no polling-driven animation or
+scrollbar movement. Stop and resume a child in an expanded two-session folder:
+the header and expansion must remain while one child is still Working. Check
+that actual completions remove rows, disclosure clicks still work, new sessions
+append, and existing power/agent-visibility rules still apply. Run the signed
+artifact and download-channel gates for the final release.
+
 ## v0.8.0 release scope
 
 v0.8.0 adds Pi 0.87.1+ support and filters finished/idle Claude background
