@@ -241,6 +241,33 @@ import LetItBrewCore
     ))
 }
 
+@Test func menuSnapshotIncludesHooksWrittenDuringReadWithoutAcceptingFutureRecords() {
+    let start = Date(timeIntervalSince1970: 1_000.999)
+    var clock = start
+    let snapshot = MenuSessionSnapshot.read(loadRecords: {
+        // Deterministically model a hook crossing the second boundary while
+        // the directory is being read. No wall-clock sleep or timing lottery.
+        clock = Date(timeIntervalSince1970: 1_001.001)
+        return [
+            SessionRecord(id: "v1|6:claude|4:live|0:", tool: "claude", state: .working,
+                          detail: nil, cwd: "/work/app", pid: nil,
+                          updatedAt: Date(timeIntervalSince1970: 1_001)),
+            SessionRecord(id: "v1|6:claude|6:future|0:", tool: "claude", state: .working,
+                          detail: nil, cwd: "/work/app", pid: nil,
+                          updatedAt: Date(timeIntervalSince1970: 1_002)),
+        ]
+    }, now: { clock }, ttl: 43_200)
+
+    #expect(snapshot.sessions.map(\.id) == ["v1|6:claude|4:live|0:"])
+    #expect(snapshot.readStartedAt == start)
+    #expect(snapshot.now == Date(timeIntervalSince1970: 1_001.001))
+    // Completion time must not become the stale-result ordering key.
+    #expect(!MenuSnapshotOrderPolicy.shouldApply(
+        candidateObservedAt: snapshot.readStartedAt,
+        latestAppliedAt: Date(timeIntervalSince1970: 1_001)
+    ))
+}
+
 @Test func repositoryGroupsUseAgentMixWorkingCountAndCollisionSafeShortIDs() throws {
     let now = Date(timeIntervalSince1970: 10_000)
     let rows = MenuSessionPresentationPolicy.rows(from: [
@@ -375,6 +402,65 @@ import LetItBrewCore
 
     #expect(MenuRepositoryLayoutPolicy.items(for: original, isExpanded: true).map(\.id)
         == MenuRepositoryLayoutPolicy.items(for: refreshed, isExpanded: true).map(\.id))
+}
+
+@Test func workingHookUpdatesKeepSessionAndRepositoryOrder() {
+    let now = Date(timeIntervalSince1970: 10_000)
+    let initial = MenuSessionPresentationPolicy.rows(from: [
+        input(id: "a", repositoryPath: "/work/first", updatedAt: now),
+        input(id: "b", repositoryPath: "/work/first", updatedAt: now.addingTimeInterval(-1)),
+        input(id: "c", repositoryPath: "/work/second", updatedAt: now.addingTimeInterval(-2)),
+    ], now: now)
+    let initialGroups = MenuRepositoryPresentationPolicy.groups(from: initial)
+    let refreshed = MenuSessionPresentationPolicy.rows(from: [
+        input(id: "c", repositoryPath: "/work/second", updatedAt: now.addingTimeInterval(3)),
+        input(id: "b", repositoryPath: "/work/first", activeWorkingTime: 120, updatedAt: now.addingTimeInterval(2)),
+        input(id: "a", repositoryPath: "/work/first", updatedAt: now),
+    ], now: now.addingTimeInterval(4), previousIDs: initial.map(\.id))
+    let groups = MenuRepositoryPresentationPolicy.groups(
+        from: refreshed, previousIDs: initialGroups.map(\.id)
+    )
+
+    #expect(refreshed.map(\.id) == ["a", "b", "c"])
+    #expect(groups.map(\.id) == ["/work/first", "/work/second"])
+    #expect(groups[0].sessions.map(\.id) == ["a", "b"])
+    #expect(refreshed.first { $0.id == "b" }?.activeTimeText == "2m active")
+}
+
+@Test func membershipChangesKeepSurvivorsInPlaceAndAppendNewSessionsAndRepositories() {
+    let now = Date(timeIntervalSince1970: 10_000)
+    let rows = MenuSessionPresentationPolicy.rows(from: [
+        input(id: "b", repositoryPath: "/work/first", updatedAt: now),
+        input(id: "c", repositoryPath: "/work/second", updatedAt: now.addingTimeInterval(3)),
+        input(id: "new", repositoryPath: "/work/new", updatedAt: now.addingTimeInterval(4)),
+        input(id: "a", repositoryPath: "/work/first", state: .idle, updatedAt: now.addingTimeInterval(5)),
+    ], now: now.addingTimeInterval(6), previousIDs: ["a", "b", "c"])
+    let groups = MenuRepositoryPresentationPolicy.groups(
+        from: rows, previousIDs: ["/work/first", "/work/second"]
+    )
+
+    #expect(rows.map(\.id) == ["b", "c", "new"])
+    #expect(groups.map(\.id) == ["/work/first", "/work/second", "/work/new"])
+    #expect(groups[0].sessions.map(\.id) == ["b"])
+}
+
+@Test func expandedRepositoryKeepsItsHeaderAndSelectionWhenOneSessionRemains() throws {
+    let now = Date(timeIntervalSince1970: 10_000)
+    let single = try #require(group(repositoryPath: "/work/app", sessions: [
+        input(id: "survivor", updatedAt: now),
+    ], now: now))
+    let state = MenuRepositoryExpansionPolicy.updatedState(
+        current: .init(expandedRepositoryID: single.id, initialized: true),
+        hasLoadedSnapshot: true, groups: [single]
+    )
+    let items = MenuRepositoryLayoutPolicy.items(
+        for: single, isExpanded: state.expandedRepositoryID == single.id
+    )
+
+    #expect(state.expandedRepositoryID == "/work/app")
+    #expect(items.map(\.id) == [.header("/work/app"), .session("survivor")])
+    #expect(MenuActivityViewportMetrics.height(for: items) == 116)
+    #expect(MenuRepositoryExpansionPolicy.reconcile(current: single.id, groups: []) == nil)
 }
 
 @Test func repositoryExpansionKeepsOnlyTheSelectedMultiSessionGroupExpanded() throws {

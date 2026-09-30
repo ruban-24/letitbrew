@@ -12,6 +12,24 @@ against the SHA-256 published with the release.
 
 ---
 
+## 0.8.1 (build 32)
+
+Fixed:
+
+- Working sessions and project folders keep their positions while concurrent
+  agents report tool activity. Polling updates no longer animate the list and
+  scroll area; newly working entries appear after the existing entries.
+- An expanded project stays expanded when only one working session remains,
+  avoiding a sudden switch to a flat row and a collapsed group on resumption.
+- Hooks written during a session snapshot read no longer briefly disappear
+  because their timestamps are newer than the start of that read.
+
+Updating:
+
+- v0.7.1 and later can install v0.8.1 from **Settings → About → Check for
+  Updates…**. Users on v0.7.0 or earlier should quit the app and replace it
+  manually using the DMG without uninstalling first.
+
 ## 0.8.0 (build 31)
 
 Added:

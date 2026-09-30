@@ -114,15 +114,21 @@ different paths remain distinct.
 
 On the first real loaded snapshot, the newest eligible multi-session repository
 is initially expanded. After that, manual expansion remains stable while the
-repository still has at least two Working sessions, and expanding another group
-collapses the current one. Grouped children show the agent and project folder
+repository still has any Working sessions. An expanded group retains its header
+when only one child remains; expanding another group collapses the current one.
+Surviving sessions and repositories retain their presented order across polls;
+new Working entries append, with recency deciding the initial and newcomer order.
+Only user disclosure clicks animate layout. Hook updates do not animate the
+scroll area. Snapshot freshness uses the time after records are loaded, while
+async result ordering retains the read-start time.
+Grouped children show the agent and project folder
 instead of an internal session-ID fragment. Their accessibility labels include
 eight-character session IDs that lengthen only as needed to disambiguate
 collisions. They reuse the flat session-row layout, so logo, text, and timer
 alignment do not gain indentation.
 
-The activity viewport is capped at 294 points: at most one 54-point group header
-plus four 60-point session rows. One outer vertical scroll owns overflow; there
+The activity viewport is capped at 302 points: one 54-point group header
+plus four 60-point session rows and four 2-point gaps. One outer vertical scroll owns overflow; there
 are no nested per-group scroll regions.
 
 ## Two kinds of hold

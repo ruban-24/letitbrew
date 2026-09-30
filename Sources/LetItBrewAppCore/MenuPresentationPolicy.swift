@@ -16,6 +16,29 @@ public enum MenuSnapshotOrderPolicy {
     }
 }
 
+public struct MenuSessionSnapshot: Sendable {
+    public let sessions: [SessionRecord]
+    public let readStartedAt: Date
+    public let now: Date
+
+    public static func read(
+        loadRecords: () -> [SessionRecord],
+        now: () -> Date = Date.init,
+        ttl: TimeInterval
+    ) -> MenuSessionSnapshot {
+        let startedAt = now()
+        let records = loadRecords()
+        // A hook may be written after the read starts. Judge freshness after
+        // loading, while retaining the start time to reject stale async reads.
+        let completedAt = now()
+        return MenuSessionSnapshot(
+            sessions: SessionStore.recent(records: records, now: completedAt, ttl: ttl),
+            readStartedAt: startedAt,
+            now: completedAt
+        )
+    }
+}
+
 public struct SessionMenuInput: Sendable {
     public let id: String
     public let tool: String
@@ -113,11 +136,15 @@ public enum MenuRepositoryLayoutItem: Identifiable, Equatable, Sendable {
 }
 
 public enum MenuSessionPresentationPolicy {
+    /// Keep surviving rows in their presented order and append new Working
+    /// sessions. Recency only chooses the initial order and orders newcomers.
     public static func rows(
         from inputs: [SessionMenuInput],
-        now _: Date
+        now _: Date,
+        previousIDs: [String] = []
     ) -> [MenuSessionPresentation] {
-        inputs
+        let ranks = Dictionary(uniqueKeysWithValues: previousIDs.enumerated().map { ($1, $0) })
+        return inputs
             .filter { $0.state == .working }
             .map { input in
                 MenuSessionPresentation(
@@ -132,6 +159,9 @@ public enum MenuSessionPresentationPolicy {
             )
             }
             .sorted {
+                let lhsRank = ranks[$0.id] ?? .max
+                let rhsRank = ranks[$1.id] ?? .max
+                if lhsRank != rhsRank { return lhsRank < rhsRank }
                 if $0.updatedAt != $1.updatedAt {
                     return $0.updatedAt > $1.updatedAt
                 }
@@ -166,21 +196,25 @@ public enum MenuSessionPresentationPolicy {
 }
 
 public enum MenuRepositoryPresentationPolicy {
+    /// Folder order is independent of which child most recently emitted a hook.
     public static func groups(
-        from rows: [MenuSessionPresentation]
+        from rows: [MenuSessionPresentation],
+        previousIDs: [String] = []
     ) -> [MenuRepositoryPresentation] {
-        Dictionary(grouping: rows, by: \.repositoryID)
+        let ranks = Dictionary(uniqueKeysWithValues: previousIDs.enumerated().map { ($1, $0) })
+        return Dictionary(grouping: rows, by: \.repositoryID)
             .map { repositoryID, sessions in
-                let sortedSessions = sessions.sorted(by: sessionOrder)
-                let shortIDs = uniqueShortIDs(for: sortedSessions.map(\.id))
+                // Grouping preserves the stabilized row order; hook activity
+                // must not independently reshuffle children within a folder.
+                let shortIDs = uniqueShortIDs(for: sessions.map(\.id))
                 return MenuRepositoryPresentation(
                     id: repositoryID,
-                    project: sortedSessions.first?.project ?? "Unknown project",
-                    summaryText: summary(for: sortedSessions),
-                    sessionCountText: sortedSessions.count == 1
+                    project: sessions.first?.project ?? "Unknown project",
+                    summaryText: summary(for: sessions),
+                    sessionCountText: sessions.count == 1
                         ? "1 working"
-                        : "\(sortedSessions.count) working",
-                    sessions: sortedSessions.map {
+                        : "\(sessions.count) working",
+                    sessions: sessions.map {
                         MenuRepositorySessionPresentation(
                             session: $0,
                             shortID: shortIDs[$0.id] ?? $0.id
@@ -188,15 +222,12 @@ public enum MenuRepositoryPresentationPolicy {
                     }
                 )
             }
-            .sorted(by: groupOrder)
-    }
-
-    private static func sessionOrder(
-        _ lhs: MenuSessionPresentation,
-        _ rhs: MenuSessionPresentation
-    ) -> Bool {
-        if lhs.updatedAt != rhs.updatedAt { return lhs.updatedAt > rhs.updatedAt }
-        return lhs.id < rhs.id
+            .sorted {
+                let lhsRank = ranks[$0.id] ?? .max
+                let rhsRank = ranks[$1.id] ?? .max
+                if lhsRank != rhsRank { return lhsRank < rhsRank }
+                return groupOrder($0, $1)
+            }
     }
 
     private static func groupOrder(
@@ -247,7 +278,7 @@ public enum MenuRepositoryLayoutPolicy {
         for group: MenuRepositoryPresentation,
         isExpanded: Bool
     ) -> [MenuRepositoryLayoutItem] {
-        guard group.sessions.count > 1 else {
+        guard group.sessions.count > 1 || isExpanded else {
             return group.sessions.map {
                 .session($0, displaysShortID: false)
             }
@@ -289,7 +320,7 @@ public enum MenuRepositoryExpansionPolicy {
         groups: [MenuRepositoryPresentation]
     ) -> String? {
         guard let current,
-              groups.contains(where: { $0.id == current && $0.sessions.count > 1 })
+              groups.contains(where: { $0.id == current && !$0.sessions.isEmpty })
         else { return nil }
         return current
     }

@@ -217,9 +217,7 @@ final class LetItBrewAppModel: ObservableObject {
     )
     @Published private(set) var sessions: [MenuSessionPresentation] = []
     @Published private(set) var hasLoadedSessionSnapshot = false
-    var sessionGroups: [MenuRepositoryPresentation] {
-        MenuRepositoryPresentationPolicy.groups(from: sessions)
-    }
+    @Published private(set) var sessionGroups: [MenuRepositoryPresentation] = []
     @Published private(set) var presentationState: LetItBrewPresentationState = .idle
     @Published private(set) var reason = "Your Mac can sleep"
     @Published private(set) var daemonAvailable = false
@@ -1901,27 +1899,26 @@ final class LetItBrewAppModel: ObservableObject {
         let storage = storage
         let clamshellMonitor = clamshellMonitor
         let activeDisplayMonitor = activeDisplayMonitor
-        let snapshot = await Task.detached(priority: .utility) {
-            let now = Date()
-            let records = SessionStore.recent(
-                records: storage.loadAll(),
-                now: now,
+        let read = await Task.detached(priority: .utility) {
+            let sessions = MenuSessionSnapshot.read(
+                loadRecords: { storage.loadAll() },
                 ttl: 12 * 3_600
             )
-            return LetItBrewSnapshot(
-                sessions: records,
+            let snapshot = LetItBrewSnapshot(
+                sessions: sessions.sessions,
                 power: IOKitPowerSource().current(),
                 clamshell: clamshellMonitor.currentClamshellState(),
                 displays: activeDisplayMonitor.currentDisplayTopology(),
-                now: now
+                now: sessions.now
             )
+            return (snapshot: snapshot, startedAt: sessions.readStartedAt)
         }.value
         guard MenuSnapshotOrderPolicy.shouldApply(
-            candidateObservedAt: snapshot.now,
+            candidateObservedAt: read.startedAt,
             latestAppliedAt: latestAppliedSnapshotAt
         ) else { return }
-        latestAppliedSnapshotAt = snapshot.now
-        apply(snapshot)
+        latestAppliedSnapshotAt = read.startedAt
+        apply(read.snapshot)
     }
 
     private func runDaemonRecovery(trigger: DaemonRecoveryTrigger) {
@@ -2033,10 +2030,15 @@ final class LetItBrewAppModel: ObservableObject {
         settings.lidClosedFollowsSession = keepWorkingWithLidClosed
         currentPower = snapshot.power
 
-        sessions = MenuSessionPresentationPolicy.rows(
+        let nextSessions = MenuSessionPresentationPolicy.rows(
             from: snapshot.sessions.map { Self.menuInput($0, now: snapshot.now) },
-            now: snapshot.now
+            now: snapshot.now,
+            previousIDs: sessions.map(\.id)
         )
+        sessionGroups = MenuRepositoryPresentationPolicy.groups(
+            from: nextSessions, previousIDs: sessionGroups.map(\.id)
+        )
+        sessions = nextSessions
 
         let decision = decide(
             sessions: snapshot.sessions,
