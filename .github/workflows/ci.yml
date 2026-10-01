@@ -47,6 +47,9 @@ jobs:
           SWIFTPM_MODULECACHE_OVERRIDE: /private/tmp/LetItBrewCI-SwiftPMCache
         run: swift test --no-parallel
 
+      - name: Test native login settings layout
+        run: sh scripts/tests/login-settings-layout-tests.sh
+
       - name: Test installed-app release scripts with isolated fixtures
         run: scripts/tests/upgrade-transaction-tests.sh
 
