@@ -12,6 +12,21 @@ against the SHA-256 published with the release.
 
 ---
 
+## 0.8.2 (build 33)
+
+Fixed:
+
+- Toggling **Launch Let It Brew at login** no longer moves the surrounding
+  settings while macOS processes the change. Progress stays beside the switch.
+- Login-item errors appear in a popover with an **Open Login Items…** recovery
+  action, keeping the settings layout stable during failures and retries.
+
+Updating:
+
+- v0.7.1 and later can install v0.8.2 from **Settings → About → Check for
+  Updates…**. Users on v0.7.0 or earlier should quit the app and replace it
+  manually using the DMG without uninstalling first.
+
 ## 0.8.1 (build 32)
 
 Fixed:
