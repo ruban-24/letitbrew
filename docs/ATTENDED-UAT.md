@@ -14,6 +14,17 @@ If a safety or power test fails, stop with physical access to the Mac, preserve
 the original `SleepDisabled` baseline, record the exact reproduction, and stop
 using the affected feature until it is understood.
 
+## v0.8.3 release scope
+
+v0.8.3 fixes Claude parent/child completion and cleanup.
+Record version 0.8.3, build 34, the full commit, and artifact hashes with the results. Exercise the
+Claude completion, session-end, and resume cases below in the signed app, with
+another Claude session running to confirm it remains protected. Verify that
+normal long-running work still holds the Mac awake. Record interruption and
+still-running monitor cases separately; this patch does not claim to resolve
+missing completion hooks. Run the signed-artifact and download-channel checks
+on the final release. Power, daemon, login-item, and updater code are unchanged.
+
 ## v0.8.2 release scope
 
 v0.8.2 keeps the Launch at login setting's layout stable during registration,

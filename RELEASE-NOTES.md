@@ -12,6 +12,29 @@ against the SHA-256 published with the release.
 
 ---
 
+## 0.8.3 (build 34)
+
+Fixed:
+
+- Claude parents waiting on background work become Idle when a subagent
+  completion explicitly reports no remaining background tasks.
+- Ending a Claude session clears its child sessions. Late hooks, concurrent
+  updates, and interrupted cleanup no longer leave those children Working.
+- Resuming an ended session keeps old child records from reappearing while
+  preserving new work, active siblings, and other sessions.
+
+Limitations:
+
+- Claude interruptions without a subsequent completion event, permission
+  waits, and background monitors still reported as running retain their
+  existing behavior. Silence alone does not release an active hold.
+
+Updating:
+
+- v0.7.1 and later can install v0.8.3 from **Settings → About → Check for
+  Updates…**. Users on v0.7.0 or earlier should quit the app and replace it
+  manually using the DMG without uninstalling first.
+
 ## 0.8.2 (build 33)
 
 Fixed:
