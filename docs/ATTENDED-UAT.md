@@ -14,6 +14,20 @@ If a safety or power test fails, stop with physical access to the Mac, preserve
 the original `SleepDisabled` baseline, record the exact reproduction, and stop
 using the affected feature until it is understood.
 
+## v0.8.2 release scope
+
+v0.8.2 keeps the Launch at login setting's layout stable during registration,
+failure, and retry. Record version 0.8.2, build 33, the full commit, and artifact
+hashes with the results. In Settings → General, enable and disable Launch at
+login: the switch and Closed lid section must remain in place while progress
+appears beside the switch. Restore the original login preference after testing.
+In the isolated native fixture, simulate registration failure, open the error
+popover, and invoke Open Login Items; the form must stay in place and the
+recovery action must run. Repeat the layout regression in light and dark mode.
+The registration, power, daemon, agent-hook, and updater implementations are
+unchanged. Run the signed-artifact and download-channel checks on the final
+release, and smoke-test its Settings window before publication.
+
 ## v0.8.1 release scope
 
 v0.8.1 stabilizes the activity menu during concurrent hook updates and fixes a
