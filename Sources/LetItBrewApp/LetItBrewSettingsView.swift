@@ -106,24 +106,16 @@ struct LetItBrewSettingsView: View {
 
     private var general: some View {
         Form {
-            Section("Startup") {
-                Toggle("Launch Let It Brew at login", isOn: Binding(
+            LaunchAtLoginSettingsSection(
+                isOn: Binding(
                     get: { model.launchAtLogin },
                     set: { model.setLaunchAtLogin($0) }
-                ))
-                .disabled(model.loginItemUpdateInProgress || model.updateBlocksOtherActions)
-
-                if model.loginItemUpdateInProgress {
-                    ProgressView("Updating…")
-                        .controlSize(.small)
-                }
-                if let message = model.loginItemMessage {
-                    Text(message)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                    Button("Open Login Items…") { model.openLoginItemSettings() }
-                }
-            }
+                ),
+                isUpdating: model.loginItemUpdateInProgress,
+                actionsBlocked: model.updateBlocksOtherActions,
+                errorMessage: model.loginItemMessage,
+                openLoginItems: { model.openLoginItemSettings() }
+            )
 
             Section("Closed lid") {
                 Toggle("Keep agents working when the lid is closed", isOn: Binding(
