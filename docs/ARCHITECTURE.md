@@ -40,7 +40,8 @@ Decision.decide(sessions, settings, power)
 hold or release
 ```
 
-`HookReducer` is the whole state model, and it is small on purpose. It reduces
+`HookReducer` maps individual lifecycle events, while `HookSessionUpdater`
+reconciles related Claude parent and child records. They reduce
 every supported adapter to only **Working** and **Idle** (or removes a terminal
 record); there is no third permission or waiting state.
 
@@ -58,7 +59,23 @@ The common lifecycle mapping is:
 - `PermissionRequest` and `permission_prompt` notifications return no effect,
   preserving the prior Working or Idle state. Permission is not a third session
   state.
-- `SubagentStop` and `SessionEnd` remove the addressed active record.
+- `SubagentStop` and `SessionEnd` remove the addressed active record. For Claude,
+  a parent `SessionEnd` also removes its children. `SubagentStop` can make a
+  parent still Working from `Stop` Idle when its explicit background-task
+  snapshot reports no remaining work. Missing snapshots and parents with newer
+  foreground activity retain their state.
+
+Claude hook updates acquire a bounded family lock before any per-record lock.
+This serializes terminal cleanup with child writes. The parent's existing
+terminal marker rejects late child updates, including children not previously
+seen, until a new session-start or prompt event reopens the parent. Other agents
+keep their existing per-record update semantics. Session scans also honor the
+parent terminal if child-file cleanup was interrupted. The optional numeric
+`reopened_at` field preserves sub-second ordering after a proven terminal/reopen;
+initial or legacy parent records have no such cutoff. Readers retain children
+when a parent's state is missing or unreadable. The product remains hook-only;
+no process polling, transcript inspection, or silence-based early release is
+used to guess whether an interrupted Claude turn finished.
 
 Each adapter's exact source-event vocabulary is frozen in
 [AGENT-HOOK-CONTRACTS.md](AGENT-HOOK-CONTRACTS.md); unsupported source events do

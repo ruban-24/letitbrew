@@ -12,6 +12,8 @@ public struct HookPayload: Decodable, Equatable, Sendable {
     public var cwd: String?
     public var source: String?
     public var hasBackgroundTasks: Bool
+    /// An absent snapshot cannot prove that the parent's background work ended.
+    var hasBackgroundTaskSnapshot: Bool = false
     public var hookEventName: String?
     public var toolName: String?
     public var notificationType: String?
@@ -59,9 +61,11 @@ public struct HookPayload: Decodable, Equatable, Sendable {
         agentId = try values.decodeIfPresent(String.self, forKey: .agentID)
         cwd = try values.decodeIfPresent(String.self, forKey: .cwd)
         source = try values.decodeIfPresent(String.self, forKey: .source)
-        hasBackgroundTasks = (try values.decodeIfPresent(
+        let backgroundTasks = try values.decodeIfPresent(
             [BackgroundTask].self, forKey: .backgroundTasks
-        ) ?? []).contains(where: \.mayBeWorking)
+        )
+        hasBackgroundTaskSnapshot = backgroundTasks != nil
+        hasBackgroundTasks = (backgroundTasks ?? []).contains(where: \.mayBeWorking)
         hookEventName = try values.decodeIfPresent(String.self, forKey: .hookEventName)
         toolName = try values.decodeIfPresent(String.self, forKey: .toolName)
         notificationType = try values.decodeIfPresent(String.self, forKey: .notificationType)

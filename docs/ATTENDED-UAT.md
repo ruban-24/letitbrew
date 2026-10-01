@@ -240,6 +240,19 @@ while `background_tasks` is nonempty, then becomes Idle after a later empty
 Stop. Where the documented permission lifecycle is observed, it preserves the
 existing Working state.
 
+After a parent stops with an active background child, let the final child finish.
+When its `SubagentStop` reports no remaining background work, confirm the parent
+becomes Idle without another user prompt or parent Stop. Repeat with another
+background task still running and confirm the hold remains. End a parent session
+with children and confirm none of that session's rows remain; a second Claude
+session must remain unaffected. Resume the ended session and confirm new work
+appears normally.
+
+Record interruption separately: Claude does not promise a Stop hook for a user
+interrupt. A stopped parent with a still-running monitor, or a turn interrupted
+without a later terminal event, can remain Working under the hook-only contract.
+Do not claim these cases fixed solely from the parent/child cleanup regression.
+
 ### Codex
 
 Verify `/hooks` trust approval before lifecycle observation. Exercise compact
