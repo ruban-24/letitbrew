@@ -26,8 +26,26 @@ or read Claude/Codex/OpenCode/Copilot/Pi prompt and response content.
   other, missing, or unrecognized status conservatively preserves Working.
   An empty or absent array makes Stop Idle. Only status is read; task prose
   and commands are discarded. `session_crons` are not treated as current work.
+- `SubagentStop` removes its child record. If it explicitly reports a
+  `background_tasks` snapshot with no potentially working tasks, it also makes
+  a parent still Working from `Stop` Idle. An absent/null snapshot cannot prove
+  completion. A newer foreground event prevents this parent reconciliation.
+- Parent `SessionEnd` removes the parent's children as well. A bounded family
+  lock serializes child updates with termination; terminal markers prevent late
+  hooks from recreating that family until `SessionStart` or `UserPromptSubmit`.
+  Older observations cannot close a newer parent or child. Other sessions and
+  agents are unaffected. Readers exclude children of an ended parent even if
+  cleanup was interrupted; a precise reopen timestamp keeps leftovers from a
+  previous run excluded after resume. Missing/unreadable parent state does not
+  itself suppress a child's work.
 - Permission events preserve prior state. API-error turns use `StopFailure`;
   user-interrupted turns have no immediate documented terminal hook.
+  Permission approval has no matching immediate hook to resume a hold before
+  the tool executes, so releasing on the prompt would risk sleeping mid-tool.
+  Without a later authoritative event, interrupted turns and stopped parents
+  with unreported background completion can remain Working until the existing
+  12-hour expiry. Silence alone does not prove work ended. A background task
+  still reported as running (including a monitor) continues to preserve Working.
 - Interactive settings-file hooks, including user hooks, are held until the
   workspace is trusted. The connection UI can prove owned configuration,
   not trust for every future workspace.

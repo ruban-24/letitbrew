@@ -121,6 +121,10 @@ public struct SessionRecord: Codable, Equatable, Sendable {
     /// sub-second ordering that JSONEncoder's ISO-8601 strategy otherwise
     /// rounds away. Optional for records written before Build 8.
     public var eventObservedAt: TimeInterval?
+    /// Precise Unix seconds at a Claude parent's explicit reopen after an
+    /// observed SessionEnd. Nil for legacy records and an initial session:
+    /// first seeing a parent does not invalidate children already working.
+    public var reopenedAt: TimeInterval?
     /// When this agent session began. Optional so records written by older
     /// Let It Brew versions continue to decode. Consumers should use
     /// `effectiveStartedAt` when presenting elapsed session time.
@@ -144,6 +148,7 @@ public struct SessionRecord: Codable, Equatable, Sendable {
         case updatedAt = "updated_at"
         case legacyUpdatedAt = "updatedAt"
         case eventObservedAt = "event_observed_at"
+        case reopenedAt = "reopened_at"
         case startedAt = "started_at"
         case accumulatedWorkingTime = "accumulated_working_time"
         case lastEvent = "last_event"
@@ -156,7 +161,7 @@ public struct SessionRecord: Codable, Equatable, Sendable {
                 startedAt: Date? = nil,
                 accumulatedWorkingTime: TimeInterval? = nil,
                 stateChangedAt: Date? = nil, stateTransitionID: String? = nil,
-                eventObservedAt: TimeInterval? = nil) {
+                eventObservedAt: TimeInterval? = nil, reopenedAt: TimeInterval? = nil) {
         self.id = id
         self.tool = tool
         self.state = state
@@ -165,6 +170,7 @@ public struct SessionRecord: Codable, Equatable, Sendable {
         self.pid = pid
         self.updatedAt = updatedAt
         self.eventObservedAt = eventObservedAt
+        self.reopenedAt = reopenedAt
         self.startedAt = startedAt
         self.accumulatedWorkingTime = accumulatedWorkingTime
         self.lastEvent = lastEvent
@@ -186,6 +192,7 @@ public struct SessionRecord: Codable, Equatable, Sendable {
             try container.decode(Date.self, forKey: .legacyUpdatedAt)
         }
         eventObservedAt = try container.decodeIfPresent(TimeInterval.self, forKey: .eventObservedAt)
+        reopenedAt = try container.decodeIfPresent(TimeInterval.self, forKey: .reopenedAt)
         startedAt = try container.decodeIfPresent(Date.self, forKey: .startedAt)
         accumulatedWorkingTime = try container.decodeIfPresent(
             TimeInterval.self, forKey: .accumulatedWorkingTime
@@ -205,6 +212,7 @@ public struct SessionRecord: Codable, Equatable, Sendable {
         try container.encodeIfPresent(pid, forKey: .pid)
         try container.encode(updatedAt, forKey: .updatedAt)
         try container.encodeIfPresent(eventObservedAt, forKey: .eventObservedAt)
+        try container.encodeIfPresent(reopenedAt, forKey: .reopenedAt)
         try container.encodeIfPresent(startedAt, forKey: .startedAt)
         try container.encodeIfPresent(accumulatedWorkingTime, forKey: .accumulatedWorkingTime)
         try container.encodeIfPresent(lastEvent, forKey: .lastEvent)
@@ -439,6 +447,29 @@ public struct SessionStorage: Sendable {
 
     public func delete(id: String) {
         try? FileManager.default.removeItem(at: url(for: id))
+    }
+
+    /// Serialize a Claude parent's lifecycle with all of its child hooks.
+    /// Always acquire this before per-record locks; different families remain
+    /// independent. The prefix cannot collide with a canonical hook record ID.
+    func withHookFamilyLock<Result>(
+        parentID: String,
+        _ body: () throws -> Result
+    ) throws -> Result {
+        try withSessionLock(id: "hook-family|" + parentID, timeout: 0.25) { _ in
+            try body()
+        }
+    }
+
+    /// Called while holding the family lock. Keep tombstone decoding strict so
+    /// a corrupt terminal marker cannot be mistaken for a new active session.
+    func terminalObservation(id: String) throws -> TimeInterval? {
+        try withSessionLock(id: id, timeout: 0.25) { _ in
+            guard case .terminal(_, let observedAt) = try loadOrderedEntry(id: id) else {
+                return nil
+            }
+            return observedAt
+        }
     }
 
     public func mutate(
@@ -774,7 +805,7 @@ public struct SessionStorage: Sendable {
         try? loadEntry(id: id)?.activeRecord
     }
 
-    /// Every readable record. A corrupt or half-written file is skipped, never
+    /// Every eligible readable record. A corrupt or half-written file is skipped, never
     /// fatal: one bad file must not blind the watcher to every other session.
     ///
     /// Three checks guard against a hostile or tampered directory entry:
@@ -784,9 +815,33 @@ public struct SessionStorage: Sendable {
     public func loadAll() -> [SessionRecord] {
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: directory.path)
         else { return [] }
-        return names.compactMap { name -> SessionRecord? in
+        let records = names.compactMap { name -> SessionRecord? in
             guard Self.isValidFilename(name) else { return nil }
             return load(filename: name)
+        }
+        // A parent terminal is authoritative even if its process stopped midway
+        // through sweeping children. Read each Claude parent only once. Missing
+        // or unreadable parent state is not evidence that a child finished.
+        let parentIDs = Set(records.compactMap { record -> String? in
+            guard let child = HookRecordID(encoded: record.id),
+                  child.agent == .claude, child.childID != nil else { return nil }
+            return HookRecordID(agent: .claude, parentID: child.parentID)?.encoded
+        })
+        let parents = Dictionary(uniqueKeysWithValues: parentIDs.compactMap { id in
+            (try? loadOrderedEntry(id: id)).map { (id, $0) }
+        })
+        return records.filter { record in
+            guard let child = HookRecordID(encoded: record.id),
+                  child.agent == .claude, child.childID != nil,
+                  let parentID = HookRecordID(agent: .claude, parentID: child.parentID)?.encoded,
+                  let parent = parents[parentID] else { return true }
+            switch parent {
+            case .terminal:
+                return false
+            case .active(let parentRecord):
+                guard let reopenedAt = parentRecord.reopenedAt else { return true }
+                return (record.eventObservedAt ?? record.updatedAt.timeIntervalSince1970) >= reopenedAt
+            }
         }
     }
 
