@@ -52,7 +52,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: directory) }
         let storage = SessionStorage(directory: directory)
         let sessionID = "late-start-\(agent.rawValue)"
-        let payload = HookPayload(sessionId: sessionID, cwd: "/work/app")
+        let payload = HookPayload(sessionId: sessionID, cwd: "/work/app", source: "startup")
         let id = hookUpdaterID(sessionID, agent: agent)
 
         try HookSessionUpdater.apply(
@@ -366,6 +366,7 @@ import Testing
     #expect(entry["kind"] as? String == "active")
     let active = try #require(entry["record"] as? [String: Any])
     #expect(active["event_observed_at"] as? Double == 201)
+    #expect(active["prompt_observed_at"] as? Double == 201)
     #expect(!FileManager.default.fileExists(atPath: tombstoneURL.path))
 }
 
@@ -734,7 +735,7 @@ import Testing
 
         let record = try #require(storage.load(id: id))
         #expect(record.state == .idle)
-        #expect(record.lastEvent == "Stop")
+        #expect(record.lastEvent == (trigger == "manual" ? "PostCompact" : "Stop"))
         #expect(storage.loadAll().count == 1)
     }
 }
@@ -783,43 +784,330 @@ import Testing
     #expect(storage.load(id: id)?.state == .idle)
 }
 
-@Test func codexCompactSessionLifecycleStaysWorkingThroughStorage() throws {
+@Test func codexCompactionKeepsTheTurnsStateThroughStorage() throws {
+    for (lead, expected) in [("Stop", SessionState.idle), ("PreToolUse", .working)] {
+        let directory = hookUpdaterTempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = SessionStorage(directory: directory)
+
+        try applyHooks(
+            [("UserPromptSubmit", ""), (lead, "")] + compactionHooks(trigger: "manual"),
+            agent: .codex, sessionID: "codex-compact", from: 100, storage: storage
+        )
+
+        let record = try #require(storage.load(id: hookUpdaterID("codex-compact")))
+        #expect(record.state == expected)
+        #expect(record.lastEvent == lead)
+    }
+}
+
+@Test func claudeManualCompactClearsATurnAnInterruptLeftWorking() throws {
     let directory = hookUpdaterTempDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let storage = SessionStorage(directory: directory)
-    let timestamp = Date(timeIntervalSince1970: 100)
 
-    try applyDecodedHook(
-        event: "SessionStart",
-        json: #"{"session_id":"compact-parent","cwd":"/work/app","source":"compact"}"#,
-        agent: .codex,
-        observedAt: timestamp,
-        storage: storage
-    )
-    let id = try #require(HookPayload(sessionId: "compact-parent")
-        .recordID(agent: .codex, event: "SessionStart"))
-    let transitionID = try #require(storage.load(id: id)?.stateTransitionID)
-
-    try applyDecodedHook(
-        event: "PreCompact",
-        json: #"{"session_id":"compact-parent","cwd":"/work/app"}"#,
-        agent: .codex,
-        observedAt: timestamp.addingTimeInterval(1),
-        storage: storage
-    )
-    try applyDecodedHook(
-        event: "PostCompact",
-        json: #"{"session_id":"compact-parent","cwd":"/work/app"}"#,
-        agent: .codex,
-        observedAt: timestamp.addingTimeInterval(2),
-        storage: storage
+    // Claude sends no hook when Esc cancels a turn, so PreToolUse is its last.
+    try applyHooks(
+        [("UserPromptSubmit", ""), ("PreToolUse", #","tool_name":"Bash""#)]
+            + compactionHooks(trigger: "manual"),
+        sessionID: "interrupted", from: 100, storage: storage
     )
 
-    let record = try #require(storage.load(id: id))
-    #expect(record.state == .working)
+    let record = try #require(storage.load(id: hookUpdaterID("interrupted", agent: .claude)))
+    #expect(record.state == .idle)
     #expect(record.lastEvent == "PostCompact")
-    #expect(record.stateTransitionID == transitionID)
-    #expect(storage.loadAll().count == 1)
+}
+
+@Test func claudeManualCompactKeepsAStoppedTurnsBackgroundWork() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+
+    try applyHooks(
+        [("UserPromptSubmit", ""),
+         ("Stop", #","background_tasks":[{"type":"shell","status":"running"}]"#)]
+            + compactionHooks(trigger: "manual"),
+        sessionID: "background", from: 100, storage: storage
+    )
+
+    let record = try #require(storage.load(id: hookUpdaterID("background", agent: .claude)))
+    #expect(record.state == .working)
+    #expect(record.lastEvent == "Stop")
+}
+
+@Test func claudeSessionStartFromAnUnknownSourceKeepsTheTurnWorking() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+
+    try applyHooks(
+        [("UserPromptSubmit", ""), ("SessionStart", #","source":"some-future-source""#)],
+        sessionID: "future-source", from: 100, storage: storage
+    )
+
+    let record = try #require(storage.load(id: hookUpdaterID("future-source", agent: .claude)))
+    #expect(record.state == .working)
+    #expect(record.lastEvent == "UserPromptSubmit")
+}
+
+@Test func codexInterruptReleasesTheCancelledTurn() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+
+    try applyHooks(
+        [("UserPromptSubmit", ""), ("PreToolUse", #","tool_name":"Bash""#),
+         ("Interrupt", #","turn_id":"turn-1""#)],
+        agent: .codex, sessionID: "codex-esc", from: 100, storage: storage
+    )
+
+    let record = try #require(storage.load(id: hookUpdaterID("codex-esc")))
+    #expect(record.state == .idle)
+    #expect(record.lastEvent == "Interrupt")
+}
+
+@Test func codexStopClearsChildrenSilentForTheParentsWholeTurn() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+    let early = hookUpdaterID("codex-family", childID: "early")
+    let late = hookUpdaterID("codex-family", childID: "late")
+
+    try applyHooks([("UserPromptSubmit", "")], agent: .codex, sessionID: "codex-family",
+                   from: 100, storage: storage)
+    try applyHooks([("SubagentStart", #","agent_id":"early""#)], agent: .codex,
+                   sessionID: "codex-family", from: 101, storage: storage)
+    try applyHooks([("Stop", "")], agent: .codex, sessionID: "codex-family",
+                   from: 102, storage: storage)
+    // Heard during the turn that just stopped: it may still be running.
+    #expect(storage.load(id: early)?.state == .working)
+
+    try applyHooks([("UserPromptSubmit", "")], agent: .codex, sessionID: "codex-family",
+                   from: 200, storage: storage)
+    try applyHooks([("SubagentStart", #","agent_id":"late""#)], agent: .codex,
+                   sessionID: "codex-family", from: 250, storage: storage)
+    try applyHooks([("Stop", "")], agent: .codex, sessionID: "codex-family",
+                   from: 300, storage: storage)
+
+    #expect(storage.load(id: early) == nil)
+    #expect(storage.load(id: late)?.state == .working)
+    #expect(storage.load(id: hookUpdaterID("codex-family"))?.state == .idle)
+}
+
+@Test func codexStopMeasuresTheTurnFromThePromptsExactTime() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+
+    try applyHooks([("UserPromptSubmit", ""), ("Stop", "")], agent: .codex,
+                   sessionID: "codex-second", from: 100, storage: storage)
+    try applyHooks([("SubagentStart", #","agent_id":"before""#)], agent: .codex,
+                   sessionID: "codex-second", from: 200.1, storage: storage)
+    // The turn starts at 200.3, within the same whole second as both children.
+    try applyHooks([("UserPromptSubmit", "")], agent: .codex, sessionID: "codex-second",
+                   from: 200.3, storage: storage)
+    try applyHooks([("SubagentStart", #","agent_id":"after""#)], agent: .codex,
+                   sessionID: "codex-second", from: 200.6, storage: storage)
+    try applyHooks([("Stop", "")], agent: .codex, sessionID: "codex-second",
+                   from: 300, storage: storage)
+
+    #expect(storage.load(id: hookUpdaterID("codex-second", childID: "before")) == nil)
+    #expect(storage.load(id: hookUpdaterID("codex-second", childID: "after"))?.state == .working)
+}
+
+@Test func codexStopClearsChildrenOfATurnThatEndedWithoutAHook() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+
+    // Esc on a Codex without the Interrupt hook leaves the parent Working, so
+    // the next prompt does not change its state.
+    try applyHooks([("UserPromptSubmit", "")], agent: .codex, sessionID: "codex-esc-child",
+                   from: 100, storage: storage)
+    try applyHooks([("SubagentStart", #","agent_id":"cancelled""#)], agent: .codex,
+                   sessionID: "codex-esc-child", from: 101, storage: storage)
+    try applyHooks([("UserPromptSubmit", "")], agent: .codex, sessionID: "codex-esc-child",
+                   from: 200, storage: storage)
+    try applyHooks([("Stop", "")], agent: .codex, sessionID: "codex-esc-child",
+                   from: 300, storage: storage)
+
+    #expect(storage.load(id: hookUpdaterID("codex-esc-child", childID: "cancelled")) == nil)
+    #expect(storage.load(id: hookUpdaterID("codex-esc-child"))?.state == .idle)
+}
+
+@Test func codexStopFallsBackToTheStateEdgeForALegacyParent() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+    let parent = hookUpdaterID("codex-legacy")
+
+    try applyHooks([("SubagentStart", #","agent_id":"silent""#)], agent: .codex,
+                   sessionID: "codex-legacy", from: 150, storage: storage)
+    // Written before prompts were recorded: no promptObservedAt.
+    var legacy = hookUpdaterRecord(id: parent, observedAt: 200)
+    legacy.state = .working
+    legacy.lastEvent = "UserPromptSubmit"
+    legacy.stateChangedAt = Date(timeIntervalSince1970: 200)
+    try storage.mutate(id: parent, observedAt: 200) { _ in .replace(legacy) }
+    try applyHooks([("SubagentStart", #","agent_id":"heard""#)], agent: .codex,
+                   sessionID: "codex-legacy", from: 250, storage: storage)
+    try applyHooks([("Stop", "")], agent: .codex, sessionID: "codex-legacy",
+                   from: 300, storage: storage)
+
+    #expect(storage.load(id: hookUpdaterID("codex-legacy", childID: "silent")) == nil)
+    #expect(storage.load(id: hookUpdaterID("codex-legacy", childID: "heard"))?.state == .working)
+}
+
+@Test func codexSessionEndClearsItsChildren() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+
+    try applyHooks([("UserPromptSubmit", "")], agent: .codex, sessionID: "codex-end",
+                   from: 100, storage: storage)
+    try applyHooks([("SubagentStart", #","agent_id":"child""#)], agent: .codex,
+                   sessionID: "codex-end", from: 101, storage: storage)
+    try applyHooks([("SessionEnd", "")], agent: .codex, sessionID: "codex-end",
+                   from: 102, storage: storage)
+
+    #expect(storage.loadAll().isEmpty)
+}
+
+@Test func codexStopCutoffHidesChildrenItsCleanupMissed() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+    let parent = hookUpdaterID("codex-cutoff")
+    let child = hookUpdaterID("codex-cutoff", childID: "child")
+
+    try applyHooks([("UserPromptSubmit", "")], agent: .codex, sessionID: "codex-cutoff",
+                   from: 100, storage: storage)
+    try applyHooks([("SubagentStart", #","agent_id":"child""#)], agent: .codex,
+                   sessionID: "codex-cutoff", from: 101, storage: storage)
+    try applyHooks([("Stop", ""), ("UserPromptSubmit", "")], agent: .codex,
+                   sessionID: "codex-cutoff", from: 102, storage: storage)
+    // Hold the real child lock while the next Stop commits the parent and
+    // attempts its bounded cleanup. No production fault-injection seam.
+    try storage.mutate(id: child) { _ in
+        #expect(throws: SessionStorageMutationError.lockTimedOut) {
+            try applyHooks([("Stop", "")], agent: .codex, sessionID: "codex-cutoff",
+                           from: 300, storage: storage)
+        }
+        return .keep
+    }
+
+    #expect(storage.load(id: parent)?.state == .idle)
+    let entry = try #require(try hookUpdaterEntryObject(id: parent, directory: directory))
+    let record = try #require(entry["record"] as? [String: Any])
+    #expect(record["stale_child_cutoff"] as? Double == 103)
+    #expect(storage.load(id: child) != nil)
+    #expect(storage.loadAll().map(\.id) == [parent])
+    #expect(!decide(
+        sessions: storage.loadAll(), now: Date(timeIntervalSince1970: 301), settings: Settings(),
+        power: PowerState(onBattery: false, batteryPercent: 100, thermal: .nominal)
+    ).holdSystem)
+
+    // A late hook observed before the cutoff cannot revive the child; one
+    // observed after it proves the child is still running.
+    try applyHooks([("PostToolUse", #","agent_id":"child""#)], agent: .codex,
+                   sessionID: "codex-cutoff", from: 102.5, storage: storage)
+    #expect(storage.load(id: child)?.eventObservedAt == 101)
+    #expect(storage.loadAll().map(\.id) == [parent])
+    try applyHooks([("PostToolUse", #","agent_id":"child""#)], agent: .codex,
+                   sessionID: "codex-cutoff", from: 301, storage: storage)
+    #expect(storage.loadAll().count == 2)
+}
+
+@Test func codexChildHookObservedBeforeTheStopButAppliedAfterItSurvives() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+    let child = hookUpdaterID("codex-race", childID: "child")
+
+    try applyHooks([("UserPromptSubmit", "")], agent: .codex, sessionID: "codex-race",
+                   from: 50, storage: storage)
+    try applyHooks([("SubagentStart", #","agent_id":"child""#)], agent: .codex,
+                   sessionID: "codex-race", from: 90, storage: storage)
+    try applyHooks([("Stop", "")], agent: .codex, sessionID: "codex-race",
+                   from: 95, storage: storage)
+    try applyHooks([("UserPromptSubmit", "")], agent: .codex, sessionID: "codex-race",
+                   from: 100, storage: storage)
+    // The child's hook is observed first but loses the family lock to the Stop.
+    try applyHooks([("Stop", "")], agent: .codex, sessionID: "codex-race",
+                   from: 150.001, storage: storage)
+    #expect(storage.load(id: child) == nil)
+    try applyHooks([("PreToolUse", #","agent_id":"child","tool_name":"Bash""#)],
+                   agent: .codex, sessionID: "codex-race", from: 150, storage: storage)
+
+    #expect(storage.load(id: child)?.state == .working)
+    #expect(storage.loadAll().contains { $0.id == child })
+}
+
+@Test func codexInterruptClearsChildrenSilentForTheCancelledTurn() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+
+    try applyHooks([("UserPromptSubmit", "")], agent: .codex, sessionID: "codex-esc-sweep",
+                   from: 100, storage: storage)
+    try applyHooks([("SubagentStart", #","agent_id":"silent""#)], agent: .codex,
+                   sessionID: "codex-esc-sweep", from: 101, storage: storage)
+    try applyHooks([("Stop", ""), ("UserPromptSubmit", "")], agent: .codex,
+                   sessionID: "codex-esc-sweep", from: 102, storage: storage)
+    try applyHooks([("SubagentStart", #","agent_id":"heard""#)], agent: .codex,
+                   sessionID: "codex-esc-sweep", from: 150, storage: storage)
+    try applyHooks([("Interrupt", #","turn_id":"turn-2""#)], agent: .codex,
+                   sessionID: "codex-esc-sweep", from: 200, storage: storage)
+
+    #expect(storage.load(id: hookUpdaterID("codex-esc-sweep"))?.state == .idle)
+    #expect(storage.load(id: hookUpdaterID("codex-esc-sweep", childID: "silent")) == nil)
+    #expect(storage.load(id: hookUpdaterID("codex-esc-sweep", childID: "heard"))?.state == .working)
+}
+
+@Test func codexInterruptedCleanupCannotKeepEndedFamilyAwake() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+    let parent = hookUpdaterID("codex-sweep")
+    let child = hookUpdaterID("codex-sweep", childID: "child")
+
+    try applyHooks([("UserPromptSubmit", "")], agent: .codex, sessionID: "codex-sweep",
+                   from: 10, storage: storage)
+    try applyHooks([("SubagentStart", #","agent_id":"child""#)], agent: .codex,
+                   sessionID: "codex-sweep", from: 20, storage: storage)
+    // Model a SessionEnd hook that exits after committing the parent terminal,
+    // before deleting any children. Later child hooks are rejected, so reads
+    // must treat the terminal as authoritative.
+    try storage.mutate(id: parent, observedAt: 30) { _ in .delete }
+    #expect(storage.load(id: child) != nil)
+    #expect(storage.loadAll().isEmpty)
+    #expect(!decide(
+        sessions: storage.loadAll(), now: Date(timeIntervalSince1970: 31), settings: Settings(),
+        power: PowerState(onBattery: false, batteryPercent: 100, thermal: .nominal)
+    ).holdSystem)
+
+    try applyHooks([("SessionStart", "")], agent: .codex, sessionID: "codex-sweep",
+                   from: 50.8, storage: storage)
+    #expect(storage.loadAll().map(\.id) == [parent])
+    try applyHooks([("SubagentStart", #","agent_id":"new-child""#)], agent: .codex,
+                   sessionID: "codex-sweep", from: 51, storage: storage)
+    #expect(storage.loadAll().count == 2)
+}
+
+@Test func claudeParentStopLeavesChildrenToTheirOwnCompletion() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+    let child = hookUpdaterID("claude-family", agent: .claude, childID: "child")
+
+    try applyHooks([("UserPromptSubmit", "")], sessionID: "claude-family", from: 100,
+                   storage: storage)
+    try applyHooks([("SubagentStart", #","agent_id":"child""#)], sessionID: "claude-family",
+                   from: 101, storage: storage)
+    try applyHooks([("Stop", ""), ("UserPromptSubmit", ""), ("Stop", "")],
+                   sessionID: "claude-family", from: 200, storage: storage)
+
+    #expect(storage.load(id: child)?.state == .working)
 }
 
 @Test func claudeBackgroundTasksAndSessionCronsDriveStopStructurally() throws {
@@ -1010,6 +1298,31 @@ import Testing
         )
         #expect(storage.load(id: hookUpdaterID("parent", agent: .claude))?.state == .working)
     }
+}
+
+/// Applies `(event, extra payload fields)` pairs one second apart.
+private func applyHooks(
+    _ events: [(String, String)],
+    agent: AgentID = .claude,
+    sessionID: String,
+    from start: TimeInterval,
+    storage: SessionStorage
+) throws {
+    for (offset, (event, extra)) in events.enumerated() {
+        try applyDecodedHook(
+            event: event,
+            json: #"{"session_id":"\#(sessionID)","cwd":"/work/app","hook_event_name":"\#(event)"\#(extra)}"#,
+            agent: agent,
+            observedAt: Date(timeIntervalSince1970: start + TimeInterval(offset)),
+            storage: storage
+        )
+    }
+}
+
+private func compactionHooks(trigger: String) -> [(String, String)] {
+    [("PreCompact", #","trigger":"\#(trigger)","custom_instructions":null"#),
+     ("SessionStart", #","source":"compact""#),
+     ("PostCompact", #","trigger":"\#(trigger)","compact_summary":"summary""#)]
 }
 
 /// Applies Claude events one second apart, with the payload fields Claude Code

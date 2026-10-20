@@ -40,9 +40,12 @@ public enum CodexHookTrust {
     /// Classifies the supported `hooks/list` app-server response. Let It Brew never
     /// reads or writes Codex's undocumented trust storage; only Codex's own
     /// runtime view can establish that installed hooks are actually runnable.
+    /// `optionalEvents` are expected events an older Codex may leave out of
+    /// its runtime view; when reported, they must be trusted like the rest.
     public static func classify(
         responseData: Data,
         expectedEvents: Set<String>,
+        optionalEvents: Set<String> = [],
         expectedSourcePath: String,
         ownershipSuffix: String
     ) -> CodexHookTrustResult {
@@ -60,7 +63,9 @@ public enum CodexHookTrust {
         }
 
         let grouped = Dictionary(grouping: owned, by: \.eventName)
-        guard Set(grouped.keys) == expectedEvents,
+        let reported = Set(grouped.keys)
+        guard reported.isSubset(of: expectedEvents),
+              expectedEvents.subtracting(optionalEvents).isSubset(of: reported),
               grouped.values.allSatisfy({ $0.count == 1 })
         else { return .couldNotVerify }
 
@@ -89,6 +94,7 @@ public enum CodexHookTrust {
     public static func classifyAppServerOutput(
         _ output: Data,
         expectedEvents: Set<String>,
+        optionalEvents: Set<String> = [],
         expectedSourcePath: String,
         ownershipSuffix: String
     ) -> CodexHookTrustResult {
@@ -100,6 +106,7 @@ public enum CodexHookTrust {
             return classify(
                 responseData: data,
                 expectedEvents: expectedEvents,
+                optionalEvents: optionalEvents,
                 expectedSourcePath: expectedSourcePath,
                 ownershipSuffix: ownershipSuffix
             )

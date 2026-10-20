@@ -10,6 +10,13 @@ public enum AgentID: String, CaseIterable, Codable, Sendable {
         self == .opencode || self == .pi
     }
 
+    /// Subagents are records in their parent's family: a parent's terminal
+    /// marker ends them both when hooks write and when storage reads. Both
+    /// sides must agree, or an interrupted cleanup leaves children Working.
+    public var tracksSubagentFamilies: Bool {
+        self == .claude || self == .codex
+    }
+
     public var displayName: String {
         switch self {
         case .claude: "Claude Code"

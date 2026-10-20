@@ -133,7 +133,7 @@ private let claudeChildID = "v1|6:claude|6:parent|5:child"
             try claudeEdge(storage, "PreToolUse", time, #""session_id":"parent","agent_id":"unseen","tool_name":"Bash""#)
         }
         #expect(storage.loadAll().isEmpty)
-        try claudeEdge(storage, "SessionStart", 50)
+        try claudeEdge(storage, "SessionStart", 50, #""session_id":"parent","source":"resume""#)
         try claudeEdge(storage, "SubagentStart", 20, #""session_id":"parent","agent_id":"old-unseen""#)
         try claudeEdge(storage, "SubagentStart", 51, #""session_id":"parent","agent_id":"new-child""#)
         #expect(storage.loadAll().count == 2)
@@ -191,7 +191,7 @@ private let claudeChildID = "v1|6:claude|6:parent|5:child"
 @Test func claudeResumedFamilyRejectsEarlierChildrenWithinTheSameSecond() throws {
     try withClaudeLifecycleStorage { storage in
         try claudeEdge(storage, "SessionEnd", 30)
-        try claudeEdge(storage, "SessionStart", 50.8)
+        try claudeEdge(storage, "SessionStart", 50.8, #""session_id":"parent","source":"resume""#)
         try claudeEdge(storage, "UserPromptSubmit", 50.9)
         try claudeEdge(storage, "SubagentStart", 50.5, #""session_id":"parent","agent_id":"child""#)
         #expect(storage.load(id: claudeChildID) == nil)
@@ -215,7 +215,7 @@ private let claudeChildID = "v1|6:claude|6:parent|5:child"
             power: PowerState(onBattery: false, batteryPercent: 100, thermal: .nominal)
         )
         #expect(!decision.holdSystem)
-        try claudeEdge(storage, "SessionStart", 50.8)
+        try claudeEdge(storage, "SessionStart", 50.8, #""session_id":"parent","source":"resume""#)
         #expect(storage.loadAll().map(\.id) == [claudeParentID])
         try claudeEdge(storage, "SubagentStart", 51, #""session_id":"parent","agent_id":"new-child""#)
         #expect(storage.loadAll().count == 2)

@@ -125,6 +125,15 @@ public struct SessionRecord: Codable, Equatable, Sendable {
     /// observed SessionEnd. Nil for legacy records and an initial session:
     /// first seeing a parent does not invalidate children already working.
     public var reopenedAt: TimeInterval?
+    /// Precise Unix seconds at this session's latest `UserPromptSubmit`, the
+    /// start of its current turn. `stateChangedAt` cannot mark that boundary:
+    /// it keeps an earlier turn's start when that turn ended without a hook.
+    /// Nil for legacy records and sessions not yet prompted.
+    public var promptObservedAt: TimeInterval?
+    /// Precise Unix seconds recorded by a Codex parent's `Stop`: its children
+    /// last heard before this sent nothing for a whole turn and are finished.
+    /// Reads honor it, so an interrupted cleanup cannot leave them Working.
+    public var staleChildCutoff: TimeInterval?
     /// When this agent session began. Optional so records written by older
     /// Let It Brew versions continue to decode. Consumers should use
     /// `effectiveStartedAt` when presenting elapsed session time.
@@ -149,6 +158,8 @@ public struct SessionRecord: Codable, Equatable, Sendable {
         case legacyUpdatedAt = "updatedAt"
         case eventObservedAt = "event_observed_at"
         case reopenedAt = "reopened_at"
+        case promptObservedAt = "prompt_observed_at"
+        case staleChildCutoff = "stale_child_cutoff"
         case startedAt = "started_at"
         case accumulatedWorkingTime = "accumulated_working_time"
         case lastEvent = "last_event"
@@ -161,7 +172,8 @@ public struct SessionRecord: Codable, Equatable, Sendable {
                 startedAt: Date? = nil,
                 accumulatedWorkingTime: TimeInterval? = nil,
                 stateChangedAt: Date? = nil, stateTransitionID: String? = nil,
-                eventObservedAt: TimeInterval? = nil, reopenedAt: TimeInterval? = nil) {
+                eventObservedAt: TimeInterval? = nil, reopenedAt: TimeInterval? = nil,
+                promptObservedAt: TimeInterval? = nil, staleChildCutoff: TimeInterval? = nil) {
         self.id = id
         self.tool = tool
         self.state = state
@@ -171,6 +183,8 @@ public struct SessionRecord: Codable, Equatable, Sendable {
         self.updatedAt = updatedAt
         self.eventObservedAt = eventObservedAt
         self.reopenedAt = reopenedAt
+        self.promptObservedAt = promptObservedAt
+        self.staleChildCutoff = staleChildCutoff
         self.startedAt = startedAt
         self.accumulatedWorkingTime = accumulatedWorkingTime
         self.lastEvent = lastEvent
@@ -193,6 +207,12 @@ public struct SessionRecord: Codable, Equatable, Sendable {
         }
         eventObservedAt = try container.decodeIfPresent(TimeInterval.self, forKey: .eventObservedAt)
         reopenedAt = try container.decodeIfPresent(TimeInterval.self, forKey: .reopenedAt)
+        promptObservedAt = try container.decodeIfPresent(
+            TimeInterval.self, forKey: .promptObservedAt
+        )
+        staleChildCutoff = try container.decodeIfPresent(
+            TimeInterval.self, forKey: .staleChildCutoff
+        )
         startedAt = try container.decodeIfPresent(Date.self, forKey: .startedAt)
         accumulatedWorkingTime = try container.decodeIfPresent(
             TimeInterval.self, forKey: .accumulatedWorkingTime
@@ -213,11 +233,19 @@ public struct SessionRecord: Codable, Equatable, Sendable {
         try container.encode(updatedAt, forKey: .updatedAt)
         try container.encodeIfPresent(eventObservedAt, forKey: .eventObservedAt)
         try container.encodeIfPresent(reopenedAt, forKey: .reopenedAt)
+        try container.encodeIfPresent(promptObservedAt, forKey: .promptObservedAt)
+        try container.encodeIfPresent(staleChildCutoff, forKey: .staleChildCutoff)
         try container.encodeIfPresent(startedAt, forKey: .startedAt)
         try container.encodeIfPresent(accumulatedWorkingTime, forKey: .accumulatedWorkingTime)
         try container.encodeIfPresent(lastEvent, forKey: .lastEvent)
         try container.encodeIfPresent(stateChangedAt, forKey: .stateChangedAt)
         try container.encodeIfPresent(stateTransitionID, forKey: .stateTransitionID)
+    }
+
+    /// The parent's latest proof that older child observations are finished:
+    /// an explicit reopen, or a Codex Stop's stale-child cutoff.
+    var childCutoff: TimeInterval? {
+        [reopenedAt, staleChildCutoff].compactMap { $0 }.max()
     }
 
     /// What the board shows: the directory name people actually think in.
@@ -820,27 +848,27 @@ public struct SessionStorage: Sendable {
             return load(filename: name)
         }
         // A parent terminal is authoritative even if its process stopped midway
-        // through sweeping children. Read each Claude parent only once. Missing
-        // or unreadable parent state is not evidence that a child finished.
+        // through sweeping children. Read each parent only once. Missing or
+        // unreadable parent state is not evidence that a child finished.
         let parentIDs = Set(records.compactMap { record -> String? in
             guard let child = HookRecordID(encoded: record.id),
-                  child.agent == .claude, child.childID != nil else { return nil }
-            return HookRecordID(agent: .claude, parentID: child.parentID)?.encoded
+                  child.agent.tracksSubagentFamilies, child.childID != nil else { return nil }
+            return HookRecordID(agent: child.agent, parentID: child.parentID)?.encoded
         })
         let parents = Dictionary(uniqueKeysWithValues: parentIDs.compactMap { id in
             (try? loadOrderedEntry(id: id)).map { (id, $0) }
         })
         return records.filter { record in
             guard let child = HookRecordID(encoded: record.id),
-                  child.agent == .claude, child.childID != nil,
-                  let parentID = HookRecordID(agent: .claude, parentID: child.parentID)?.encoded,
+                  child.agent.tracksSubagentFamilies, child.childID != nil,
+                  let parentID = HookRecordID(agent: child.agent, parentID: child.parentID)?.encoded,
                   let parent = parents[parentID] else { return true }
             switch parent {
             case .terminal:
                 return false
             case .active(let parentRecord):
-                guard let reopenedAt = parentRecord.reopenedAt else { return true }
-                return (record.eventObservedAt ?? record.updatedAt.timeIntervalSince1970) >= reopenedAt
+                guard let cutoff = parentRecord.childCutoff else { return true }
+                return (record.eventObservedAt ?? record.updatedAt.timeIntervalSince1970) >= cutoff
             }
         }
     }

@@ -23,6 +23,7 @@ public enum HookReducer {
         toolName: String?,
         notificationType: String?,
         source: String? = nil,
+        trigger: String? = nil,
         hasBackgroundTasks: Bool = false,
         errorRecoverable: Bool? = nil
     ) -> HookEffect? {
@@ -32,14 +33,29 @@ public enum HookReducer {
             // no further events, so `working` here would hold the Mac awake
             // for as long as the process lives. Still writes a record, so the
             // session appears immediately.
-            guard source == "compact" else { return .set(.idle, detail: nil) }
-            return agent == .claude ? nil : .set(.working, detail: nil)
-        case "PreCompact", "PostCompact":
-            // Claude also compacts at an idle prompt (/compact, and idle
-            // auto-compaction before the prompt cache expires), and an aborted
-            // compact emits PreCompact alone. No Stop follows either, so Claude
-            // compaction keeps the state its turn already established.
-            return agent == .claude ? nil : .set(.working, detail: nil)
+            if agent == .claude {
+                // Only these sources start at an idle prompt. A compaction
+                // restart, or a source Claude adds later, may fire inside a
+                // running turn and must not release its hold.
+                return ["startup", "resume", "clear"].contains(source)
+                    ? .set(.idle, detail: nil) : nil
+            }
+            // A compaction restart keeps its turn's state; see PreCompact.
+            return source == "compact" ? nil : .set(.idle, detail: nil)
+        case "PreCompact":
+            // Claude and Codex also compact at an idle prompt (/compact, and
+            // Claude's idle auto-compaction before the prompt cache expires),
+            // and an aborted compact emits PreCompact alone. No Stop follows
+            // either, so compaction keeps the state its turn already established.
+            return nil
+        case "PostCompact":
+            // A manual Claude compact runs only at the idle prompt, so its
+            // completion proves no turn is running, including one an interrupt
+            // left Working. Auto compaction can run inside a turn.
+            return agent == .claude && trigger == "manual" ? .set(.idle, detail: nil) : nil
+        case "Interrupt":
+            // Codex's only hook for an Esc-cancelled turn; no Stop follows it.
+            return agent == .codex ? .set(.idle, detail: nil) : nil
         case "SubagentStart":
             return .set(.working, detail: nil)
         case "UserPromptSubmit", "PostToolUse":

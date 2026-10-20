@@ -16,11 +16,12 @@ public enum HookSessionUpdater {
             toolName: payload.toolName,
             notificationType: payload.notificationType,
             source: payload.source,
+            trigger: payload.trigger,
             hasBackgroundTasks: payload.hasBackgroundTasks,
             errorRecoverable: payload.errorRecoverable
         ) else { return }
 
-        if agent == .claude,
+        if agent.tracksSubagentFamilies,
            let identity = HookRecordID(encoded: sessionID),
            let parent = HookRecordID(agent: agent, parentID: identity.parentID) {
             try storage.withHookFamilyLock(parentID: parent.encoded) {
@@ -29,20 +30,25 @@ public enum HookSessionUpdater {
                     // Even a previously unseen child cannot outlive its ended
                     // parent. A fresh SessionStart/UserPromptSubmit reopens it.
                     guard endedAt == nil else { return }
-                    if let reopenedAt = storage.load(id: parent.encoded)?.reopenedAt,
-                       observedAt.timeIntervalSince1970 < reopenedAt { return }
+                    if let cutoff = storage.load(id: parent.encoded)?.childCutoff,
+                       observedAt.timeIntervalSince1970 < cutoff { return }
                 } else if endedAt != nil,
                           !["SessionStart", "UserPromptSubmit", "SessionEnd"].contains(event) {
                     return
                 }
 
-                let children: [SessionRecord]
-                if event == "SessionEnd", identity.childID == nil {
-                    children = storage.loadAll().filter { record in
+                func familyChildren() -> [SessionRecord] {
+                    storage.loadAll().filter { record in
                         guard let child = HookRecordID(encoded: record.id) else { return false }
                         return child.agent == agent && child.parentID == identity.parentID
                             && child.childID != nil
                     }
+                }
+
+                let children: [SessionRecord]
+                var staleChildCutoff: TimeInterval?
+                if event == "SessionEnd", identity.childID == nil {
+                    children = familyChildren()
                     // A newer child edge also makes this a stale family end.
                     // Otherwise the parent's terminal marker would freeze that
                     // surviving child's subsequent completion hooks.
@@ -50,6 +56,29 @@ public enum HookSessionUpdater {
                         ($0.eventObservedAt ?? $0.updatedAt.timeIntervalSince1970)
                             > observedAt.timeIntervalSince1970
                     }) else { return }
+                } else if agent == .codex, ["Stop", "Interrupt"].contains(event),
+                          identity.childID == nil,
+                          let turn = storage.load(id: parent.encoded), turn.state == .working,
+                          let turnStartedAt = [
+                              turn.promptObservedAt, turn.stateChangedAt?.timeIntervalSince1970,
+                          ].compactMap({ $0 }).max() {
+                    // Codex can omit a child's SubagentStop. A child silent for
+                    // the parent's whole turn, ended by Stop or Interrupt, is not
+                    // running; one heard during this turn may be, so it waits for
+                    // a later turn's end or SessionEnd.
+                    // The latest prompt starts the turn even when an earlier one
+                    // ended without a hook and left the parent Working. Legacy
+                    // records fall back to stateChangedAt, which persists rounded
+                    // down to whole seconds: that can only keep a child longer.
+                    // The parent keeps the cutoff, which reads and later child
+                    // hooks honor, so an interrupted deletion below is only tidying.
+                    // Each deletion is ordered at the cutoff, not this edge: a child
+                    // hook observed after the cutoff but applied after this edge
+                    // proves the child is still running and must recreate it.
+                    staleChildCutoff = turnStartedAt
+                    children = familyChildren().filter {
+                        ($0.eventObservedAt ?? $0.updatedAt.timeIntervalSince1970) < turnStartedAt
+                    }
                 } else {
                     children = []
                 }
@@ -58,7 +87,8 @@ public enum HookSessionUpdater {
                     id: sessionID, effect: effect, event: event, payload: payload,
                     agent: agent, agentPID: agentPID, observedAt: observedAt, storage: storage,
                     reopenedAt: endedAt != nil && identity.childID == nil
-                        ? observedAt.timeIntervalSince1970 : nil
+                        ? observedAt.timeIntervalSince1970 : nil,
+                    staleChildCutoff: staleChildCutoff
                 )
 
                 if event == "SessionEnd", identity.childID == nil,
@@ -66,6 +96,18 @@ public enum HookSessionUpdater {
                     for record in children {
                         try storage.mutate(id: record.id, observedAt: observedAt.timeIntervalSince1970) { _ in
                             .delete
+                        }
+                    }
+                } else if let staleChildCutoff,
+                          storage.load(id: parent.encoded)?.eventObservedAt
+                              == observedAt.timeIntervalSince1970 {
+                    for record in children {
+                        try storage.mutate(id: record.id, observedAt: staleChildCutoff) { previous in
+                            guard let previous,
+                                  (previous.eventObservedAt ?? previous.updatedAt.timeIntervalSince1970)
+                                      < staleChildCutoff
+                            else { return .keep }
+                            return .delete
                         }
                     }
                 } else if event == "SubagentStop", payload.hasBackgroundTaskSnapshot,
@@ -111,7 +153,7 @@ public enum HookSessionUpdater {
     private static func applyRecord(
         id: String, effect: HookEffect, event: String, payload: HookPayload,
         agent: AgentID, agentPID: Int32?, observedAt: Date, storage: SessionStorage,
-        reopenedAt: TimeInterval? = nil
+        reopenedAt: TimeInterval? = nil, staleChildCutoff: TimeInterval? = nil
     ) throws {
         try storage.mutate(
             id: id,
@@ -128,6 +170,16 @@ public enum HookSessionUpdater {
             if agent == .copilot,
                event == "SessionStart",
                previous?.state == .working {
+                return .keep
+            }
+
+            // Stop stays Working only while it reports background work. A
+            // manual compact at that prompt does not end the work; only the
+            // work's own completion edge may release the hold.
+            if agent == .claude,
+               event == "PostCompact",
+               previous?.state == .working,
+               previous?.lastEvent == "Stop" {
                 return .keep
             }
 
@@ -157,7 +209,10 @@ public enum HookSessionUpdater {
                     stateChangedAt: transition.changedAt,
                     stateTransitionID: transition.id,
                     eventObservedAt: observedAt.timeIntervalSince1970,
-                    reopenedAt: reopenedAt ?? previous?.reopenedAt
+                    reopenedAt: reopenedAt ?? previous?.reopenedAt,
+                    promptObservedAt: event == "UserPromptSubmit"
+                        ? observedAt.timeIntervalSince1970 : previous?.promptObservedAt,
+                    staleChildCutoff: staleChildCutoff ?? previous?.staleChildCutoff
                 ))
             }
         }

@@ -7,6 +7,7 @@ private func reduce(
     toolName: String? = nil,
     notificationType: String? = nil,
     source: String? = nil,
+    trigger: String? = nil,
     hasBackgroundTasks: Bool = false,
     errorRecoverable: Bool? = nil
 ) -> HookEffect? {
@@ -16,6 +17,7 @@ private func reduce(
         toolName: toolName,
         notificationType: notificationType,
         source: source,
+        trigger: trigger,
         hasBackgroundTasks: hasBackgroundTasks,
         errorRecoverable: errorRecoverable
     )
@@ -30,7 +32,17 @@ private func reduce(
 @Test func sessionStartIsIdleNotWorking() {
     // A REPL opened and never prompted emits no further events. Marking it
     // working would hold the Mac awake for the life of the process.
-    #expect(reduce("SessionStart") == .set(.idle, detail: nil))
+    for source in ["startup", "resume", "clear"] {
+        #expect(reduce("SessionStart", source: source) == .set(.idle, detail: nil))
+    }
+    #expect(reduce("SessionStart", agent: .codex) == .set(.idle, detail: nil))
+}
+
+@Test func claudeSessionStartFromAnUnknownSourceChangesNothing() {
+    // A compaction restart, or a source Claude adds later, may fire inside a
+    // running turn; releasing the hold there would let the Mac sleep mid-work.
+    #expect(reduce("SessionStart") == nil)
+    #expect(reduce("SessionStart", source: "some-future-source") == nil)
 }
 
 @Test func promptAndPostToolAreWorking() {
@@ -105,14 +117,29 @@ private func reduce(
     // Claude also compacts at an idle prompt, and an aborted compact emits
     // PreCompact alone. Neither is followed by Stop.
     #expect(reduce("SessionStart", source: "compact") == nil)
-    #expect(reduce("PreCompact") == nil)
+    for trigger in [nil, "manual", "auto"] {
+        #expect(reduce("PreCompact", trigger: trigger) == nil)
+    }
     #expect(reduce("PostCompact") == nil)
+    #expect(reduce("PostCompact", trigger: "auto") == nil)
 }
 
-@Test func codexCompactionStillReportsWorking() {
-    #expect(reduce("SessionStart", agent: .codex, source: "compact") == .set(.working, detail: nil))
-    #expect(reduce("PreCompact", agent: .codex) == .set(.working, detail: nil))
-    #expect(reduce("PostCompact", agent: .codex) == .set(.working, detail: nil))
+@Test func claudeManualCompactCompletionIsIdle() {
+    // A manual compact runs only at the idle prompt, so no turn is running.
+    #expect(reduce("PostCompact", trigger: "manual") == .set(.idle, detail: nil))
+}
+
+@Test func codexCompactionKeepsTheExistingState() {
+    #expect(reduce("SessionStart", agent: .codex, source: "compact") == nil)
+    for trigger in [nil, "manual", "auto"] {
+        #expect(reduce("PreCompact", agent: .codex, trigger: trigger) == nil)
+        #expect(reduce("PostCompact", agent: .codex, trigger: trigger) == nil)
+    }
+}
+
+@Test func codexInterruptEndsTheTurn() {
+    #expect(reduce("Interrupt", agent: .codex) == .set(.idle, detail: nil))
+    #expect(reduce("Interrupt") == nil)
 }
 
 @Test func subagentsFailuresAndBackgroundWorkStayTwoState() {
