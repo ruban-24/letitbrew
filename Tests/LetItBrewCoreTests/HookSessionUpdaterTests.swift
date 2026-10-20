@@ -849,6 +849,22 @@ import Testing
     #expect(record.lastEvent == "UserPromptSubmit")
 }
 
+@Test func codexInterruptReleasesTheCancelledTurn() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+
+    try applyHooks(
+        [("UserPromptSubmit", ""), ("PreToolUse", #","tool_name":"Bash""#),
+         ("Interrupt", #","turn_id":"turn-1""#)],
+        agent: .codex, sessionID: "codex-esc", from: 100, storage: storage
+    )
+
+    let record = try #require(storage.load(id: hookUpdaterID("codex-esc")))
+    #expect(record.state == .idle)
+    #expect(record.lastEvent == "Interrupt")
+}
+
 @Test func claudeBackgroundTasksAndSessionCronsDriveStopStructurally() throws {
     let directory = hookUpdaterTempDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }

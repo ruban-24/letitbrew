@@ -68,19 +68,31 @@ public enum CodexHooks {
 
     /// Spelled exactly as Codex matches them. Load-bearing strings: a
     /// lowercase letter here disables the integration with no error anywhere.
-    /// Codex has no `Notification` event.
+    /// Codex has no `Notification` event. `Interrupt` (Codex 0.150+) is the
+    /// only hook an Esc-cancelled turn fires; older Codex ignores the key.
     public static let events = [
         "SessionStart", "UserPromptSubmit", "PreToolUse",
         "PostToolUse", "PermissionRequest", "PreCompact", "PostCompact",
-        "SubagentStart", "SubagentStop", "Stop", "SessionEnd",
+        "SubagentStart", "SubagentStop", "Stop", "SessionEnd", "Interrupt",
     ]
 
     /// The app-server reports the same installed events with a lowercase
     /// initial. Derive the trust contract from the writer's complete list so
     /// install and runtime verification cannot drift apart.
-    public static let appServerEvents = Set(events.map { event in
+    public static let appServerEvents = Set(events.map(appServerEventName))
+
+    /// Installed events a supported older Codex does not report as hooks.
+    public static let optionalAppServerEvents: Set<String> = [appServerEventName("Interrupt")]
+
+    private static func appServerEventName(_ event: String) -> String {
         event.prefix(1).lowercased() + event.dropFirst()
-    })
+    }
+
+    /// Codex caps `Interrupt` hooks at 3 seconds and warns at every startup
+    /// about a longer timeout.
+    static func timeout(event: String) -> Int {
+        event == "Interrupt" ? 3 : 5
+    }
 
     public static let fallbackCLIPath = ClaudeHooks.fallbackCLIPath
 
@@ -279,7 +291,7 @@ public enum CodexHooks {
             // No matcher: Codex rejects one on every event.
             groups.append(HookFile.entry(
                 command: try hookCommand(event: event, cliPath: cliPath),
-                timeout: 5,
+                timeout: timeout(event: event),
                 matcher: nil
             ))
             hooks[event] = groups

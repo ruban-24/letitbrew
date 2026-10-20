@@ -130,3 +130,22 @@ private func response(
     )
     #expect(result == .trusted)
 }
+
+@Test func anOptionalEventMayBeAbsentButMustBeTrustedWhenReported() throws {
+    // Codex before 0.150 ignores the Interrupt key, so its runtime view omits it.
+    let expected = expectedCodexEvents.union(["interrupt"])
+    let required = expectedCodexEvents.map { hook(event: $0) }
+    func classify(_ hooks: [[String: Any]]) throws -> CodexHookTrustResult {
+        CodexHookTrust.classify(
+            responseData: try response(hooks: hooks),
+            expectedEvents: expected,
+            optionalEvents: ["interrupt"],
+            expectedSourcePath: "/Users/test/.codex/hooks.json",
+            ownershipSuffix: ": # __letitbrew_codex_hook"
+        )
+    }
+    #expect(try classify(required) == .trusted)
+    #expect(try classify(required + [hook(event: "interrupt")]) == .trusted)
+    #expect(try classify(required + [hook(event: "interrupt", trust: "untrusted")]) == .approvalRequired)
+    #expect(try classify(Array(required.dropFirst()) + [hook(event: "interrupt")]) == .couldNotVerify)
+}

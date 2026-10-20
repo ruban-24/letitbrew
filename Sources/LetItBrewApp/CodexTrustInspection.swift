@@ -77,6 +77,7 @@ enum LiveCodexHookTrustInspection {
         return CodexHookTrust.classifyAppServerOutput(
             execution.output,
             expectedEvents: CodexHooks.appServerEvents,
+            optionalEvents: CodexHooks.optionalAppServerEvents,
             expectedSourcePath: hooksURL.path,
             ownershipSuffix: HookFile.ownershipComment(marker: CodexHooks.marker)
         )

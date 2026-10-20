@@ -137,6 +137,11 @@ private func reduce(
     }
 }
 
+@Test func codexInterruptEndsTheTurn() {
+    #expect(reduce("Interrupt", agent: .codex) == .set(.idle, detail: nil))
+    #expect(reduce("Interrupt") == nil)
+}
+
 @Test func subagentsFailuresAndBackgroundWorkStayTwoState() {
     #expect(reduce("SubagentStart") == .set(.working, detail: nil))
     #expect(reduce("SubagentStop") == .end)

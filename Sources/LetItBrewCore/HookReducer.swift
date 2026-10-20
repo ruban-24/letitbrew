@@ -53,6 +53,9 @@ public enum HookReducer {
             // completion proves no turn is running, including one an interrupt
             // left Working. Auto compaction can run inside a turn.
             return agent == .claude && trigger == "manual" ? .set(.idle, detail: nil) : nil
+        case "Interrupt":
+            // Codex's only hook for an Esc-cancelled turn; no Stop follows it.
+            return agent == .codex ? .set(.idle, detail: nil) : nil
         case "SubagentStart":
             return .set(.working, detail: nil)
         case "UserPromptSubmit", "PostToolUse":

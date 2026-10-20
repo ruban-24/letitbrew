@@ -6,8 +6,10 @@ import Foundation
     #expect(CodexHooks.appServerEvents == Set([
         "sessionStart", "userPromptSubmit", "preToolUse", "postToolUse",
         "permissionRequest", "preCompact", "postCompact", "subagentStart",
-        "subagentStop", "stop", "sessionEnd",
+        "subagentStop", "stop", "sessionEnd", "interrupt",
     ]))
+    #expect(CodexHooks.optionalAppServerEvents == ["interrupt"])
+    #expect(CodexHooks.optionalAppServerEvents.isSubset(of: CodexHooks.appServerEvents))
 }
 
 private func object(_ data: Data) throws -> [String: Any] {
@@ -27,7 +29,7 @@ private func object(_ data: Data) throws -> [String: Any] {
     #expect(CodexHooks.events == ["SessionStart", "UserPromptSubmit", "PreToolUse",
                                   "PostToolUse", "PermissionRequest", "PreCompact",
                                   "PostCompact", "SubagentStart", "SubagentStop", "Stop",
-                                  "SessionEnd"])
+                                  "SessionEnd", "Interrupt"])
 }
 
 @Test func topLevelHasOnlyDescriptionAndHooks() throws {
@@ -287,7 +289,8 @@ private func requireSoleOwnedEntry(
             // Codex rejects a matcher on every event: none of ours ever carries one.
             #expect(group["matcher"] == nil)
             let timeout = try #require(entry["timeout"] as? Int)
-            #expect(timeout == 5)
+            // Codex caps Interrupt hooks at 3 seconds.
+            #expect(timeout == (event == "Interrupt" ? 3 : 5))
         }
     }
 }
