@@ -32,6 +32,13 @@ public enum HookReducer {
             // no further events, so `working` here would hold the Mac awake
             // for as long as the process lives. Still writes a record, so the
             // session appears immediately.
+            if agent == .claude {
+                // Only these sources start at an idle prompt. A compaction
+                // restart, or a source Claude adds later, may fire inside a
+                // running turn and must not release its hold.
+                return ["startup", "resume", "clear"].contains(source)
+                    ? .set(.idle, detail: nil) : nil
+            }
             // A compaction restart keeps its turn's state; see PreCompact.
             return source == "compact" ? nil : .set(.idle, detail: nil)
         case "PreCompact", "PostCompact":

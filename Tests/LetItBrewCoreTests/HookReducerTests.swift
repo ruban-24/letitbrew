@@ -30,7 +30,17 @@ private func reduce(
 @Test func sessionStartIsIdleNotWorking() {
     // A REPL opened and never prompted emits no further events. Marking it
     // working would hold the Mac awake for the life of the process.
-    #expect(reduce("SessionStart") == .set(.idle, detail: nil))
+    for source in ["startup", "resume", "clear"] {
+        #expect(reduce("SessionStart", source: source) == .set(.idle, detail: nil))
+    }
+    #expect(reduce("SessionStart", agent: .codex) == .set(.idle, detail: nil))
+}
+
+@Test func claudeSessionStartFromAnUnknownSourceChangesNothing() {
+    // A compaction restart, or a source Claude adds later, may fire inside a
+    // running turn; releasing the hold there would let the Mac sleep mid-work.
+    #expect(reduce("SessionStart") == nil)
+    #expect(reduce("SessionStart", source: "some-future-source") == nil)
 }
 
 @Test func promptAndPostToolAreWorking() {

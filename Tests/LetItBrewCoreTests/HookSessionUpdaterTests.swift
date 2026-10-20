@@ -52,7 +52,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: directory) }
         let storage = SessionStorage(directory: directory)
         let sessionID = "late-start-\(agent.rawValue)"
-        let payload = HookPayload(sessionId: sessionID, cwd: "/work/app")
+        let payload = HookPayload(sessionId: sessionID, cwd: "/work/app", source: "startup")
         let id = hookUpdaterID(sessionID, agent: agent)
 
         try HookSessionUpdater.apply(
@@ -798,6 +798,21 @@ import Testing
         #expect(record.state == expected)
         #expect(record.lastEvent == lead)
     }
+}
+
+@Test func claudeSessionStartFromAnUnknownSourceKeepsTheTurnWorking() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+
+    try applyHooks(
+        [("UserPromptSubmit", ""), ("SessionStart", #","source":"some-future-source""#)],
+        sessionID: "future-source", from: 100, storage: storage
+    )
+
+    let record = try #require(storage.load(id: hookUpdaterID("future-source", agent: .claude)))
+    #expect(record.state == .working)
+    #expect(record.lastEvent == "UserPromptSubmit")
 }
 
 @Test func claudeBackgroundTasksAndSessionCronsDriveStopStructurally() throws {
