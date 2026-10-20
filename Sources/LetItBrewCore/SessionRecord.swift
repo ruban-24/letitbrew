@@ -130,6 +130,10 @@ public struct SessionRecord: Codable, Equatable, Sendable {
     /// it keeps an earlier turn's start when that turn ended without a hook.
     /// Nil for legacy records and sessions not yet prompted.
     public var promptObservedAt: TimeInterval?
+    /// Precise Unix seconds recorded by a Codex parent's `Stop`: its children
+    /// last heard before this sent nothing for a whole turn and are finished.
+    /// Reads honor it, so an interrupted cleanup cannot leave them Working.
+    public var staleChildCutoff: TimeInterval?
     /// When this agent session began. Optional so records written by older
     /// Let It Brew versions continue to decode. Consumers should use
     /// `effectiveStartedAt` when presenting elapsed session time.
@@ -155,6 +159,7 @@ public struct SessionRecord: Codable, Equatable, Sendable {
         case eventObservedAt = "event_observed_at"
         case reopenedAt = "reopened_at"
         case promptObservedAt = "prompt_observed_at"
+        case staleChildCutoff = "stale_child_cutoff"
         case startedAt = "started_at"
         case accumulatedWorkingTime = "accumulated_working_time"
         case lastEvent = "last_event"
@@ -168,7 +173,7 @@ public struct SessionRecord: Codable, Equatable, Sendable {
                 accumulatedWorkingTime: TimeInterval? = nil,
                 stateChangedAt: Date? = nil, stateTransitionID: String? = nil,
                 eventObservedAt: TimeInterval? = nil, reopenedAt: TimeInterval? = nil,
-                promptObservedAt: TimeInterval? = nil) {
+                promptObservedAt: TimeInterval? = nil, staleChildCutoff: TimeInterval? = nil) {
         self.id = id
         self.tool = tool
         self.state = state
@@ -179,6 +184,7 @@ public struct SessionRecord: Codable, Equatable, Sendable {
         self.eventObservedAt = eventObservedAt
         self.reopenedAt = reopenedAt
         self.promptObservedAt = promptObservedAt
+        self.staleChildCutoff = staleChildCutoff
         self.startedAt = startedAt
         self.accumulatedWorkingTime = accumulatedWorkingTime
         self.lastEvent = lastEvent
@@ -204,6 +210,9 @@ public struct SessionRecord: Codable, Equatable, Sendable {
         promptObservedAt = try container.decodeIfPresent(
             TimeInterval.self, forKey: .promptObservedAt
         )
+        staleChildCutoff = try container.decodeIfPresent(
+            TimeInterval.self, forKey: .staleChildCutoff
+        )
         startedAt = try container.decodeIfPresent(Date.self, forKey: .startedAt)
         accumulatedWorkingTime = try container.decodeIfPresent(
             TimeInterval.self, forKey: .accumulatedWorkingTime
@@ -225,11 +234,18 @@ public struct SessionRecord: Codable, Equatable, Sendable {
         try container.encodeIfPresent(eventObservedAt, forKey: .eventObservedAt)
         try container.encodeIfPresent(reopenedAt, forKey: .reopenedAt)
         try container.encodeIfPresent(promptObservedAt, forKey: .promptObservedAt)
+        try container.encodeIfPresent(staleChildCutoff, forKey: .staleChildCutoff)
         try container.encodeIfPresent(startedAt, forKey: .startedAt)
         try container.encodeIfPresent(accumulatedWorkingTime, forKey: .accumulatedWorkingTime)
         try container.encodeIfPresent(lastEvent, forKey: .lastEvent)
         try container.encodeIfPresent(stateChangedAt, forKey: .stateChangedAt)
         try container.encodeIfPresent(stateTransitionID, forKey: .stateTransitionID)
+    }
+
+    /// The parent's latest proof that older child observations are finished:
+    /// an explicit reopen, or a Codex Stop's stale-child cutoff.
+    var childCutoff: TimeInterval? {
+        [reopenedAt, staleChildCutoff].compactMap { $0 }.max()
     }
 
     /// What the board shows: the directory name people actually think in.
@@ -851,8 +867,8 @@ public struct SessionStorage: Sendable {
             case .terminal:
                 return false
             case .active(let parentRecord):
-                guard let reopenedAt = parentRecord.reopenedAt else { return true }
-                return (record.eventObservedAt ?? record.updatedAt.timeIntervalSince1970) >= reopenedAt
+                guard let cutoff = parentRecord.childCutoff else { return true }
+                return (record.eventObservedAt ?? record.updatedAt.timeIntervalSince1970) >= cutoff
             }
         }
     }

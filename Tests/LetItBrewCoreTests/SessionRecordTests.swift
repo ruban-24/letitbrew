@@ -367,6 +367,7 @@ private func tempDirectory() -> URL {
     #expect(json?["state_transition_id"] == nil)
     #expect(json?["event_observed_at"] == nil)
     #expect(json?["prompt_observed_at"] == nil)
+    #expect(json?["stale_child_cutoff"] == nil)
 }
 
 // Table-driven: session_id is untrusted input from another tool. Each row

@@ -973,6 +973,51 @@ import Testing
     #expect(storage.loadAll().isEmpty)
 }
 
+@Test func codexStopCutoffHidesChildrenItsCleanupMissed() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+    let parent = hookUpdaterID("codex-cutoff")
+    let child = hookUpdaterID("codex-cutoff", childID: "child")
+
+    try applyHooks([("UserPromptSubmit", "")], agent: .codex, sessionID: "codex-cutoff",
+                   from: 100, storage: storage)
+    try applyHooks([("SubagentStart", #","agent_id":"child""#)], agent: .codex,
+                   sessionID: "codex-cutoff", from: 101, storage: storage)
+    try applyHooks([("Stop", ""), ("UserPromptSubmit", "")], agent: .codex,
+                   sessionID: "codex-cutoff", from: 102, storage: storage)
+    // Hold the real child lock while the next Stop commits the parent and
+    // attempts its bounded cleanup. No production fault-injection seam.
+    try storage.mutate(id: child) { _ in
+        #expect(throws: SessionStorageMutationError.lockTimedOut) {
+            try applyHooks([("Stop", "")], agent: .codex, sessionID: "codex-cutoff",
+                           from: 300, storage: storage)
+        }
+        return .keep
+    }
+
+    #expect(storage.load(id: parent)?.state == .idle)
+    let entry = try #require(try hookUpdaterEntryObject(id: parent, directory: directory))
+    let record = try #require(entry["record"] as? [String: Any])
+    #expect(record["stale_child_cutoff"] as? Double == 103)
+    #expect(storage.load(id: child) != nil)
+    #expect(storage.loadAll().map(\.id) == [parent])
+    #expect(!decide(
+        sessions: storage.loadAll(), now: Date(timeIntervalSince1970: 301), settings: Settings(),
+        power: PowerState(onBattery: false, batteryPercent: 100, thermal: .nominal)
+    ).holdSystem)
+
+    // A late hook observed before the cutoff cannot revive the child; one
+    // observed after it proves the child is still running.
+    try applyHooks([("PostToolUse", #","agent_id":"child""#)], agent: .codex,
+                   sessionID: "codex-cutoff", from: 102.5, storage: storage)
+    #expect(storage.load(id: child)?.eventObservedAt == 101)
+    #expect(storage.loadAll().map(\.id) == [parent])
+    try applyHooks([("PostToolUse", #","agent_id":"child""#)], agent: .codex,
+                   sessionID: "codex-cutoff", from: 301, storage: storage)
+    #expect(storage.loadAll().count == 2)
+}
+
 @Test func codexInterruptedCleanupCannotKeepEndedFamilyAwake() throws {
     let directory = hookUpdaterTempDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }

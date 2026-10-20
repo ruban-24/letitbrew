@@ -30,8 +30,8 @@ public enum HookSessionUpdater {
                     // Even a previously unseen child cannot outlive its ended
                     // parent. A fresh SessionStart/UserPromptSubmit reopens it.
                     guard endedAt == nil else { return }
-                    if let reopenedAt = storage.load(id: parent.encoded)?.reopenedAt,
-                       observedAt.timeIntervalSince1970 < reopenedAt { return }
+                    if let cutoff = storage.load(id: parent.encoded)?.childCutoff,
+                       observedAt.timeIntervalSince1970 < cutoff { return }
                 } else if endedAt != nil,
                           !["SessionStart", "UserPromptSubmit", "SessionEnd"].contains(event) {
                     return
@@ -68,6 +68,8 @@ public enum HookSessionUpdater {
                     // ended without a hook and left the parent Working. Legacy
                     // records fall back to stateChangedAt, which persists rounded
                     // down to whole seconds: that can only keep a child longer.
+                    // The parent keeps the cutoff, which reads and later child
+                    // hooks honor, so an interrupted deletion below is only tidying.
                     staleChildCutoff = turnStartedAt
                     children = familyChildren().filter {
                         ($0.eventObservedAt ?? $0.updatedAt.timeIntervalSince1970) < turnStartedAt
@@ -80,7 +82,8 @@ public enum HookSessionUpdater {
                     id: sessionID, effect: effect, event: event, payload: payload,
                     agent: agent, agentPID: agentPID, observedAt: observedAt, storage: storage,
                     reopenedAt: endedAt != nil && identity.childID == nil
-                        ? observedAt.timeIntervalSince1970 : nil
+                        ? observedAt.timeIntervalSince1970 : nil,
+                    staleChildCutoff: staleChildCutoff
                 )
 
                 if event == "SessionEnd", identity.childID == nil,
@@ -145,7 +148,7 @@ public enum HookSessionUpdater {
     private static func applyRecord(
         id: String, effect: HookEffect, event: String, payload: HookPayload,
         agent: AgentID, agentPID: Int32?, observedAt: Date, storage: SessionStorage,
-        reopenedAt: TimeInterval? = nil
+        reopenedAt: TimeInterval? = nil, staleChildCutoff: TimeInterval? = nil
     ) throws {
         try storage.mutate(
             id: id,
@@ -203,7 +206,8 @@ public enum HookSessionUpdater {
                     eventObservedAt: observedAt.timeIntervalSince1970,
                     reopenedAt: reopenedAt ?? previous?.reopenedAt,
                     promptObservedAt: event == "UserPromptSubmit"
-                        ? observedAt.timeIntervalSince1970 : previous?.promptObservedAt
+                        ? observedAt.timeIntervalSince1970 : previous?.promptObservedAt,
+                    staleChildCutoff: staleChildCutoff ?? previous?.staleChildCutoff
                 ))
             }
         }

@@ -77,7 +77,10 @@ The common lifecycle mapping is:
   child's `SubagentStop`, so a Codex parent `Stop` also removes children that
   sent no hook since the turn's `UserPromptSubmit`; a child heard during the
   turn may still be running and waits for a later `Stop` or `SessionEnd`. The
-  latest prompt starts the turn even when an earlier turn ended without a hook. `SubagentStop` can make a
+  latest prompt starts the turn even when an earlier turn ended without a hook.
+  The parent records that cutoff as `stale_child_cutoff`; session scans and
+  later child hooks honor it, so an interrupted cleanup cannot leave those
+  children Working. `SubagentStop` can make a
   parent still Working from `Stop` Idle when its explicit background-task
   snapshot reports no remaining work. Missing snapshots and parents with newer
   foreground activity retain their state.

@@ -87,8 +87,10 @@ or read Claude/Codex/OpenCode/Copilot/Pi prompt and response content.
   and terminal markers as Claude; readers likewise exclude children of an ended
   parent if cleanup was interrupted. Codex can omit a child's `SubagentStop`, so a
   parent `Stop` also removes children that sent no hook since the parent's
-  latest `UserPromptSubmit`, recorded at its exact time. A child heard during
-  that turn is kept: hooks cannot tell a stuck child from one still running.
+  latest `UserPromptSubmit`, recorded at its exact time. The parent keeps that
+  cutoff, and readers and later child hooks honor it like a terminal marker. A
+  child heard during that turn is kept: hooks cannot tell a stuck child from
+  one still running.
 - Non-managed hooks must be reviewed and trusted in Codex before they run.
 
 ## OpenCode stable 1.x
