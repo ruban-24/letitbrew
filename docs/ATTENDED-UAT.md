@@ -292,6 +292,17 @@ remains Working until its own `SubagentStop`. End a session with children and
 confirm none of its rows remain. Where the documented permission lifecycle is
 observed, it preserves the existing Working state.
 
+Codex cannot be made to omit `SubagentStop` on demand, so replay that case
+through the installed helper with a throwaway session. Pipe each payload, such
+as `{"session_id":"uat-silent","cwd":"/tmp","agent_id":"A"}` (omit `agent_id`
+for parent events), to `/Applications/Let It Brew.app/Contents/Helpers/letitbrew
+hook codex <Event>`. Send `UserPromptSubmit`, `SubagentStart` for `A`, `Stop`,
+`UserPromptSubmit`, `SubagentStart` for `B`, then `Stop`. Confirm `A` disappears
+at the second `Stop` while `B`, heard during that turn, stays Working and holds
+the Mac. Repeat with a new session ID and `Interrupt` in place of the final
+`Stop`. End both sessions with `SessionEnd` and confirm none of their rows
+remain.
+
 ### OpenCode
 
 Test only a stable 1.x local CLI/app runtime. Confirm permission requests and
