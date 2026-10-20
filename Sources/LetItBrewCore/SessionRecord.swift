@@ -832,20 +832,20 @@ public struct SessionStorage: Sendable {
             return load(filename: name)
         }
         // A parent terminal is authoritative even if its process stopped midway
-        // through sweeping children. Read each Claude parent only once. Missing
-        // or unreadable parent state is not evidence that a child finished.
+        // through sweeping children. Read each parent only once. Missing or
+        // unreadable parent state is not evidence that a child finished.
         let parentIDs = Set(records.compactMap { record -> String? in
             guard let child = HookRecordID(encoded: record.id),
-                  child.agent == .claude, child.childID != nil else { return nil }
-            return HookRecordID(agent: .claude, parentID: child.parentID)?.encoded
+                  child.agent.tracksSubagentFamilies, child.childID != nil else { return nil }
+            return HookRecordID(agent: child.agent, parentID: child.parentID)?.encoded
         })
         let parents = Dictionary(uniqueKeysWithValues: parentIDs.compactMap { id in
             (try? loadOrderedEntry(id: id)).map { (id, $0) }
         })
         return records.filter { record in
             guard let child = HookRecordID(encoded: record.id),
-                  child.agent == .claude, child.childID != nil,
-                  let parentID = HookRecordID(agent: .claude, parentID: child.parentID)?.encoded,
+                  child.agent.tracksSubagentFamilies, child.childID != nil,
+                  let parentID = HookRecordID(agent: child.agent, parentID: child.parentID)?.encoded,
                   let parent = parents[parentID] else { return true }
             switch parent {
             case .terminal:

@@ -21,7 +21,7 @@ public enum HookSessionUpdater {
             errorRecoverable: payload.errorRecoverable
         ) else { return }
 
-        if agent == .claude || agent == .codex,
+        if agent.tracksSubagentFamilies,
            let identity = HookRecordID(encoded: sessionID),
            let parent = HookRecordID(agent: agent, parentID: identity.parentID) {
             try storage.withHookFamilyLock(parentID: parent.encoded) {

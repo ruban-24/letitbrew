@@ -973,6 +973,36 @@ import Testing
     #expect(storage.loadAll().isEmpty)
 }
 
+@Test func codexInterruptedCleanupCannotKeepEndedFamilyAwake() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+    let parent = hookUpdaterID("codex-sweep")
+    let child = hookUpdaterID("codex-sweep", childID: "child")
+
+    try applyHooks([("UserPromptSubmit", "")], agent: .codex, sessionID: "codex-sweep",
+                   from: 10, storage: storage)
+    try applyHooks([("SubagentStart", #","agent_id":"child""#)], agent: .codex,
+                   sessionID: "codex-sweep", from: 20, storage: storage)
+    // Model a SessionEnd hook that exits after committing the parent terminal,
+    // before deleting any children. Later child hooks are rejected, so reads
+    // must treat the terminal as authoritative.
+    try storage.mutate(id: parent, observedAt: 30) { _ in .delete }
+    #expect(storage.load(id: child) != nil)
+    #expect(storage.loadAll().isEmpty)
+    #expect(!decide(
+        sessions: storage.loadAll(), now: Date(timeIntervalSince1970: 31), settings: Settings(),
+        power: PowerState(onBattery: false, batteryPercent: 100, thermal: .nominal)
+    ).holdSystem)
+
+    try applyHooks([("SessionStart", "")], agent: .codex, sessionID: "codex-sweep",
+                   from: 50.8, storage: storage)
+    #expect(storage.loadAll().map(\.id) == [parent])
+    try applyHooks([("SubagentStart", #","agent_id":"new-child""#)], agent: .codex,
+                   sessionID: "codex-sweep", from: 51, storage: storage)
+    #expect(storage.loadAll().count == 2)
+}
+
 @Test func claudeParentStopLeavesChildrenToTheirOwnCompletion() throws {
     let directory = hookUpdaterTempDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }

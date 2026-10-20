@@ -84,7 +84,8 @@ or read Claude/Codex/OpenCode/Copilot/Pi prompt and response content.
   other event uses 5. Older Codex ignores the key, so runtime trust
   verification accepts its absence but requires trust when Codex reports it.
 - Parent `SessionEnd` removes the parent's children, under the same family lock
-  and terminal markers as Claude. Codex can omit a child's `SubagentStop`, so a
+  and terminal markers as Claude; readers likewise exclude children of an ended
+  parent if cleanup was interrupted. Codex can omit a child's `SubagentStop`, so a
   parent `Stop` also removes children that sent no hook since the parent's
   latest `UserPromptSubmit`, recorded at its exact time. A child heard during
   that turn is kept: hooks cannot tell a stuck child from one still running.
