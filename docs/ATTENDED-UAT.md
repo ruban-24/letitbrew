@@ -243,9 +243,10 @@ Run these vendor-specific additions rather than claiming untested parity:
 
 ### Claude Code
 
-Verify untrusted-workspace holdback before workspace trust. Exercise
-`PreCompact`, `PostCompact`, and `SessionStart(source: compact)` as Working.
-Start two child `agent_id` values, stop one child only, and confirm the other
+Verify untrusted-workspace holdback before workspace trust. Run `/compact` at
+an idle prompt and confirm the session stays Idle; run it in a fresh session
+with too few messages to compact and confirm it stays Idle. Let a turn
+auto-compact and confirm it stays Working until its `Stop`. Start two child `agent_id` values, stop one child only, and confirm the other
 remains Working. Confirm `StopFailure` becomes Idle and `Stop` remains Working
 while `background_tasks` is nonempty, then becomes Idle after a later empty
 Stop. Where the documented permission lifecycle is observed, it preserves the

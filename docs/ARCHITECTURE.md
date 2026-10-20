@@ -48,11 +48,17 @@ record); there is no third permission or waiting state.
 The common lifecycle mapping is:
 
 - `SessionStart` maps to **idle, not working**, except `source=compact`, which
-  maps to **Working**. A session that has never been
+  follows the compaction rule below. A session that has never been
   prompted emits no further events, so treating it as working would hold the Mac
   awake for as long as that process lives.
-- `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PreCompact`, `PostCompact`,
-  and `SubagentStart` set **Working**.
+- `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, and `SubagentStart` set
+  **Working**.
+- Claude's `PreCompact`, `PostCompact`, and `SessionStart(source=compact)`
+  return no effect, preserving the prior state. Claude also compacts at an idle
+  prompt (`/compact`, and idle auto-compaction before the prompt cache expires)
+  and emits `PreCompact` alone when a compact aborts; no `Stop` follows either.
+  A compaction inside a turn stays Working until that turn's `Stop`. Other
+  adapters' compaction events set **Working**.
 - `Stop` and an `idle_prompt` `Notification` set **Idle**. Idle rows are hidden
   and stop contributing to the hold on the next one-second app poll. `Stop`
   with nonempty `background_tasks` remains **Working**; `StopFailure` is Idle.
