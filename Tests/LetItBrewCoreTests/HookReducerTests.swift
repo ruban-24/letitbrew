@@ -109,10 +109,10 @@ private func reduce(
     #expect(reduce("PostCompact") == nil)
 }
 
-@Test func codexCompactionStillReportsWorking() {
-    #expect(reduce("SessionStart", agent: .codex, source: "compact") == .set(.working, detail: nil))
-    #expect(reduce("PreCompact", agent: .codex) == .set(.working, detail: nil))
-    #expect(reduce("PostCompact", agent: .codex) == .set(.working, detail: nil))
+@Test func codexCompactionKeepsTheExistingState() {
+    #expect(reduce("SessionStart", agent: .codex, source: "compact") == nil)
+    #expect(reduce("PreCompact", agent: .codex) == nil)
+    #expect(reduce("PostCompact", agent: .codex) == nil)
 }
 
 @Test func subagentsFailuresAndBackgroundWorkStayTwoState() {

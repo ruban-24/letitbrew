@@ -32,14 +32,14 @@ public enum HookReducer {
             // no further events, so `working` here would hold the Mac awake
             // for as long as the process lives. Still writes a record, so the
             // session appears immediately.
-            guard source == "compact" else { return .set(.idle, detail: nil) }
-            return agent == .claude ? nil : .set(.working, detail: nil)
+            // A compaction restart keeps its turn's state; see PreCompact.
+            return source == "compact" ? nil : .set(.idle, detail: nil)
         case "PreCompact", "PostCompact":
-            // Claude also compacts at an idle prompt (/compact, and idle
-            // auto-compaction before the prompt cache expires), and an aborted
-            // compact emits PreCompact alone. No Stop follows either, so Claude
-            // compaction keeps the state its turn already established.
-            return agent == .claude ? nil : .set(.working, detail: nil)
+            // Claude and Codex also compact at an idle prompt (/compact, and
+            // Claude's idle auto-compaction before the prompt cache expires),
+            // and an aborted compact emits PreCompact alone. No Stop follows
+            // either, so compaction keeps the state its turn already established.
+            return nil
         case "SubagentStart":
             return .set(.working, detail: nil)
         case "UserPromptSubmit", "PostToolUse":

@@ -783,43 +783,21 @@ import Testing
     #expect(storage.load(id: id)?.state == .idle)
 }
 
-@Test func codexCompactSessionLifecycleStaysWorkingThroughStorage() throws {
-    let directory = hookUpdaterTempDirectory()
-    defer { try? FileManager.default.removeItem(at: directory) }
-    let storage = SessionStorage(directory: directory)
-    let timestamp = Date(timeIntervalSince1970: 100)
+@Test func codexCompactionKeepsTheTurnsStateThroughStorage() throws {
+    for (lead, expected) in [("Stop", SessionState.idle), ("PreToolUse", .working)] {
+        let directory = hookUpdaterTempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = SessionStorage(directory: directory)
 
-    try applyDecodedHook(
-        event: "SessionStart",
-        json: #"{"session_id":"compact-parent","cwd":"/work/app","source":"compact"}"#,
-        agent: .codex,
-        observedAt: timestamp,
-        storage: storage
-    )
-    let id = try #require(HookPayload(sessionId: "compact-parent")
-        .recordID(agent: .codex, event: "SessionStart"))
-    let transitionID = try #require(storage.load(id: id)?.stateTransitionID)
+        try applyHooks(
+            [("UserPromptSubmit", ""), (lead, "")] + compactionHooks(trigger: "manual"),
+            agent: .codex, sessionID: "codex-compact", from: 100, storage: storage
+        )
 
-    try applyDecodedHook(
-        event: "PreCompact",
-        json: #"{"session_id":"compact-parent","cwd":"/work/app"}"#,
-        agent: .codex,
-        observedAt: timestamp.addingTimeInterval(1),
-        storage: storage
-    )
-    try applyDecodedHook(
-        event: "PostCompact",
-        json: #"{"session_id":"compact-parent","cwd":"/work/app"}"#,
-        agent: .codex,
-        observedAt: timestamp.addingTimeInterval(2),
-        storage: storage
-    )
-
-    let record = try #require(storage.load(id: id))
-    #expect(record.state == .working)
-    #expect(record.lastEvent == "PostCompact")
-    #expect(record.stateTransitionID == transitionID)
-    #expect(storage.loadAll().count == 1)
+        let record = try #require(storage.load(id: hookUpdaterID("codex-compact")))
+        #expect(record.state == expected)
+        #expect(record.lastEvent == lead)
+    }
 }
 
 @Test func claudeBackgroundTasksAndSessionCronsDriveStopStructurally() throws {
@@ -1010,6 +988,31 @@ import Testing
         )
         #expect(storage.load(id: hookUpdaterID("parent", agent: .claude))?.state == .working)
     }
+}
+
+/// Applies `(event, extra payload fields)` pairs one second apart.
+private func applyHooks(
+    _ events: [(String, String)],
+    agent: AgentID = .claude,
+    sessionID: String,
+    from start: TimeInterval,
+    storage: SessionStorage
+) throws {
+    for (offset, (event, extra)) in events.enumerated() {
+        try applyDecodedHook(
+            event: event,
+            json: #"{"session_id":"\#(sessionID)","cwd":"/work/app","hook_event_name":"\#(event)"\#(extra)}"#,
+            agent: agent,
+            observedAt: Date(timeIntervalSince1970: start + TimeInterval(offset)),
+            storage: storage
+        )
+    }
+}
+
+private func compactionHooks(trigger: String) -> [(String, String)] {
+    [("PreCompact", #","trigger":"\#(trigger)","custom_instructions":null"#),
+     ("SessionStart", #","source":"compact""#),
+     ("PostCompact", #","trigger":"\#(trigger)","compact_summary":"summary""#)]
 }
 
 /// Applies Claude events one second apart, with the payload fields Claude Code
