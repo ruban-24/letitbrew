@@ -12,6 +12,41 @@ against the SHA-256 published with the release.
 
 ---
 
+## 0.8.4 (build 35)
+
+Fixed:
+
+- Claude sessions no longer stay Working after Claude Code compacts an idle
+  conversation, or after a compaction that was cancelled.
+- Running `/compact` in Claude marks the session Idle, which also clears a turn
+  that an Esc interrupt left Working. Background work still holds the Mac.
+- Codex compaction no longer changes a session's state.
+- Pressing Esc in Codex 0.150 or later ends the turn: Let It Brew now installs
+  Codex's `Interrupt` hook.
+- Codex subagents that never report completion no longer keep the Mac awake.
+  They are cleared when their session ends, and when the parent finishes a turn
+  in which they sent nothing. A subagent heard during that turn is kept.
+- Let It Brew finds the Codex CLI bundled in newer ChatGPT and Codex desktop
+  apps, so it can verify Codex hook approval without a separate CLI install.
+  Thanks to @deepblueeeee.
+
+Limitations:
+
+- Claude Code sends no hook when Esc interrupts a turn. That session stays
+  Working until its next prompt finishes, `/compact`, the session ends, Stop
+  Tracking, or the 12-hour expiry.
+- A Codex subagent that stops reporting during the final turn of a session can
+  hold the Mac until that session ends or the 12-hour expiry.
+
+Updating:
+
+- v0.7.1 and later can install v0.8.4 from **Settings → About → Check for
+  Updates…**. Users on v0.7.0 or earlier should quit the app and replace it
+  manually using the DMG without uninstalling first.
+- After updating, type `/hooks` in Codex and approve Let It Brew's new
+  `Interrupt` hook, then restart Codex sessions that were already open. Until
+  then, Agents settings shows Codex as needing that approval.
+
 ## 0.8.3 (build 34)
 
 Fixed:
