@@ -1018,6 +1018,52 @@ import Testing
     #expect(storage.loadAll().count == 2)
 }
 
+@Test func codexChildHookObservedBeforeTheStopButAppliedAfterItSurvives() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+    let child = hookUpdaterID("codex-race", childID: "child")
+
+    try applyHooks([("UserPromptSubmit", "")], agent: .codex, sessionID: "codex-race",
+                   from: 50, storage: storage)
+    try applyHooks([("SubagentStart", #","agent_id":"child""#)], agent: .codex,
+                   sessionID: "codex-race", from: 90, storage: storage)
+    try applyHooks([("Stop", "")], agent: .codex, sessionID: "codex-race",
+                   from: 95, storage: storage)
+    try applyHooks([("UserPromptSubmit", "")], agent: .codex, sessionID: "codex-race",
+                   from: 100, storage: storage)
+    // The child's hook is observed first but loses the family lock to the Stop.
+    try applyHooks([("Stop", "")], agent: .codex, sessionID: "codex-race",
+                   from: 150.001, storage: storage)
+    #expect(storage.load(id: child) == nil)
+    try applyHooks([("PreToolUse", #","agent_id":"child","tool_name":"Bash""#)],
+                   agent: .codex, sessionID: "codex-race", from: 150, storage: storage)
+
+    #expect(storage.load(id: child)?.state == .working)
+    #expect(storage.loadAll().contains { $0.id == child })
+}
+
+@Test func codexInterruptClearsChildrenSilentForTheCancelledTurn() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+
+    try applyHooks([("UserPromptSubmit", "")], agent: .codex, sessionID: "codex-esc-sweep",
+                   from: 100, storage: storage)
+    try applyHooks([("SubagentStart", #","agent_id":"silent""#)], agent: .codex,
+                   sessionID: "codex-esc-sweep", from: 101, storage: storage)
+    try applyHooks([("Stop", ""), ("UserPromptSubmit", "")], agent: .codex,
+                   sessionID: "codex-esc-sweep", from: 102, storage: storage)
+    try applyHooks([("SubagentStart", #","agent_id":"heard""#)], agent: .codex,
+                   sessionID: "codex-esc-sweep", from: 150, storage: storage)
+    try applyHooks([("Interrupt", #","turn_id":"turn-2""#)], agent: .codex,
+                   sessionID: "codex-esc-sweep", from: 200, storage: storage)
+
+    #expect(storage.load(id: hookUpdaterID("codex-esc-sweep"))?.state == .idle)
+    #expect(storage.load(id: hookUpdaterID("codex-esc-sweep", childID: "silent")) == nil)
+    #expect(storage.load(id: hookUpdaterID("codex-esc-sweep", childID: "heard"))?.state == .working)
+}
+
 @Test func codexInterruptedCleanupCannotKeepEndedFamilyAwake() throws {
     let directory = hookUpdaterTempDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }

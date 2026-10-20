@@ -56,20 +56,25 @@ public enum HookSessionUpdater {
                         ($0.eventObservedAt ?? $0.updatedAt.timeIntervalSince1970)
                             > observedAt.timeIntervalSince1970
                     }) else { return }
-                } else if agent == .codex, event == "Stop", identity.childID == nil,
+                } else if agent == .codex, ["Stop", "Interrupt"].contains(event),
+                          identity.childID == nil,
                           let turn = storage.load(id: parent.encoded), turn.state == .working,
                           let turnStartedAt = [
                               turn.promptObservedAt, turn.stateChangedAt?.timeIntervalSince1970,
                           ].compactMap({ $0 }).max() {
                     // Codex can omit a child's SubagentStop. A child silent for
-                    // the parent's whole turn is not running; one heard during
-                    // this turn may be, so it waits for a later Stop or SessionEnd.
+                    // the parent's whole turn, ended by Stop or Interrupt, is not
+                    // running; one heard during this turn may be, so it waits for
+                    // a later turn's end or SessionEnd.
                     // The latest prompt starts the turn even when an earlier one
                     // ended without a hook and left the parent Working. Legacy
                     // records fall back to stateChangedAt, which persists rounded
                     // down to whole seconds: that can only keep a child longer.
                     // The parent keeps the cutoff, which reads and later child
                     // hooks honor, so an interrupted deletion below is only tidying.
+                    // Each deletion is ordered at the cutoff, not this edge: a child
+                    // hook observed after the cutoff but applied after this edge
+                    // proves the child is still running and must recreate it.
                     staleChildCutoff = turnStartedAt
                     children = familyChildren().filter {
                         ($0.eventObservedAt ?? $0.updatedAt.timeIntervalSince1970) < turnStartedAt
@@ -97,7 +102,7 @@ public enum HookSessionUpdater {
                           storage.load(id: parent.encoded)?.eventObservedAt
                               == observedAt.timeIntervalSince1970 {
                     for record in children {
-                        try storage.mutate(id: record.id, observedAt: observedAt.timeIntervalSince1970) { previous in
+                        try storage.mutate(id: record.id, observedAt: staleChildCutoff) { previous in
                             guard let previous,
                                   (previous.eventObservedAt ?? previous.updatedAt.timeIntervalSince1970)
                                       < staleChildCutoff

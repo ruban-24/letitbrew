@@ -74,7 +74,7 @@ The common lifecycle mapping is:
   state.
 - `SubagentStop` and `SessionEnd` remove the addressed active record. For Claude
   and Codex, a parent `SessionEnd` also removes its children. Codex can omit a
-  child's `SubagentStop`, so a Codex parent `Stop` also removes children that
+  child's `SubagentStop`, so a Codex parent `Stop` or `Interrupt` also removes children that
   sent no hook since the turn's `UserPromptSubmit`; a child heard during the
   turn may still be running and waits for a later `Stop` or `SessionEnd`. The
   latest prompt starts the turn even when an earlier turn ended without a hook.
