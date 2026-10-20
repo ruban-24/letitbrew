@@ -125,6 +125,11 @@ public struct SessionRecord: Codable, Equatable, Sendable {
     /// observed SessionEnd. Nil for legacy records and an initial session:
     /// first seeing a parent does not invalidate children already working.
     public var reopenedAt: TimeInterval?
+    /// Precise Unix seconds at this session's latest `UserPromptSubmit`, the
+    /// start of its current turn. `stateChangedAt` cannot mark that boundary:
+    /// it keeps an earlier turn's start when that turn ended without a hook.
+    /// Nil for legacy records and sessions not yet prompted.
+    public var promptObservedAt: TimeInterval?
     /// When this agent session began. Optional so records written by older
     /// Let It Brew versions continue to decode. Consumers should use
     /// `effectiveStartedAt` when presenting elapsed session time.
@@ -149,6 +154,7 @@ public struct SessionRecord: Codable, Equatable, Sendable {
         case legacyUpdatedAt = "updatedAt"
         case eventObservedAt = "event_observed_at"
         case reopenedAt = "reopened_at"
+        case promptObservedAt = "prompt_observed_at"
         case startedAt = "started_at"
         case accumulatedWorkingTime = "accumulated_working_time"
         case lastEvent = "last_event"
@@ -161,7 +167,8 @@ public struct SessionRecord: Codable, Equatable, Sendable {
                 startedAt: Date? = nil,
                 accumulatedWorkingTime: TimeInterval? = nil,
                 stateChangedAt: Date? = nil, stateTransitionID: String? = nil,
-                eventObservedAt: TimeInterval? = nil, reopenedAt: TimeInterval? = nil) {
+                eventObservedAt: TimeInterval? = nil, reopenedAt: TimeInterval? = nil,
+                promptObservedAt: TimeInterval? = nil) {
         self.id = id
         self.tool = tool
         self.state = state
@@ -171,6 +178,7 @@ public struct SessionRecord: Codable, Equatable, Sendable {
         self.updatedAt = updatedAt
         self.eventObservedAt = eventObservedAt
         self.reopenedAt = reopenedAt
+        self.promptObservedAt = promptObservedAt
         self.startedAt = startedAt
         self.accumulatedWorkingTime = accumulatedWorkingTime
         self.lastEvent = lastEvent
@@ -193,6 +201,9 @@ public struct SessionRecord: Codable, Equatable, Sendable {
         }
         eventObservedAt = try container.decodeIfPresent(TimeInterval.self, forKey: .eventObservedAt)
         reopenedAt = try container.decodeIfPresent(TimeInterval.self, forKey: .reopenedAt)
+        promptObservedAt = try container.decodeIfPresent(
+            TimeInterval.self, forKey: .promptObservedAt
+        )
         startedAt = try container.decodeIfPresent(Date.self, forKey: .startedAt)
         accumulatedWorkingTime = try container.decodeIfPresent(
             TimeInterval.self, forKey: .accumulatedWorkingTime
@@ -213,6 +224,7 @@ public struct SessionRecord: Codable, Equatable, Sendable {
         try container.encode(updatedAt, forKey: .updatedAt)
         try container.encodeIfPresent(eventObservedAt, forKey: .eventObservedAt)
         try container.encodeIfPresent(reopenedAt, forKey: .reopenedAt)
+        try container.encodeIfPresent(promptObservedAt, forKey: .promptObservedAt)
         try container.encodeIfPresent(startedAt, forKey: .startedAt)
         try container.encodeIfPresent(accumulatedWorkingTime, forKey: .accumulatedWorkingTime)
         try container.encodeIfPresent(lastEvent, forKey: .lastEvent)

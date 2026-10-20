@@ -58,13 +58,16 @@ public enum HookSessionUpdater {
                     }) else { return }
                 } else if agent == .codex, event == "Stop", identity.childID == nil,
                           let turn = storage.load(id: parent.encoded), turn.state == .working,
-                          let turnStartedAt = turn.stateChangedAt?.timeIntervalSince1970 {
+                          let turnStartedAt = [
+                              turn.promptObservedAt, turn.stateChangedAt?.timeIntervalSince1970,
+                          ].compactMap({ $0 }).max() {
                     // Codex can omit a child's SubagentStop. A child silent for
                     // the parent's whole turn is not running; one heard during
                     // this turn may be, so it waits for a later Stop or SessionEnd.
-                    // stateChangedAt persists rounded down to whole seconds, so
-                    // the cutoff can only keep a child longer, never release
-                    // one heard during this turn.
+                    // The latest prompt starts the turn even when an earlier one
+                    // ended without a hook and left the parent Working. Legacy
+                    // records fall back to stateChangedAt, which persists rounded
+                    // down to whole seconds: that can only keep a child longer.
                     staleChildCutoff = turnStartedAt
                     children = familyChildren().filter {
                         ($0.eventObservedAt ?? $0.updatedAt.timeIntervalSince1970) < turnStartedAt
@@ -198,7 +201,9 @@ public enum HookSessionUpdater {
                     stateChangedAt: transition.changedAt,
                     stateTransitionID: transition.id,
                     eventObservedAt: observedAt.timeIntervalSince1970,
-                    reopenedAt: reopenedAt ?? previous?.reopenedAt
+                    reopenedAt: reopenedAt ?? previous?.reopenedAt,
+                    promptObservedAt: event == "UserPromptSubmit"
+                        ? observedAt.timeIntervalSince1970 : previous?.promptObservedAt
                 ))
             }
         }

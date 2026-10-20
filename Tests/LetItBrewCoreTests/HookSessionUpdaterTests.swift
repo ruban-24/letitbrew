@@ -366,6 +366,7 @@ import Testing
     #expect(entry["kind"] as? String == "active")
     let active = try #require(entry["record"] as? [String: Any])
     #expect(active["event_observed_at"] as? Double == 201)
+    #expect(active["prompt_observed_at"] as? Double == 201)
     #expect(!FileManager.default.fileExists(atPath: tombstoneURL.path))
 }
 
@@ -893,27 +894,68 @@ import Testing
     #expect(storage.load(id: hookUpdaterID("codex-family"))?.state == .idle)
 }
 
-@Test func codexStopKeepsAChildHeardInTheSameSecondAsTheTurnStart() throws {
+@Test func codexStopMeasuresTheTurnFromThePromptsExactTime() throws {
     let directory = hookUpdaterTempDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let storage = SessionStorage(directory: directory)
-    let child = hookUpdaterID("codex-second", childID: "child")
 
     try applyHooks([("UserPromptSubmit", ""), ("Stop", "")], agent: .codex,
                    sessionID: "codex-second", from: 100, storage: storage)
-    try applyHooks([("SubagentStart", #","agent_id":"child""#)], agent: .codex,
-                   sessionID: "codex-second", from: 199.9, storage: storage)
-    // The turn starts at 200.3 but persists as 200: the 200.6 child is still
-    // heard during the turn, and the 199.9 one was silent for all of it.
+    try applyHooks([("SubagentStart", #","agent_id":"before""#)], agent: .codex,
+                   sessionID: "codex-second", from: 200.1, storage: storage)
+    // The turn starts at 200.3, within the same whole second as both children.
     try applyHooks([("UserPromptSubmit", "")], agent: .codex, sessionID: "codex-second",
                    from: 200.3, storage: storage)
-    try applyHooks([("SubagentStart", #","agent_id":"same-second""#)], agent: .codex,
+    try applyHooks([("SubagentStart", #","agent_id":"after""#)], agent: .codex,
                    sessionID: "codex-second", from: 200.6, storage: storage)
     try applyHooks([("Stop", "")], agent: .codex, sessionID: "codex-second",
                    from: 300, storage: storage)
 
-    #expect(storage.load(id: child) == nil)
-    #expect(storage.load(id: hookUpdaterID("codex-second", childID: "same-second"))?.state == .working)
+    #expect(storage.load(id: hookUpdaterID("codex-second", childID: "before")) == nil)
+    #expect(storage.load(id: hookUpdaterID("codex-second", childID: "after"))?.state == .working)
+}
+
+@Test func codexStopClearsChildrenOfATurnThatEndedWithoutAHook() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+
+    // Esc on a Codex without the Interrupt hook leaves the parent Working, so
+    // the next prompt does not change its state.
+    try applyHooks([("UserPromptSubmit", "")], agent: .codex, sessionID: "codex-esc-child",
+                   from: 100, storage: storage)
+    try applyHooks([("SubagentStart", #","agent_id":"cancelled""#)], agent: .codex,
+                   sessionID: "codex-esc-child", from: 101, storage: storage)
+    try applyHooks([("UserPromptSubmit", "")], agent: .codex, sessionID: "codex-esc-child",
+                   from: 200, storage: storage)
+    try applyHooks([("Stop", "")], agent: .codex, sessionID: "codex-esc-child",
+                   from: 300, storage: storage)
+
+    #expect(storage.load(id: hookUpdaterID("codex-esc-child", childID: "cancelled")) == nil)
+    #expect(storage.load(id: hookUpdaterID("codex-esc-child"))?.state == .idle)
+}
+
+@Test func codexStopFallsBackToTheStateEdgeForALegacyParent() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+    let parent = hookUpdaterID("codex-legacy")
+
+    try applyHooks([("SubagentStart", #","agent_id":"silent""#)], agent: .codex,
+                   sessionID: "codex-legacy", from: 150, storage: storage)
+    // Written before prompts were recorded: no promptObservedAt.
+    var legacy = hookUpdaterRecord(id: parent, observedAt: 200)
+    legacy.state = .working
+    legacy.lastEvent = "UserPromptSubmit"
+    legacy.stateChangedAt = Date(timeIntervalSince1970: 200)
+    try storage.mutate(id: parent, observedAt: 200) { _ in .replace(legacy) }
+    try applyHooks([("SubagentStart", #","agent_id":"heard""#)], agent: .codex,
+                   sessionID: "codex-legacy", from: 250, storage: storage)
+    try applyHooks([("Stop", "")], agent: .codex, sessionID: "codex-legacy",
+                   from: 300, storage: storage)
+
+    #expect(storage.load(id: hookUpdaterID("codex-legacy", childID: "silent")) == nil)
+    #expect(storage.load(id: hookUpdaterID("codex-legacy", childID: "heard"))?.state == .working)
 }
 
 @Test func codexSessionEndClearsItsChildren() throws {

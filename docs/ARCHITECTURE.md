@@ -75,8 +75,9 @@ The common lifecycle mapping is:
 - `SubagentStop` and `SessionEnd` remove the addressed active record. For Claude
   and Codex, a parent `SessionEnd` also removes its children. Codex can omit a
   child's `SubagentStop`, so a Codex parent `Stop` also removes children that
-  sent no hook during that whole turn; a child heard during the turn may still
-  be running and waits for a later `Stop` or `SessionEnd`. `SubagentStop` can make a
+  sent no hook since the turn's `UserPromptSubmit`; a child heard during the
+  turn may still be running and waits for a later `Stop` or `SessionEnd`. The
+  latest prompt starts the turn even when an earlier turn ended without a hook. `SubagentStop` can make a
   parent still Working from `Stop` Idle when its explicit background-task
   snapshot reports no remaining work. Missing snapshots and parents with newer
   foreground activity retain their state.
