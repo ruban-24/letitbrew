@@ -101,10 +101,21 @@ private func reduce(
     #expect(reduce("") == nil)
 }
 
-@Test func compactionSubagentsFailuresAndBackgroundWorkStayTwoState() {
-    #expect(reduce("SessionStart", source: "compact") == .set(.working, detail: nil))
-    #expect(reduce("PreCompact") == .set(.working, detail: nil))
-    #expect(reduce("PostCompact") == .set(.working, detail: nil))
+@Test func claudeCompactionKeepsTheExistingState() {
+    // Claude also compacts at an idle prompt, and an aborted compact emits
+    // PreCompact alone. Neither is followed by Stop.
+    #expect(reduce("SessionStart", source: "compact") == nil)
+    #expect(reduce("PreCompact") == nil)
+    #expect(reduce("PostCompact") == nil)
+}
+
+@Test func codexCompactionStillReportsWorking() {
+    #expect(reduce("SessionStart", agent: .codex, source: "compact") == .set(.working, detail: nil))
+    #expect(reduce("PreCompact", agent: .codex) == .set(.working, detail: nil))
+    #expect(reduce("PostCompact", agent: .codex) == .set(.working, detail: nil))
+}
+
+@Test func subagentsFailuresAndBackgroundWorkStayTwoState() {
     #expect(reduce("SubagentStart") == .set(.working, detail: nil))
     #expect(reduce("SubagentStop") == .end)
     #expect(reduce("StopFailure") == .set(.idle, detail: nil))

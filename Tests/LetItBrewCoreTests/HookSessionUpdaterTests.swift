@@ -716,7 +716,74 @@ import Testing
             == "outside-state-must-survive")
 }
 
-@Test func compactSessionLifecycleStaysWorkingThroughStorage() throws {
+@Test func claudeIdleCompactionLeavesTheSessionIdle() throws {
+    // The hook sequence of an idle auto-compaction, and of /compact at the
+    // prompt: no Stop follows, so nothing else would release the hold.
+    for (trigger, order) in [("auto", ["SessionStart", "PostCompact"]),
+                             ("manual", ["PostCompact", "SessionStart"])] {
+        let directory = hookUpdaterTempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = SessionStorage(directory: directory)
+        let id = try #require(HookPayload(sessionId: "idle-compact")
+            .recordID(agent: .claude, event: "Stop"))
+
+        try applyClaudeCompactHooks(
+            ["UserPromptSubmit", "Stop", "PreCompact"] + order,
+            sessionID: "idle-compact", trigger: trigger, from: 100, storage: storage
+        )
+
+        let record = try #require(storage.load(id: id))
+        #expect(record.state == .idle)
+        #expect(record.lastEvent == "Stop")
+        #expect(storage.loadAll().count == 1)
+    }
+}
+
+@Test func claudeAbortedCompactionLeavesTheSessionIdle() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+    let id = try #require(HookPayload(sessionId: "aborted-compact")
+        .recordID(agent: .claude, event: "Stop"))
+
+    try applyClaudeCompactHooks(
+        ["UserPromptSubmit", "Stop", "PreCompact"],
+        sessionID: "aborted-compact", trigger: "manual", from: 100, storage: storage
+    )
+
+    #expect(storage.load(id: id)?.state == .idle)
+    #expect(storage.load(id: id)?.lastEvent == "Stop")
+}
+
+@Test func claudeCompactionInsideATurnStaysWorkingUntilStop() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+    let id = try #require(HookPayload(sessionId: "turn-compact")
+        .recordID(agent: .claude, event: "Stop"))
+
+    try applyClaudeCompactHooks(
+        ["UserPromptSubmit"], sessionID: "turn-compact", trigger: "auto", from: 100,
+        storage: storage
+    )
+    let transitionID = try #require(storage.load(id: id)?.stateTransitionID)
+    try applyClaudeCompactHooks(
+        ["PreCompact", "SessionStart", "PostCompact"],
+        sessionID: "turn-compact", trigger: "auto", from: 101, storage: storage
+    )
+
+    let compacted = try #require(storage.load(id: id))
+    #expect(compacted.state == .working)
+    #expect(compacted.lastEvent == "UserPromptSubmit")
+    #expect(compacted.stateTransitionID == transitionID)
+
+    try applyClaudeCompactHooks(
+        ["Stop"], sessionID: "turn-compact", trigger: "auto", from: 104, storage: storage
+    )
+    #expect(storage.load(id: id)?.state == .idle)
+}
+
+@Test func codexCompactSessionLifecycleStaysWorkingThroughStorage() throws {
     let directory = hookUpdaterTempDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let storage = SessionStorage(directory: directory)
@@ -725,25 +792,25 @@ import Testing
     try applyDecodedHook(
         event: "SessionStart",
         json: #"{"session_id":"compact-parent","cwd":"/work/app","source":"compact"}"#,
-        agent: .claude,
+        agent: .codex,
         observedAt: timestamp,
         storage: storage
     )
     let id = try #require(HookPayload(sessionId: "compact-parent")
-        .recordID(agent: .claude, event: "SessionStart"))
+        .recordID(agent: .codex, event: "SessionStart"))
     let transitionID = try #require(storage.load(id: id)?.stateTransitionID)
 
     try applyDecodedHook(
         event: "PreCompact",
         json: #"{"session_id":"compact-parent","cwd":"/work/app"}"#,
-        agent: .claude,
+        agent: .codex,
         observedAt: timestamp.addingTimeInterval(1),
         storage: storage
     )
     try applyDecodedHook(
         event: "PostCompact",
         json: #"{"session_id":"compact-parent","cwd":"/work/app"}"#,
-        agent: .claude,
+        agent: .codex,
         observedAt: timestamp.addingTimeInterval(2),
         storage: storage
     )
@@ -942,6 +1009,32 @@ import Testing
             agent: .claude, observedAt: Date(timeIntervalSince1970: 100), storage: storage
         )
         #expect(storage.load(id: hookUpdaterID("parent", agent: .claude))?.state == .working)
+    }
+}
+
+/// Applies Claude events one second apart, with the payload fields Claude Code
+/// sends for each compaction edge.
+private func applyClaudeCompactHooks(
+    _ events: [String],
+    sessionID: String,
+    trigger: String,
+    from start: TimeInterval,
+    storage: SessionStorage
+) throws {
+    for (offset, event) in events.enumerated() {
+        let extra = switch event {
+        case "PreCompact": #","trigger":"\#(trigger)","custom_instructions":null"#
+        case "PostCompact": #","trigger":"\#(trigger)","compact_summary":"summary""#
+        case "SessionStart": #","source":"compact""#
+        default: ""
+        }
+        try applyDecodedHook(
+            event: event,
+            json: #"{"session_id":"\#(sessionID)","cwd":"/work/app","hook_event_name":"\#(event)"\#(extra)}"#,
+            agent: .claude,
+            observedAt: Date(timeIntervalSince1970: start + TimeInterval(offset)),
+            storage: storage
+        )
     }
 }
 

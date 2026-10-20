@@ -21,11 +21,15 @@ or read Claude/Codex/OpenCode/Copilot/Pi prompt and response content.
   for subagent hooks and is combined with the parent ID for an independent
   child record.
 - `SessionStart` source `compact`, `PreCompact`, and `PostCompact` preserve
-  Working. On Stop, background tasks with `completed`, `failed`, `killed`,
-  `cancelled`, `canceled`, or `idle` status do not preserve Working. Any
-  other, missing, or unrecognized status conservatively preserves Working.
-  An empty or absent array makes Stop Idle. Only status is read; task prose
-  and commands are discarded. `session_crons` are not treated as current work.
+  the prior state. Compaction can run at an idle prompt (`/compact`, or idle
+  auto-compaction with `trigger: auto`) and an aborted compact emits
+  `PreCompact` alone, with no later `Stop`; the payload does not distinguish
+  idle from in-turn compaction. On Stop, background tasks with `completed`,
+  `failed`, `killed`, `cancelled`, `canceled`, or `idle` status do not
+  preserve Working. Any other, missing, or unrecognized status conservatively
+  preserves Working. An empty or absent array makes Stop Idle. Only status is
+  read; task prose and commands are discarded. `session_crons` are not treated
+  as current work.
 - `SubagentStop` removes its child record. If it explicitly reports a
   `background_tasks` snapshot with no potentially working tasks, it also makes
   a parent still Working from `Stop` Idle. An absent/null snapshot cannot prove
