@@ -10,12 +10,14 @@ public enum CodexExecutableDiscovery {
         applicationURLs: [URL],
         fileManager: FileManager = .default
     ) -> [URL] {
-        var candidates = applicationURLs.map(appExecutable)
+        let applications = applicationURLs + [
+            URL(fileURLWithPath: "/Applications/Codex.app"),
+            URL(fileURLWithPath: "/Applications/ChatGPT.app"),
+            home.appendingPathComponent("Applications/Codex.app"),
+            home.appendingPathComponent("Applications/ChatGPT.app"),
+        ]
+        var candidates = applications.flatMap(appExecutables)
         candidates.append(contentsOf: [
-            appExecutable(URL(fileURLWithPath: "/Applications/Codex.app")),
-            appExecutable(URL(fileURLWithPath: "/Applications/ChatGPT.app")),
-            appExecutable(home.appendingPathComponent("Applications/Codex.app")),
-            appExecutable(home.appendingPathComponent("Applications/ChatGPT.app")),
             home.appendingPathComponent(".local/bin/codex"),
             home.appendingPathComponent(".volta/bin/codex"),
             home.appendingPathComponent(".bun/bin/codex"),
@@ -77,7 +79,13 @@ public enum CodexExecutableDiscovery {
         ).first { executableCheck($0.path) }
     }
 
-    private static func appExecutable(_ applicationURL: URL) -> URL {
-        applicationURL.appendingPathComponent("Contents/Resources/codex")
+    private static func appExecutables(_ applicationURL: URL) -> [URL] {
+        // Preserve legacy discovery, then prefer the package entry point
+        // declared in codex-package.json over the internal native executable.
+        [
+            "Contents/Resources/codex",
+            "Contents/Resources/codex-cli/bin/codex",
+            "Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+        ].map { applicationURL.appendingPathComponent($0) }
     }
 }
