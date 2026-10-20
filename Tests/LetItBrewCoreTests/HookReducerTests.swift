@@ -7,6 +7,7 @@ private func reduce(
     toolName: String? = nil,
     notificationType: String? = nil,
     source: String? = nil,
+    trigger: String? = nil,
     hasBackgroundTasks: Bool = false,
     errorRecoverable: Bool? = nil
 ) -> HookEffect? {
@@ -16,6 +17,7 @@ private func reduce(
         toolName: toolName,
         notificationType: notificationType,
         source: source,
+        trigger: trigger,
         hasBackgroundTasks: hasBackgroundTasks,
         errorRecoverable: errorRecoverable
     )
@@ -115,14 +117,24 @@ private func reduce(
     // Claude also compacts at an idle prompt, and an aborted compact emits
     // PreCompact alone. Neither is followed by Stop.
     #expect(reduce("SessionStart", source: "compact") == nil)
-    #expect(reduce("PreCompact") == nil)
+    for trigger in [nil, "manual", "auto"] {
+        #expect(reduce("PreCompact", trigger: trigger) == nil)
+    }
     #expect(reduce("PostCompact") == nil)
+    #expect(reduce("PostCompact", trigger: "auto") == nil)
+}
+
+@Test func claudeManualCompactCompletionIsIdle() {
+    // A manual compact runs only at the idle prompt, so no turn is running.
+    #expect(reduce("PostCompact", trigger: "manual") == .set(.idle, detail: nil))
 }
 
 @Test func codexCompactionKeepsTheExistingState() {
     #expect(reduce("SessionStart", agent: .codex, source: "compact") == nil)
-    #expect(reduce("PreCompact", agent: .codex) == nil)
-    #expect(reduce("PostCompact", agent: .codex) == nil)
+    for trigger in [nil, "manual", "auto"] {
+        #expect(reduce("PreCompact", agent: .codex, trigger: trigger) == nil)
+        #expect(reduce("PostCompact", agent: .codex, trigger: trigger) == nil)
+    }
 }
 
 @Test func subagentsFailuresAndBackgroundWorkStayTwoState() {

@@ -734,7 +734,7 @@ import Testing
 
         let record = try #require(storage.load(id: id))
         #expect(record.state == .idle)
-        #expect(record.lastEvent == "Stop")
+        #expect(record.lastEvent == (trigger == "manual" ? "PostCompact" : "Stop"))
         #expect(storage.loadAll().count == 1)
     }
 }
@@ -798,6 +798,40 @@ import Testing
         #expect(record.state == expected)
         #expect(record.lastEvent == lead)
     }
+}
+
+@Test func claudeManualCompactClearsATurnAnInterruptLeftWorking() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+
+    // Claude sends no hook when Esc cancels a turn, so PreToolUse is its last.
+    try applyHooks(
+        [("UserPromptSubmit", ""), ("PreToolUse", #","tool_name":"Bash""#)]
+            + compactionHooks(trigger: "manual"),
+        sessionID: "interrupted", from: 100, storage: storage
+    )
+
+    let record = try #require(storage.load(id: hookUpdaterID("interrupted", agent: .claude)))
+    #expect(record.state == .idle)
+    #expect(record.lastEvent == "PostCompact")
+}
+
+@Test func claudeManualCompactKeepsAStoppedTurnsBackgroundWork() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+
+    try applyHooks(
+        [("UserPromptSubmit", ""),
+         ("Stop", #","background_tasks":[{"type":"shell","status":"running"}]"#)]
+            + compactionHooks(trigger: "manual"),
+        sessionID: "background", from: 100, storage: storage
+    )
+
+    let record = try #require(storage.load(id: hookUpdaterID("background", agent: .claude)))
+    #expect(record.state == .working)
+    #expect(record.lastEvent == "Stop")
 }
 
 @Test func claudeSessionStartFromAnUnknownSourceKeepsTheTurnWorking() throws {

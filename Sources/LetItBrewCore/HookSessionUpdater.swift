@@ -16,6 +16,7 @@ public enum HookSessionUpdater {
             toolName: payload.toolName,
             notificationType: payload.notificationType,
             source: payload.source,
+            trigger: payload.trigger,
             hasBackgroundTasks: payload.hasBackgroundTasks,
             errorRecoverable: payload.errorRecoverable
         ) else { return }
@@ -128,6 +129,16 @@ public enum HookSessionUpdater {
             if agent == .copilot,
                event == "SessionStart",
                previous?.state == .working {
+                return .keep
+            }
+
+            // Stop stays Working only while it reports background work. A
+            // manual compact at that prompt does not end the work; only the
+            // work's own completion edge may release the hold.
+            if agent == .claude,
+               event == "PostCompact",
+               previous?.state == .working,
+               previous?.lastEvent == "Stop" {
                 return .keep
             }
 

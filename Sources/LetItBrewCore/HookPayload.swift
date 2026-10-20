@@ -11,6 +11,8 @@ public struct HookPayload: Decodable, Equatable, Sendable {
     public var agentId: String?
     public var cwd: String?
     public var source: String?
+    /// `manual` or `auto` on Claude compaction hooks.
+    public var trigger: String?
     public var hasBackgroundTasks: Bool
     /// An absent snapshot cannot prove that the parent's background work ended.
     var hasBackgroundTaskSnapshot: Bool = false
@@ -25,6 +27,7 @@ public struct HookPayload: Decodable, Equatable, Sendable {
         case agentID = "agent_id"
         case cwd
         case source
+        case trigger
         case backgroundTasks = "background_tasks"
         case hookEventName = "hook_event_name"
         case toolName = "tool_name"
@@ -37,6 +40,7 @@ public struct HookPayload: Decodable, Equatable, Sendable {
         agentId: String? = nil,
         cwd: String? = nil,
         source: String? = nil,
+        trigger: String? = nil,
         hasBackgroundTasks: Bool = false,
         hookEventName: String? = nil,
         toolName: String? = nil,
@@ -47,6 +51,7 @@ public struct HookPayload: Decodable, Equatable, Sendable {
         self.agentId = agentId
         self.cwd = cwd
         self.source = source
+        self.trigger = trigger
         self.hasBackgroundTasks = hasBackgroundTasks
         self.hookEventName = hookEventName
         self.toolName = toolName
@@ -61,6 +66,7 @@ public struct HookPayload: Decodable, Equatable, Sendable {
         agentId = try values.decodeIfPresent(String.self, forKey: .agentID)
         cwd = try values.decodeIfPresent(String.self, forKey: .cwd)
         source = try values.decodeIfPresent(String.self, forKey: .source)
+        trigger = try values.decodeIfPresent(String.self, forKey: .trigger)
         let backgroundTasks = try values.decodeIfPresent(
             [BackgroundTask].self, forKey: .backgroundTasks
         )

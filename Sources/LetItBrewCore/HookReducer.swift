@@ -23,6 +23,7 @@ public enum HookReducer {
         toolName: String?,
         notificationType: String?,
         source: String? = nil,
+        trigger: String? = nil,
         hasBackgroundTasks: Bool = false,
         errorRecoverable: Bool? = nil
     ) -> HookEffect? {
@@ -41,12 +42,17 @@ public enum HookReducer {
             }
             // A compaction restart keeps its turn's state; see PreCompact.
             return source == "compact" ? nil : .set(.idle, detail: nil)
-        case "PreCompact", "PostCompact":
+        case "PreCompact":
             // Claude and Codex also compact at an idle prompt (/compact, and
             // Claude's idle auto-compaction before the prompt cache expires),
             // and an aborted compact emits PreCompact alone. No Stop follows
             // either, so compaction keeps the state its turn already established.
             return nil
+        case "PostCompact":
+            // A manual Claude compact runs only at the idle prompt, so its
+            // completion proves no turn is running, including one an interrupt
+            // left Working. Auto compaction can run inside a turn.
+            return agent == .claude && trigger == "manual" ? .set(.idle, detail: nil) : nil
         case "SubagentStart":
             return .set(.working, detail: nil)
         case "UserPromptSubmit", "PostToolUse":
