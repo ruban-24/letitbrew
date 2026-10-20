@@ -21,7 +21,7 @@ public enum HookSessionUpdater {
             errorRecoverable: payload.errorRecoverable
         ) else { return }
 
-        if agent == .claude,
+        if agent == .claude || agent == .codex,
            let identity = HookRecordID(encoded: sessionID),
            let parent = HookRecordID(agent: agent, parentID: identity.parentID) {
             try storage.withHookFamilyLock(parentID: parent.encoded) {
@@ -37,13 +37,18 @@ public enum HookSessionUpdater {
                     return
                 }
 
-                let children: [SessionRecord]
-                if event == "SessionEnd", identity.childID == nil {
-                    children = storage.loadAll().filter { record in
+                func familyChildren() -> [SessionRecord] {
+                    storage.loadAll().filter { record in
                         guard let child = HookRecordID(encoded: record.id) else { return false }
                         return child.agent == agent && child.parentID == identity.parentID
                             && child.childID != nil
                     }
+                }
+
+                let children: [SessionRecord]
+                var staleChildCutoff: TimeInterval?
+                if event == "SessionEnd", identity.childID == nil {
+                    children = familyChildren()
                     // A newer child edge also makes this a stale family end.
                     // Otherwise the parent's terminal marker would freeze that
                     // surviving child's subsequent completion hooks.
@@ -51,6 +56,19 @@ public enum HookSessionUpdater {
                         ($0.eventObservedAt ?? $0.updatedAt.timeIntervalSince1970)
                             > observedAt.timeIntervalSince1970
                     }) else { return }
+                } else if agent == .codex, event == "Stop", identity.childID == nil,
+                          let turn = storage.load(id: parent.encoded), turn.state == .working,
+                          let turnStartedAt = turn.stateChangedAt?.timeIntervalSince1970 {
+                    // Codex can omit a child's SubagentStop. A child silent for
+                    // the parent's whole turn is not running; one heard during
+                    // this turn may be, so it waits for a later Stop or SessionEnd.
+                    // stateChangedAt persists rounded down to whole seconds, so
+                    // the cutoff can only keep a child longer, never release
+                    // one heard during this turn.
+                    staleChildCutoff = turnStartedAt
+                    children = familyChildren().filter {
+                        ($0.eventObservedAt ?? $0.updatedAt.timeIntervalSince1970) < turnStartedAt
+                    }
                 } else {
                     children = []
                 }
@@ -67,6 +85,18 @@ public enum HookSessionUpdater {
                     for record in children {
                         try storage.mutate(id: record.id, observedAt: observedAt.timeIntervalSince1970) { _ in
                             .delete
+                        }
+                    }
+                } else if let staleChildCutoff,
+                          storage.load(id: parent.encoded)?.eventObservedAt
+                              == observedAt.timeIntervalSince1970 {
+                    for record in children {
+                        try storage.mutate(id: record.id, observedAt: observedAt.timeIntervalSince1970) { previous in
+                            guard let previous,
+                                  (previous.eventObservedAt ?? previous.updatedAt.timeIntervalSince1970)
+                                      < staleChildCutoff
+                            else { return .keep }
+                            return .delete
                         }
                     }
                 } else if event == "SubagentStop", payload.hasBackgroundTaskSnapshot,
