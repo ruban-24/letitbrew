@@ -246,7 +246,9 @@ Run these vendor-specific additions rather than claiming untested parity:
 Verify untrusted-workspace holdback before workspace trust. Run `/compact` at
 an idle prompt and confirm the session stays Idle; run it in a fresh session
 with too few messages to compact and confirm it stays Idle. Let a turn
-auto-compact and confirm it stays Working until its `Stop`. Start two child `agent_id` values, stop one child only, and confirm the other
+auto-compact and confirm it stays Working until its `Stop`. Interrupt a turn
+with Esc, confirm it stays Working, then run `/compact` and confirm it becomes
+Idle. Start two child `agent_id` values, stop one child only, and confirm the other
 remains Working. Confirm `StopFailure` becomes Idle and `Stop` remains Working
 while `background_tasks` is nonempty, then becomes Idle after a later empty
 Stop. Where the documented permission lifecycle is observed, it preserves the
@@ -267,10 +269,13 @@ Do not claim these cases fixed solely from the parent/child cleanup regression.
 
 ### Codex
 
-Verify `/hooks` trust approval before lifecycle observation. Exercise compact
-lifecycle events and two simultaneous distinct `agent_id` values; each remains
-Working until its own `SubagentStop`. Where the documented permission lifecycle
-is observed, it preserves the existing Working state.
+Verify `/hooks` trust approval before lifecycle observation, including the
+`Interrupt` hook after upgrading an existing install. Press Esc during a turn
+and confirm it becomes Idle. Run `/compact` at an idle prompt and confirm the
+session stays Idle. Exercise two simultaneous distinct `agent_id` values; each
+remains Working until its own `SubagentStop`. End a session with children and
+confirm none of its rows remain. Where the documented permission lifecycle is
+observed, it preserves the existing Working state.
 
 ### OpenCode
 

@@ -50,28 +50,38 @@ The common lifecycle mapping is:
 - `SessionStart` maps to **idle, not working**, except `source=compact`, which
   follows the compaction rule below. A session that has never been
   prompted emits no further events, so treating it as working would hold the Mac
-  awake for as long as that process lives.
+  awake for as long as that process lives. Claude's `SessionStart` is Idle only
+  for `startup`, `resume`, and `clear`; any other or missing source returns no
+  effect, so a source fired inside a running turn cannot release its hold.
 - `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, and `SubagentStart` set
   **Working**.
-- Claude's `PreCompact`, `PostCompact`, and `SessionStart(source=compact)`
-  return no effect, preserving the prior state. Claude also compacts at an idle
-  prompt (`/compact`, and idle auto-compaction before the prompt cache expires)
-  and emits `PreCompact` alone when a compact aborts; no `Stop` follows either.
-  A compaction inside a turn stays Working until that turn's `Stop`. Other
-  adapters' compaction events set **Working**.
+- `PreCompact`, `PostCompact`, and `SessionStart(source=compact)` return no
+  effect, preserving the prior state. Claude and Codex also compact at an idle
+  prompt (`/compact`, and Claude's idle auto-compaction before the prompt cache
+  expires) and emit `PreCompact` alone when a compact aborts; no `Stop` follows
+  either. A compaction inside a turn stays Working until that turn's `Stop`.
+  Claude's `PostCompact` with `trigger: manual` sets **Idle**: a manual compact
+  runs only at the idle prompt, so it also clears a turn an interrupt left
+  Working. A parent Working only because its `Stop` reported background tasks
+  keeps that hold.
+- Codex's `Interrupt` sets **Idle**. It is the only hook an Esc-cancelled Codex
+  turn fires.
 - `Stop` and an `idle_prompt` `Notification` set **Idle**. Idle rows are hidden
   and stop contributing to the hold on the next one-second app poll. `Stop`
   with nonempty `background_tasks` remains **Working**; `StopFailure` is Idle.
 - `PermissionRequest` and `permission_prompt` notifications return no effect,
   preserving the prior Working or Idle state. Permission is not a third session
   state.
-- `SubagentStop` and `SessionEnd` remove the addressed active record. For Claude,
-  a parent `SessionEnd` also removes its children. `SubagentStop` can make a
+- `SubagentStop` and `SessionEnd` remove the addressed active record. For Claude
+  and Codex, a parent `SessionEnd` also removes its children. Codex can omit a
+  child's `SubagentStop`, so a Codex parent `Stop` also removes children that
+  sent no hook during that whole turn; a child heard during the turn may still
+  be running and waits for a later `Stop` or `SessionEnd`. `SubagentStop` can make a
   parent still Working from `Stop` Idle when its explicit background-task
   snapshot reports no remaining work. Missing snapshots and parents with newer
   foreground activity retain their state.
 
-Claude hook updates acquire a bounded family lock before any per-record lock.
+Claude and Codex hook updates acquire a bounded family lock before any per-record lock.
 This serializes terminal cleanup with child writes. The parent's existing
 terminal marker rejects late child updates, including children not previously
 seen, until a new session-start or prompt event reopens the parent. Other agents

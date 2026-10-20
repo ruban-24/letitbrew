@@ -20,11 +20,16 @@ or read Claude/Codex/OpenCode/Copilot/Pi prompt and response content.
 - `session_id` is the parent session ID. `agent_id` is the stable child ID
   for subagent hooks and is combined with the parent ID for an independent
   child record.
-- `SessionStart` source `compact`, `PreCompact`, and `PostCompact` preserve
-  the prior state. Compaction can run at an idle prompt (`/compact`, or idle
-  auto-compaction with `trigger: auto`) and an aborted compact emits
-  `PreCompact` alone, with no later `Stop`; the payload does not distinguish
-  idle from in-turn compaction. On Stop, background tasks with `completed`,
+- `SessionStart` is Idle only for source `startup`, `resume`, or `clear`; any
+  other or missing source preserves the prior state.
+- `SessionStart` source `compact`, `PreCompact`, and `PostCompact` with
+  `trigger: auto` preserve the prior state. Compaction can run at an idle prompt
+  (`/compact`, or idle auto-compaction with `trigger: auto`) and an aborted
+  compact emits `PreCompact` alone, with no later `Stop`; `trigger: auto` does
+  not distinguish idle from in-turn compaction. `PostCompact` with
+  `trigger: manual` is Idle, because a manual compact completes only at the
+  idle prompt, unless the parent is Working only because its `Stop` reported
+  background tasks. On Stop, background tasks with `completed`,
   `failed`, `killed`, `cancelled`, `canceled`, or `idle` status do not
   preserve Working. Any other, missing, or unrecognized status conservatively
   preserves Working. An empty or absent array makes Stop Idle. Only status is
@@ -43,7 +48,12 @@ or read Claude/Codex/OpenCode/Copilot/Pi prompt and response content.
   previous run excluded after resume. Missing/unreadable parent state does not
   itself suppress a child's work.
 - Permission events preserve prior state. API-error turns use `StopFailure`;
-  user-interrupted turns have no immediate documented terminal hook.
+  user-interrupted turns have no immediate documented terminal hook. Observed
+  on Claude Code 2.1.304: Esc while a tool runs, while text streams, or while
+  text streams after a completed tool emits no `Stop`, `StopFailure`,
+  `PostToolUseFailure`, or `idle_prompt` `Notification` (none within 150s). The
+  turn stays Working until the next prompt's `Stop`, a manual `/compact`,
+  `SessionEnd`, Stop Tracking, or the 12-hour expiry.
   Permission approval has no matching immediate hook to resume a hold before
   the tool executes, so releasing on the prompt would risk sleeping mid-tool.
   Without a later authoritative event, interrupted turns and stopped parents
@@ -63,11 +73,21 @@ or read Claude/Codex/OpenCode/Copilot/Pi prompt and response content.
   `PreToolUse`→PreToolUse, `PostToolUse`→PostToolUse,
   `PermissionRequest`→PermissionRequest, `PreCompact`→PreCompact,
   `PostCompact`→PostCompact, `SubagentStart`→SubagentStart,
-  `SubagentStop`→SubagentStop, `Stop`→Stop, `SessionEnd`→SessionEnd.
+  `SubagentStop`→SubagentStop, `Stop`→Stop, `SessionEnd`→SessionEnd,
+  `Interrupt`→Interrupt.
 - `session_id` is the parent session ID for subagent hooks. Combine it with
   `agent_id` for an independent child record.
 - `SessionStart` source `compact`, `PreCompact`, and `PostCompact` preserve
-  Working. Permission waits preserve prior state.
+  the prior state. Permission waits preserve prior state.
+- `Interrupt` (Codex 0.150+) is Idle; it is the only hook an Esc-cancelled turn
+  fires. Codex caps its timeout at 3 seconds, so it is installed with 3; every
+  other event uses 5. Older Codex ignores the key, so runtime trust
+  verification accepts its absence but requires trust when Codex reports it.
+- Parent `SessionEnd` removes the parent's children, under the same family lock
+  and terminal markers as Claude. Codex can omit a child's `SubagentStop`, so a
+  parent `Stop` also removes children that sent no hook since the parent's turn
+  began. A child heard during that turn is kept: hooks cannot tell a stuck
+  child from one still running.
 - Non-managed hooks must be reviewed and trusted in Codex before they run.
 
 ## OpenCode stable 1.x
