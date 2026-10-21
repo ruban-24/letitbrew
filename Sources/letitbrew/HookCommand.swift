@@ -20,7 +20,7 @@ func runHook(
         event: event,
         payload: payload,
         agent: agent,
-        agentPID: nil,
+        agentPID: ProcessAncestry.hookAgentPID(),
         observedAt: Date(),
         storage: storage
     )

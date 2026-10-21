@@ -3,7 +3,24 @@ import Foundation
 /// What a session is doing right now.
 public enum SessionState: String, Codable, Sendable, Equatable {
     case working
+    /// Blocked on the person: a question or an approval prompt. The detail
+    /// token says which. A wait releases the hold until local input suggests
+    /// someone may have answered; see `WaitAnswerLatch`. Its stored value is
+    /// not "waiting": pre-0.5 records used that name with other semantics and
+    /// remain unsupported.
+    case waiting = "awaiting_input"
     case idle
+
+    /// Working and Waiting both sit inside a turn; only Idle has ended one.
+    public var isInTurn: Bool {
+        self != .idle
+    }
+}
+
+/// Semantic detail tokens for a Waiting session. Never English prose.
+public enum SessionWaitDetail {
+    public static let question = "waiting-question"
+    public static let approval = "waiting-approval"
 }
 
 /// The effect one hook event has on a session's record.
@@ -60,26 +77,47 @@ public enum HookReducer {
             return .set(.working, detail: nil)
         case "UserPromptSubmit", "PostToolUse":
             return .set(.working, detail: nil)
+        case "PostToolUseFailure":
+            // A failed or cancelled Copilot tool, including its question
+            // tool, returns to the turn it interrupted.
+            return agent == .copilot ? .set(.working, detail: nil) : nil
         case "PreToolUse":
-            if agent == .copilot, isCopilotUserInputTool(toolName) {
-                return .set(.idle, detail: nil)
+            // The question tool blocks on the person until its PostToolUse.
+            if isUserQuestionTool(agent: agent, toolName: toolName) {
+                return .set(.waiting, detail: SessionWaitDetail.question)
             }
             return .set(.working, detail: toolName.map(detailToken(forTool:)))
         case "PermissionRequest":
-            return agent == .copilot || agent == .opencode
-                ? .set(.idle, detail: nil)
+            // Claude, Codex, and Copilot run this hook before another hook,
+            // auto mode, an allow rule, or Codex's auto-reviewer decides, so it
+            // does not prove a person is being asked. Their approvals keep the
+            // prior state; Copilot's question tool still blocks on the person.
+            // OpenCode reports it only when it asks.
+            if agent == .copilot, isUserQuestionTool(agent: agent, toolName: toolName) {
+                return .set(.waiting, detail: SessionWaitDetail.question)
+            }
+            return agent == .opencode
+                ? .set(.waiting, detail: SessionWaitDetail.approval)
                 : nil
         case "Notification":
             if notificationType == "idle_prompt" {
                 return .set(.idle, detail: nil)
             }
+            // Claude sends permission_prompt only after its prompt has waited
+            // on screen for about six seconds; a hook or classifier decision
+            // made sooner never sends it.
+            if agent == .claude, notificationType == "permission_prompt" {
+                return .set(.waiting, detail: SessionWaitDetail.approval)
+            }
             if agent == .copilot,
                ["permission_prompt", "elicitation_dialog"].contains(notificationType) {
-                return .set(.idle, detail: nil)
+                return .set(.waiting, detail: SessionWaitDetail.approval)
             }
             return nil
         case "UserInputRequested":
-            return agent == .opencode || agent == .pi ? .set(.idle, detail: nil) : nil
+            return agent == .opencode || agent == .pi
+                ? .set(.waiting, detail: SessionWaitDetail.question)
+                : nil
         case "UserInputResolved":
             return agent == .opencode || agent == .pi ? .set(.working, detail: nil) : nil
         case "Stop":
@@ -112,10 +150,15 @@ public enum HookReducer {
         }
     }
 
-    private static func isCopilotUserInputTool(_ toolName: String?) -> Bool {
-        switch toolName {
-        case "ask_user", "ask_user_question", "AskUserQuestion": true
-        default: false
+    private static func isUserQuestionTool(agent: AgentID, toolName: String?) -> Bool {
+        switch (agent, toolName) {
+        case (.copilot, "ask_user"), (.copilot, "ask_user_question"),
+             (.copilot, "AskUserQuestion"),
+             (.claude, "AskUserQuestion"),
+             (.codex, "request_user_input"):
+            true
+        default:
+            false
         }
     }
 

@@ -71,7 +71,7 @@ import Testing
     }
 }
 
-@Test func copilotPermissionAndQuestionWaitsAreIdle() throws {
+@Test func copilotPermissionAndQuestionWaitsAreWaiting() throws {
     let directory = hookUpdaterTempDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let storage = SessionStorage(directory: directory)
@@ -82,11 +82,23 @@ import Testing
         event: "UserPromptSubmit", payload: payload, agent: .copilot, agentPID: nil,
         observedAt: Date(timeIntervalSince1970: 100), storage: storage
     )
+    // PermissionRequest runs before allow rules decide, so it keeps Working;
+    // the prompt Copilot actually shows is the wait.
     try HookSessionUpdater.apply(
         event: "PermissionRequest", payload: payload, agent: .copilot, agentPID: nil,
+        observedAt: Date(timeIntervalSince1970: 150), storage: storage
+    )
+    #expect(storage.load(id: id)?.state == .working)
+    try HookSessionUpdater.apply(
+        event: "Notification",
+        payload: HookPayload(
+            sessionId: "copilot-input", cwd: "/work/app", notificationType: "permission_prompt"
+        ),
+        agent: .copilot, agentPID: nil,
         observedAt: Date(timeIntervalSince1970: 200), storage: storage
     )
-    #expect(storage.load(id: id)?.state == .idle)
+    #expect(storage.load(id: id)?.state == .waiting)
+    #expect(storage.load(id: id)?.detail == SessionWaitDetail.approval)
 
     try HookSessionUpdater.apply(
         event: "PostToolUse", payload: payload, agent: .copilot, agentPID: nil,
@@ -104,7 +116,8 @@ import Testing
     )
 
     let waiting = try #require(storage.load(id: id))
-    #expect(waiting.state == .idle)
+    #expect(waiting.state == .waiting)
+    #expect(waiting.detail == SessionWaitDetail.question)
     #expect(waiting.lastEvent == "PreToolUse")
 
     try HookSessionUpdater.apply(
@@ -114,7 +127,7 @@ import Testing
     #expect(storage.load(id: id)?.state == .working)
 }
 
-@Test func openCodeInputRequestAndReplyToggleIdleAndWorking() throws {
+@Test func openCodeInputRequestAndReplyToggleWaitingAndWorking() throws {
     let directory = hookUpdaterTempDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let storage = SessionStorage(directory: directory)
@@ -129,7 +142,7 @@ import Testing
         event: "UserInputRequested", payload: payload, agent: .opencode, agentPID: nil,
         observedAt: Date(timeIntervalSince1970: 200), storage: storage
     )
-    #expect(storage.load(id: id)?.state == .idle)
+    #expect(storage.load(id: id)?.state == .waiting)
 
     try HookSessionUpdater.apply(
         event: "UserInputResolved", payload: payload, agent: .opencode, agentPID: nil,
@@ -1432,4 +1445,114 @@ private final class LockedErrors: @unchecked Sendable {
     func append(_ error: any Error) {
         lock.withLock { storage.append(error) }
     }
+}
+
+@Test func codexStopDuringAQuestionStillClearsSilentChildren() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+    let parent = hookUpdaterID("codex-question")
+    let child = hookUpdaterID("codex-question", childID: "silent")
+
+    try applyHooks([("UserPromptSubmit", "")], agent: .codex, sessionID: "codex-question",
+                   from: 100, storage: storage)
+    try applyHooks([("SubagentStart", #","agent_id":"silent""#)], agent: .codex,
+                   sessionID: "codex-question", from: 50, storage: storage)
+    try applyHooks([("PreToolUse", #","tool_name":"request_user_input""#)], agent: .codex,
+                   sessionID: "codex-question", from: 110, storage: storage)
+    #expect(storage.load(id: parent)?.state == .waiting)
+
+    // A question the turn abandons ends with Stop while the parent waits.
+    try applyHooks([("Stop", "")], agent: .codex, sessionID: "codex-question",
+                   from: 120, storage: storage)
+    #expect(storage.load(id: parent)?.state == .idle)
+    #expect(storage.load(id: child) == nil)
+}
+
+@Test func aDelayedCopilotSessionStartCannotEndAWait() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+    let id = hookUpdaterID("copilot-late-start", agent: .copilot)
+
+    try applyHooks([
+        ("UserPromptSubmit", ""), ("Notification", #","notification_type":"permission_prompt""#),
+    ], agent: .copilot, sessionID: "copilot-late-start", from: 100, storage: storage)
+    try applyHooks([("SessionStart", "")], agent: .copilot,
+                   sessionID: "copilot-late-start", from: 102, storage: storage)
+    #expect(storage.load(id: id)?.state == .waiting)
+}
+
+@Test func aHookWithoutAnAgentPIDKeepsTheKnownOne() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+    let payload = HookPayload(sessionId: "pid-keep", cwd: "/work/app")
+    let id = hookUpdaterID("pid-keep", agent: .claude)
+
+    try HookSessionUpdater.apply(
+        event: "UserPromptSubmit", payload: payload, agent: .claude, agentPID: 4_321,
+        observedAt: Date(timeIntervalSince1970: 100), storage: storage
+    )
+    try HookSessionUpdater.apply(
+        event: "PreToolUse", payload: payload, agent: .claude, agentPID: nil,
+        observedAt: Date(timeIntervalSince1970: 101), storage: storage
+    )
+    #expect(storage.load(id: id)?.pid == 4_321)
+
+    try HookSessionUpdater.apply(
+        event: "PostToolUse", payload: payload, agent: .claude, agentPID: 9_876,
+        observedAt: Date(timeIntervalSince1970: 102), storage: storage
+    )
+    #expect(storage.load(id: id)?.pid == 9_876)
+}
+
+@Test func claudeWaitsFollowTheShownPromptAndTheAnswer() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+    let id = hookUpdaterID("claude-wait", agent: .claude)
+
+    try applyHooks([("UserPromptSubmit", ""), ("PermissionRequest", #","tool_name":"Bash""#)],
+                   sessionID: "claude-wait", from: 100, storage: storage)
+    // The request alone may be settled by another hook or auto mode.
+    #expect(storage.load(id: id)?.state == .working)
+
+    try applyHooks([("Notification", #","notification_type":"permission_prompt""#)],
+                   sessionID: "claude-wait", from: 107, storage: storage)
+    let waiting = try #require(storage.load(id: id))
+    #expect(waiting.state == .waiting)
+    #expect(waiting.detail == SessionWaitDetail.approval)
+
+    try applyHooks([("PostToolUse", #","tool_name":"Bash""#)],
+                   sessionID: "claude-wait", from: 400, storage: storage)
+    #expect(storage.load(id: id)?.state == .working)
+
+    try applyHooks([("PreToolUse", #","tool_name":"AskUserQuestion""#)],
+                   sessionID: "claude-wait", from: 500, storage: storage)
+    #expect(storage.load(id: id)?.detail == SessionWaitDetail.question)
+    try applyHooks([("PostToolUse", #","tool_name":"AskUserQuestion""#)],
+                   sessionID: "claude-wait", from: 520, storage: storage)
+    #expect(storage.load(id: id)?.state == .working)
+}
+
+@Test func aCodexChildHeardBeforeAnAnsweredQuestionSurvivesTheTurnEnd() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+    let child = hookUpdaterID("codex-answered", childID: "heard")
+
+    try applyHooks([("UserPromptSubmit", "")], agent: .codex, sessionID: "codex-answered",
+                   from: 100, storage: storage)
+    try applyHooks([("SubagentStart", #","agent_id":"heard""#)], agent: .codex,
+                   sessionID: "codex-answered", from: 105, storage: storage)
+    try applyHooks([
+        ("PreToolUse", #","tool_name":"request_user_input""#),
+        ("PostToolUse", #","tool_name":"request_user_input""#),
+    ], agent: .codex, sessionID: "codex-answered", from: 110, storage: storage)
+    try applyHooks([("Stop", "")], agent: .codex, sessionID: "codex-answered",
+                   from: 200, storage: storage)
+
+    // Heard during the turn, so it may still be running.
+    #expect(storage.load(id: child)?.state == .working)
 }

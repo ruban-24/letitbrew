@@ -1,4 +1,5 @@
 import Foundation
+import LetItBrewCore
 import LetItBrewDaemonCore
 
 enum DaemonConnectionFailure: LocalizedError {
@@ -442,6 +443,32 @@ final class DaemonConnection: @unchecked Sendable {
             } else {
                 completion(.failure(DaemonConnectionFailure.unavailable(
                     message ?? "The daemon refused the hold."
+                )))
+            }
+        }
+    }
+
+    typealias LowPowerCompletion = @Sendable (Result<Set<PowerModeSource>, Error>) -> Void
+
+    /// Succeeds with the sources that were already in Low Power Mode.
+    func setLowPowerModeHold(_ enabled: Bool, completion: @escaping LowPowerCompletion) {
+        guard withLock({ compatible }) else {
+            completion(.failure(DaemonConnectionFailure.handshakeRequired))
+            return
+        }
+        guard let proxy = proxy(errorHandler: { error in
+            completion(.failure(DaemonConnectionFailure.unavailable(error.localizedDescription)))
+        }) else {
+            completion(.failure(DaemonConnectionFailure.unavailable("Invalid XPC interface.")))
+            return
+        }
+
+        proxy.setLowPowerModeHold(enabled) { succeeded, message, personalSources in
+            if succeeded {
+                completion(.success(PowerModeSource.sources(fromMask: personalSources)))
+            } else {
+                completion(.failure(DaemonConnectionFailure.unavailable(
+                    message ?? "The daemon refused the Low Power Mode change."
                 )))
             }
         }

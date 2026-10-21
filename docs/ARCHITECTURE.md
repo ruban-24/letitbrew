@@ -31,7 +31,7 @@ agent lifecycle event
   ↓  agent runs the installed hook command
 letitbrew hook <agent> <event>    (Sources/letitbrew)
   ↓  HookPayload parses the event from stdin
-HookReducer.reduce(...)           → .set(working|idle) or .end
+HookReducer.reduce(...)           → .set(working|waiting|idle) or .end
   ↓
 SessionStorage                    → one JSON record per session, on disk
   ↓  the app polls, roughly once a second
@@ -41,9 +41,12 @@ hold or release
 ```
 
 `HookReducer` maps individual lifecycle events, while `HookSessionUpdater`
-reconciles related Claude parent and child records. They reduce
-every supported adapter to only **Working** and **Idle** (or removes a terminal
-record); there is no third permission or waiting state.
+reconciles related Claude parent and child records. They reduce every supported
+adapter to **Working**, **Waiting**, or **Idle** (or remove a terminal record).
+Waiting means the agent is blocked on the person: a question, or an approval
+prompt that a hook proves is shown to them. Its detail token says which. It is
+stored as `awaiting_input`, because pre-0.5 records used `waiting` with other
+semantics and remain unsupported.
 
 The common lifecycle mapping is:
 
@@ -69,9 +72,19 @@ The common lifecycle mapping is:
 - `Stop` and an `idle_prompt` `Notification` set **Idle**. Idle rows are hidden
   and stop contributing to the hold on the next one-second app poll. `Stop`
   with nonempty `background_tasks` remains **Working**; `StopFailure` is Idle.
-- `PermissionRequest` and `permission_prompt` notifications return no effect,
-  preserving the prior Working or Idle state. Permission is not a third session
-  state.
+- Question tools (`AskUserQuestion` for Claude, `request_user_input` for Codex,
+  and Copilot's `ask_user` family) set **Waiting** at `PreToolUse`; the answer's
+  `PostToolUse` sets Working again. OpenCode and Pi input requests and
+  OpenCode permission requests also set Waiting. Copilot's `PermissionRequest`
+  keeps the prior state unless it names the question tool, because it fires
+  before allow rules decide; its `permission_prompt` and `elicitation_dialog`
+  notifications set Waiting.
+- Claude's `permission_prompt` `Notification` sets **Waiting**. Claude sends it
+  only after its prompt has waited on screen for about six seconds, so a
+  request another hook or auto mode settles never sends it. `PermissionRequest`
+  for Claude and Codex returns no effect: both run it before another hook, auto
+  mode, or Codex's auto-reviewer decides, so it does not prove a person is
+  being asked.
 - `SubagentStop` and `SessionEnd` remove the addressed active record. For Claude
   and Codex, a parent `SessionEnd` also removes its children. Codex can omit a
   child's `SubagentStop`, so a Codex parent `Stop` or `Interrupt` also removes children that
@@ -95,24 +108,78 @@ parent terminal if child-file cleanup was interrupted. The optional numeric
 initial or legacy parent records have no such cutoff. Readers retain children
 when a parent's state is missing or unreadable. The product remains hook-only;
 no process polling, transcript inspection, or silence-based early release is
-used to guess whether an interrupted Claude turn finished.
+used to guess whether an interrupted Claude turn finished. A Waiting parent is
+still inside its turn, so a Codex `Stop` or `Interrupt` from Waiting sweeps
+silent children too. The sweep's turn start is the latest prompt whenever it is
+known, because a wait and its answer move `stateChangedAt` inside the turn.
+
+The hook CLI records the agent's process ID by walking its parents past shell
+wrappers (`sh`, `bash`, `zsh`, `env`, and similar). The ID lets the menu
+bring the agent's app forward, and it names the app whose input can answer a
+Claude or Copilot approval. A Waiting session whose agent has exited neither
+shows nor holds, even if input latched it before the agent quit. The ID never
+affects eviction, and it affects the hold only through those two rules.
 
 Each adapter's exact source-event vocabulary is frozen in
 [AGENT-HOOK-CONTRACTS.md](AGENT-HOOK-CONTRACTS.md); unsupported source events do
 not infer a state.
 
-`Decision.decide()` is a pure function over sessions, settings, and power state.
-It is where the battery floor and thermal release live. `PowerState.trusted`
-exists so a *failed* IOKit read is never mistaken for "this machine has no
-battery" — an untrusted reading must not bypass the battery floor.
+`Decision.decide()` is a pure function over sessions, settings, power state,
+local input, and whether Let It Brew owns the current Low Power Mode. It is
+where the battery floor and thermal release live. `PowerState.trusted` exists
+so a *failed* IOKit read is never mistaken for "this machine has no battery" —
+an untrusted reading must not bypass the battery floor.
 
-The three app-level presentations are deliberately separate from the two agent
-session states:
+A Waiting session releases the hold, with no grace period. Every question,
+and every OpenCode and Pi wait, reports its answer with a hook, so those waits
+never consult input. Approving a Claude or Copilot prompt fires no hook before
+the approved tool runs, so for those approvals `WaitAnswerLatch` treats a key
+press or click after the wait began as a possible answer: the session holds
+again, and is shown as Working, until its next hook. Only input that went to
+the session's own app counts: `FrontmostInputAttribution` credits each input to
+the app in front when it happened, sampling the counters on every poll and on
+every activation change, and the app is the one the menu brings forward for
+that session. Typing in a chat therefore cannot answer a terminal's prompt. A
+session whose app is unknown, as under tmux, falls back to input in any app.
+The click that brings the app forward counts for it, because the app may act
+on that first click. Input from before the first activation Let It Brew saw,
+such as an approval made before it relaunched, counts for every app. Claude's
+permission notification also accepts input up to three seconds before it,
+because it arrives about six seconds after its prompt and can land just after
+the answering keystroke. Copilot's accepts one second, a margin for hook
+delivery that the Enter submitting a turn seconds earlier does not reach.
+Input from the last half second waits for the next poll, so the menu can
+report that it opened before its own opening click is judged. Pointer movement
+and scrolling never count. `OwnMenuInputFilter` discards the status-item click
+that opened Let It Brew's menu, recognized as the latest click when the menu
+reports opening, and key presses and clicks while the menu is open, so
+checking the menu cannot answer a wait while an answer just before it still
+counts. A menu that never reports closing stops discarding after five minutes.
+The times come from the HID system's per-event idle counters,
+which need no permission; an unreadable counter keeps those approvals held. Because the
+counters report only each kind's latest event, the latch keeps a wait answered
+for its lifetime once any poll saw an answer. The worst case for a Claude
+approval is the hold it kept before Waiting existed. An approval given from
+another device while the lid is open has no local input and can still let the
+Mac sleep before the approved tool finishes.
+
+"Respect Low Power Mode" releases on Low Power Mode only when it is the
+person's own. While Let It Brew's closed-lid switch is confirmed, `decide()`
+ignores Low Power Mode on the current power source unless that source was
+already in Low Power Mode before the switch; the daemon reports those sources
+in its reply. While a request is in flight, and for three seconds after any
+request completes or a connection that may have switched is replaced, it is
+ignored too, because ProcessInfo can lag the change. Every other safety gate
+still applies.
+
+The app-level presentations are deliberately separate from the agent session
+states:
 
 | State | Meaning |
 |---|---|
 | **Keeping your Mac awake** | At least one local agent is Working, subject to safety gates. |
-| **Your Mac can sleep** | No observed local agent is Working; Idle sessions are hidden. |
+| **Agents are waiting for you** | No agent is Working, and at least one is Waiting; the Mac may sleep. |
+| **Your Mac can sleep** | No observed local agent is Working or Waiting; Idle sessions are hidden. |
 | **Let It Brew is paused** | Sessions are still observed, but Let It Brew owns no hold. |
 
 ## Concurrent session storage and observation
@@ -144,7 +211,22 @@ Idle, corrupt-record isolation, grouping, and presentation.
 
 ## Adaptive activity menu
 
-Only Working sessions become menu rows. One Working session in a full folder
+Working and Waiting sessions become menu rows; Waiting rows show an orange
+"Waiting for your answer" or "Needs your approval". A session keeps its row and
+position as it moves between the two. Group badges count each, as in
+"1 working · 2 waiting". Clicking a row whose agent process is known brings
+forward the first regular app among the agent's ancestors (a terminal, editor,
+or the Claude or Codex app). When none is, the process launchd started at
+the root of the lineage is consulted: a detached terminal host such as Orca's
+is matched by the app bundle that holds its executable, by location or bundle
+identifier, and iTerm2's server, which runs from a copy outside its bundle, by
+name. Tools below the root are never matched, because an agent may itself ship
+inside another app's bundle.
+Activation is app-level only: no Accessibility or Automation access is
+requested, so a specific window or tab is not selected, and sessions under
+tmux or screen have no reachable app.
+
+One session in a full folder
 path is a flat row; two or more in that same full path form a disclosure group.
 The full standardized path is the grouping identity, so same-named folders at
 different paths remain distinct.
@@ -191,8 +273,38 @@ The rule that follows from this, and that every code path must respect:
 > Restore the exact recorded `SleepDisabled` baseline. An unreadable value is an
 > error, never `0`. Your Mac may have intentionally started with another value.
 
-`PMSetDaemonSleepControl` is the daemon's **only** system mutation. It shells out
+`PMSetDaemonSleepControl` makes the daemon's **only** system mutations:
+`disablesleep`, and the per-source energy mode described below. It shells out
 to `/usr/bin/pmset` and does nothing else.
+
+### Low Power Mode with the lid closed
+
+While a confirmed lid-closed hold is active, the lid is shut, and no external
+display is attached, the app asks the daemon to switch every power source to
+Low Power Mode. This is on by default and can be turned off under
+**Settings → Power & Display → Closed lid**. The daemon accepts the request
+only from a client that owns a lid-closed hold, so Low Power Mode is nested
+inside it: releasing that hold, or disconnecting, releases it too.
+
+Before writing anything, the daemon reads `pmset -g custom` and records each
+source's exact energy mode — key (`powermode` on newer macOS, `lowpowermode`
+on older) and value — in a second restore record beside the sleep debt. It
+then writes `1` only to sources not already in Low Power Mode, and confirms the
+result. A failed or partial switch is rolled back from that record. The last
+release restores every recorded source exactly, then removes the record only
+after every recorded source reads back with its recorded value; a source
+missing from either reading keeps the record. Values, not names, are compared
+and restored, and each write uses the name the live system reports, so a
+record survives macOS renaming the setting. Launch reconciles a leftover
+record, and every later release or handshake retries a failed restore. Upgrade
+and uninstall preparation retry it up to three times, because no daemon follows
+an uninstall, but never block on it: a record that can never be restored must
+not strand the upgrade or uninstall, and a later daemon reconciles it.
+
+Low Power Mode never gates `disablesleep`. A failure to switch or restore the
+energy mode is reported in Settings, but cannot keep a Mac awake or block a
+lid-closed hold. That is also why an unreadable energy-mode record is cleared
+without guessing a value, where an unreadable sleep debt blocks.
 
 ## Why the app trusts the daemon (and vice versa)
 

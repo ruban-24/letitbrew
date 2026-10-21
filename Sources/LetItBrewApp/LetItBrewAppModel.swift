@@ -16,6 +16,8 @@ struct LetItBrewSnapshot: Sendable {
     let power: PowerState
     let clamshell: ClamshellStateReading
     let displays: ActiveDisplayTopologyReading
+    /// Consulted only for Waiting sessions; see `WaitAnswerLatch`.
+    let answerInput: UserAnswerInputReading?
     let now: Date
 }
 
@@ -242,6 +244,20 @@ final class LetItBrewAppModel: ObservableObject {
             refreshNow()
         }
     }
+    /// Switches the Mac to Low Power Mode while agents work with the lid
+    /// closed, then restores the exact prior energy mode.
+    @Published var useLowPowerModeWithLidClosed: Bool {
+        didSet {
+            defaults.set(
+                useLowPowerModeWithLidClosed,
+                forKey: Keys.useLowPowerModeWithLidClosed
+            )
+            refreshNow()
+        }
+    }
+    /// The last Low Power Mode switch failure, shown in Settings until a
+    /// later switch succeeds.
+    @Published private(set) var lowPowerModeMessage: String?
     @Published private(set) var currentPower = PowerState(
         onBattery: false,
         batteryPercent: 100,
@@ -299,6 +315,7 @@ final class LetItBrewAppModel: ObservableObject {
         static let onlyWhileConnectedToPower = "onlyWhileConnectedToPower"
         static let respectLowPowerMode = "respectLowPowerMode"
         static let allowDisplaysToSleep = "allowDisplaysToSleep"
+        static let useLowPowerModeWithLidClosed = "useLowPowerModeWithLidClosed"
         static let automaticUpdateSnapshot = "automaticUpdateSnapshotV1"
     }
 
@@ -321,6 +338,7 @@ final class LetItBrewAppModel: ObservableObject {
     private var pollTask: Task<Void, Never>?
     private var updateResultTask: Task<Void, Never>?
     private var automaticUpdateTask: Task<Void, Never>?
+    private var frontmostAppTask: Task<Void, Never>?
     private var latestSnapshot: LetItBrewSnapshot?
     private var latestAppliedSnapshotAt: Date?
     private var daemonConnection: DaemonConnection?
@@ -330,6 +348,30 @@ final class LetItBrewAppModel: ObservableObject {
     private var daemonHandshakeInFlight = false
     private var daemonHoldRequestState = DaemonHoldRequestState()
     private var requestedLidHold = false
+    /// Low Power Mode is nested in the confirmed lid-closed hold, on the same
+    /// daemon connection, and has its own single in-flight request.
+    private var lowPowerRequestState = DaemonHoldRequestState()
+    private var requestedLowPowerHold = false
+    /// A refused switch is not retried until the lid opens or work stops.
+    private var lowPowerSwitchRefused = false
+    private var nextLowPowerReleaseRetry = Date.distantPast
+    /// ProcessInfo can report the switched mode briefly after a restore.
+    private var lowPowerOwnershipSettlesAt = Date.distantPast
+    /// Sources already in Low Power Mode before the switch: that mode stays the
+    /// person's own, so "Respect Low Power Mode" still applies to it.
+    private var personalLowPowerSources: Set<PowerModeSource> = []
+    /// Waits that a key press or click may have answered.
+    private var waitAnswers = WaitAnswerLatch()
+    /// Input aimed at this app's own menu never answers an agent's wait.
+    private var ownMenuInputFilter = OwnMenuInputFilter()
+    /// Which app each key press or click went to, so only input in a
+    /// session's own app can answer its approval.
+    private var inputAttribution = FrontmostInputAttribution()
+    /// Input times read as the front app changed, credited once they settle.
+    private var unsettledInputTimes: [Date] = []
+    /// The app hosting each silently answered wait's agent, resolved once per
+    /// agent process; nil when no app hosts it, as under tmux.
+    private var waitHostApps: [Int32: Int32?] = [:]
     private var requestedSystemHold = false
     private var lastDaemonAttempt = Date.distantPast
     private var nextDaemonHealthCheck = Date.distantPast
@@ -395,6 +437,11 @@ final class LetItBrewAppModel: ObservableObject {
             key: Keys.allowDisplaysToSleep,
             fallback: true
         )
+        useLowPowerModeWithLidClosed = Self.persistedBool(
+            defaults,
+            key: Keys.useLowPowerModeWithLidClosed,
+            fallback: true
+        )
         sessionTrackingSuppressions = Self.loadSessionTrackingSuppressions(
             from: defaults
         )
@@ -434,6 +481,7 @@ final class LetItBrewAppModel: ObservableObject {
         presentUnselectedAgents()
 
         if startsPolling {
+            startFollowingFrontmostApp()
             startPolling()
             startPendingUpdateResultPolling()
             runDaemonRecovery(trigger: .automaticLaunch)
@@ -456,6 +504,7 @@ final class LetItBrewAppModel: ObservableObject {
         pollTask?.cancel()
         updateResultTask?.cancel()
         automaticUpdateTask?.cancel()
+        frontmostAppTask?.cancel()
         daemonRecoveryTask?.cancel()
         powerAssertion.setSystemHold(false, reason: "Let It Brew quit")
         powerAssertion.setDisplayHold(false, reason: "Let It Brew quit")
@@ -882,6 +931,82 @@ final class LetItBrewAppModel: ObservableObject {
 
     func revealSessionFolder() {
         NSWorkspace.shared.open(SessionStorage.sessionsDirectory)
+    }
+
+    func menuDidOpen() {
+        let now = Date()
+        ownMenuInputFilter.menuOpened(
+            at: now, lastClick: CGUserAnswerInput().current(now: now)?.lastClick
+        )
+    }
+
+    func menuDidClose() {
+        ownMenuInputFilter.menuClosed(at: Date())
+    }
+
+    /// Credits input to the app that was in front when it happened. Each
+    /// switch is recorded as it happens, because the HID counters keep only
+    /// the latest event and a poll may come too late to credit it.
+    private func startFollowingFrontmostApp() {
+        let workspace = NSWorkspace.shared
+        inputAttribution.activate(workspace.frontmostApplication?.processIdentifier, at: Date())
+        frontmostAppTask = Task { [weak self] in
+            let activations = workspace.notificationCenter.notifications(
+                named: NSWorkspace.didActivateApplicationNotification
+            ).map {
+                ($0.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?
+                    .processIdentifier
+            }
+            for await app in activations {
+                guard let self else { return }
+                let now = Date()
+                // Read before a later event replaces it: an Enter that
+                // approved, then the Cmd-Tab away, are each only the latest.
+                if let reading = CGUserAnswerInput().current(now: now) {
+                    self.unsettledInputTimes += [reading.lastKeyPress, reading.lastClick]
+                }
+                self.inputAttribution.activate(app, at: now)
+            }
+        }
+    }
+
+    private func creditInput(_ reading: UserAnswerInputReading?, now: Date) {
+        // A switch whose notification has not arrived yet is the newest.
+        inputAttribution.activate(NSWorkspace.shared.frontmostApplication?.processIdentifier, at: Date())
+        var times = Set(unsettledInputTimes)
+        if let reading { times.formUnion([reading.lastKeyPress, reading.lastClick]) }
+        unsettledInputTimes = []
+        for time in times where time != .distantPast {
+            switch ownMenuInputFilter.counts(time, now: now) {
+            case nil: unsettledInputTimes.append(time)
+            case true?: inputAttribution.credit(inputAt: time)
+            case false?: break
+            }
+        }
+    }
+
+    private func hostApps(forSilentWaitsIn sessions: [SessionRecord]) -> [Int32: Int32] {
+        let agents = Set(sessions.filter(WaitAnswerLatch.answerIsSilent).compactMap(\.pid))
+        waitHostApps = waitHostApps.filter { agents.contains($0.key) }
+        var hosts: [Int32: Int32] = [:]
+        for agent in agents {
+            let host: Int32?
+            if let cached = waitHostApps[agent] {
+                host = cached
+            } else {
+                host = SessionHostActivator.hostApp(of: agent)?.processIdentifier
+                waitHostApps[agent] = host
+            }
+            if let host { hosts[agent] = host }
+        }
+        return hosts
+    }
+
+    /// Brings forward the terminal, editor, or agent app running a session.
+    func bringSessionForward(agentPID: Int32) {
+        if !SessionHostActivator.activate(agentPID: agentPID) {
+            Self.logger.notice("No app was found for the selected session's agent process.")
+        }
     }
 
     /// Stops one session from contributing to either the menu or awake
@@ -1909,6 +2034,7 @@ final class LetItBrewAppModel: ObservableObject {
                 power: IOKitPowerSource().current(),
                 clamshell: clamshellMonitor.currentClamshellState(),
                 displays: activeDisplayMonitor.currentDisplayTopology(),
+                answerInput: CGUserAnswerInput().current(now: sessions.now),
                 now: sessions.now
             )
             return (snapshot: snapshot, startedAt: sessions.readStartedAt)
@@ -1941,6 +2067,8 @@ final class LetItBrewAppModel: ObservableObject {
         daemonAvailable = false
         daemonHandshakeInFlight = false
         daemonHoldRequestState.replaceConnection()
+        settleLowPowerOwnershipIfItMayHaveChanged()
+        lowPowerRequestState.replaceConnection()
         updateHoldOwnership()
 
         let persistence = daemonRecoveryPersistence
@@ -2005,6 +2133,7 @@ final class LetItBrewAppModel: ObservableObject {
             power: snapshot.power,
             clamshell: snapshot.clamshell,
             displays: snapshot.displays,
+            answerInput: snapshot.answerInput,
             now: snapshot.now
         ))
     }
@@ -2029,9 +2158,28 @@ final class LetItBrewAppModel: ObservableObject {
         settings.allowDisplaysToSleep = allowDisplaysToSleep
         settings.lidClosedFollowsSession = keepWorkingWithLidClosed
         currentPower = snapshot.power
+        let input = ownMenuInputFilter.observation(snapshot.answerInput, now: snapshot.now)
+        if readsLiveState {
+            creditInput(snapshot.answerInput, now: snapshot.now)
+        }
+        // A wait whose agent process has exited can no longer be answered: it
+        // neither shows nor holds, even if input latched it before the agent quit.
+        let liveness = KillZeroLiveness()
+        let liveSessions = snapshot.sessions.filter { record in
+            guard record.state == .waiting, let pid = record.pid else { return true }
+            return liveness.isAlive(pid: pid)
+        }
+        let hosts = hostApps(forSilentWaitsIn: liveSessions)
+        waitAnswers.observe(liveSessions) { wait in
+            // An agent with no known app falls back to input anywhere.
+            guard let agent = wait.pid, let host = hosts[agent] else { return input }
+            return inputAttribution.observation(forApp: host, global: input)
+        }
 
         let nextSessions = MenuSessionPresentationPolicy.rows(
-            from: snapshot.sessions.map { Self.menuInput($0, now: snapshot.now) },
+            from: liveSessions.map {
+                Self.menuInput($0, waitAnswers: waitAnswers, now: snapshot.now)
+            },
             now: snapshot.now,
             previousIDs: sessions.map(\.id)
         )
@@ -2041,10 +2189,15 @@ final class LetItBrewAppModel: ObservableObject {
         sessions = nextSessions
 
         let decision = decide(
-            sessions: snapshot.sessions,
+            sessions: liveSessions,
             now: snapshot.now,
             settings: settings,
-            power: snapshot.power
+            power: snapshot.power,
+            waitAnswers: waitAnswers,
+            lowPowerModeOwnedByLetItBrew: ownsLowPowerMode(
+                at: snapshot.now,
+                onBattery: snapshot.power.onBattery
+            )
         )
         let intent = pauseController.resolve(
             systemHold: decision.holdSystem,
@@ -2073,6 +2226,7 @@ final class LetItBrewAppModel: ObservableObject {
             )
         }
         synchronizeDaemonHold()
+        updateLowPowerRequest(snapshot: snapshot)
         updateHoldReleaseFailure(
             systemReleased: intent.system || systemSettled,
             displayReleased: intent.display || displaySettled
@@ -2095,7 +2249,8 @@ final class LetItBrewAppModel: ObservableObject {
 
         let isKeepingAwake = intent.system
             || (requestedLidHold && daemonHoldRequestState.confirmedHold == true)
-        releaseConstraint = if !sessions.isEmpty {
+        // A constraint explains a release only for sessions that would hold.
+        releaseConstraint = if sessions.contains(where: { !$0.isWaiting }) {
             if !snapshot.power.trusted {
                 .powerUnavailable
             } else if settings.onlyWhileConnectedToPower,
@@ -2126,7 +2281,8 @@ final class LetItBrewAppModel: ObservableObject {
         reason = MenuHeaderCopy.resolve(
             isPaused: isPaused,
             isKeepingAwake: isKeepingAwake,
-            releaseConstraint: releaseConstraint
+            releaseConstraint: releaseConstraint,
+            isWaitingForYou: sessions.contains(where: \.isWaiting)
         )
 
     }
@@ -2246,6 +2402,98 @@ final class LetItBrewAppModel: ObservableObject {
         }
     }
 
+    /// True while Low Power Mode on the current source may be Let It Brew's
+    /// switch rather than the person's choice, so "Respect Low Power Mode"
+    /// must not release on it.
+    private func ownsLowPowerMode(at now: Date, onBattery: Bool) -> Bool {
+        if lowPowerRequestState.confirmedHold == true {
+            return !personalLowPowerSources.contains(onBattery ? .battery : .charger)
+        }
+        return lowPowerRequestState.isInFlight || now < lowPowerOwnershipSettlesAt
+    }
+
+    /// A switch may have changed the energy mode, and ProcessInfo can lag
+    /// behind it, so ownership outlasts any request that may have written.
+    private func settleLowPowerOwnershipIfItMayHaveChanged() {
+        guard lowPowerRequestState.confirmedHold == true || lowPowerRequestState.isInFlight
+        else { return }
+        lowPowerOwnershipSettlesAt = Date().addingTimeInterval(3)
+    }
+
+    private func updateLowPowerRequest(snapshot: LetItBrewSnapshot) {
+        let now = snapshot.now
+        // An external display means the Mac is in use as a desktop, not
+        // working unattended with its lid shut.
+        requestedLowPowerHold = useLowPowerModeWithLidClosed
+            && requestedLidHold
+            && daemonHoldRequestState.confirmedHold == true
+            && snapshot.clamshell == .closed
+            && snapshot.displays == .noExternalDisplay
+        if !requestedLowPowerHold {
+            lowPowerSwitchRefused = false
+        }
+        if lowPowerRequestState.expireRequestIfTimedOut(at: now, timeout: 5) {
+            Self.logger.error("The background helper did not confirm the Low Power Mode change in time.")
+        }
+        synchronizeLowPowerHold(now: now)
+    }
+
+    private func synchronizeLowPowerHold(now: Date = Date()) {
+        guard daemonAvailable,
+              !lowPowerRequestState.isInFlight,
+              let connection = daemonConnection
+        else { return }
+
+        let desired = requestedLowPowerHold
+        if desired {
+            guard lowPowerRequestState.confirmedHold != true, !lowPowerSwitchRefused else { return }
+        } else {
+            // Only a hold this app took, or an unconfirmed release, needs one.
+            guard lowPowerRequestState.confirmedHold == true
+                    || lowPowerRequestState.releaseConfirmationRequired,
+                  now >= nextLowPowerReleaseRetry
+            else { return }
+        }
+        guard let request = lowPowerRequestState.beginRequest(
+            desiredHold: desired,
+            at: now
+        ) else { return }
+        connection.setLowPowerModeHold(desired) { [weak self, weak connection] result in
+            Task { @MainActor in
+                let succeeded: Bool
+                switch result {
+                case .success:
+                    succeeded = true
+                case .failure:
+                    succeeded = false
+                }
+                guard let self,
+                      self.lowPowerRequestState.complete(request, succeeded: succeeded),
+                      self.daemonConnection === connection
+                else { return }
+                // Success, rollback, and restore can all have changed it.
+                self.lowPowerOwnershipSettlesAt = Date().addingTimeInterval(3)
+                switch result {
+                case .success(let personalSources):
+                    self.lowPowerModeMessage = nil
+                    self.personalLowPowerSources = desired ? personalSources : []
+                    if self.requestedLowPowerHold != desired {
+                        self.synchronizeLowPowerHold()
+                    }
+                case .failure(let error):
+                    Self.logger.error("Low Power Mode change failed: \(error.localizedDescription, privacy: .public)")
+                    if desired {
+                        self.lowPowerSwitchRefused = true
+                        self.lowPowerModeMessage = "Could not switch to Low Power Mode: \(error.localizedDescription)"
+                    } else {
+                        self.nextLowPowerReleaseRetry = Date().addingTimeInterval(30)
+                        self.lowPowerModeMessage = "Could not restore your energy mode: \(error.localizedDescription)"
+                    }
+                }
+            }
+        }
+    }
+
     private func markDaemonUnavailable(_ message: String) {
         daemonAvailable = false
         applyDaemonRecoveryState(.retryableFailure(.handshakeFailed(
@@ -2253,6 +2501,9 @@ final class LetItBrewAppModel: ObservableObject {
         )))
         daemonHandshakeInFlight = false
         daemonHoldRequestState.replaceConnection()
+        // Disconnecting makes the daemon restore the energy mode it switched.
+        settleLowPowerOwnershipIfItMayHaveChanged()
+        lowPowerRequestState.replaceConnection()
         daemonConnection?.invalidate()
         daemonConnection = nil
         if isPaused {
@@ -2312,11 +2563,12 @@ final class LetItBrewAppModel: ObservableObject {
             || (requestedLidHold && daemonHoldRequestState.confirmedHold == true)
     }
 
-    private static func menuInput(_ record: SessionRecord, now: Date) -> SessionMenuInput {
-        let state: MenuSessionState = switch record.state {
-        case .working: .working
-        case .idle: .idle
-        }
+    private static func menuInput(
+        _ record: SessionRecord,
+        waitAnswers: WaitAnswerLatch,
+        now: Date
+    ) -> SessionMenuInput {
+        let state = MenuSessionState.resolve(record, waitAnswers: waitAnswers)
         return SessionMenuInput(
             id: record.id,
             tool: record.tool,
@@ -2324,7 +2576,8 @@ final class LetItBrewAppModel: ObservableObject {
             repositoryPath: record.repositoryID,
             state: state,
             activeWorkingTime: record.activeWorkingTime(at: now),
-            updatedAt: record.updatedAt
+            updatedAt: record.updatedAt,
+            agentPID: record.pid
         )
     }
 }
@@ -2350,6 +2603,10 @@ extension LetItBrewAppModel {
             power: power,
             clamshell: .open,
             displays: .noExternalDisplay,
+            answerInput: UserAnswerInputReading(
+                lastKeyPress: .distantPast,
+                lastClick: .distantPast
+            ),
             now: now
         ))
         return model

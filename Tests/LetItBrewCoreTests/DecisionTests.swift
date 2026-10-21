@@ -232,3 +232,237 @@ private let plugged = PowerState(onBattery: false, batteryPercent: 100, thermal:
     #expect(displaySleepAllowed.holdSystem)
     #expect(!displaySleepAllowed.holdDisplay)
 }
+
+@Test func lowPowerModeLetItBrewTurnedOnDoesNotReleaseItsOwnHold() {
+    var settings = Settings()
+    settings.respectLowPowerMode = true
+    let power = PowerState(
+        onBattery: true, batteryPercent: 90, thermal: .nominal, lowPowerModeEnabled: true
+    )
+    let owned = decide(
+        sessions: [session(.working)], now: now, settings: settings, power: power,
+        lowPowerModeOwnedByLetItBrew: true
+    )
+    #expect(owned.holdSystem)
+    #expect(owned.holdLidClosed)
+
+    let personal = decide(
+        sessions: [session(.working)], now: now, settings: settings, power: power,
+        lowPowerModeOwnedByLetItBrew: false
+    )
+    #expect(!personal.holdSystem)
+    #expect(personal.reason == "low power mode")
+}
+
+@Test func ownedLowPowerModeNeverBypassesTheOtherSafetyGates() {
+    var settings = Settings()
+    settings.respectLowPowerMode = true
+    let low = PowerState(
+        onBattery: true, batteryPercent: 10, thermal: .nominal, lowPowerModeEnabled: true
+    )
+    #expect(!decide(
+        sessions: [session(.working)], now: now, settings: settings, power: low,
+        lowPowerModeOwnedByLetItBrew: true
+    ).holdSystem)
+    let hot = PowerState(
+        onBattery: false, batteryPercent: 100, thermal: .serious, lowPowerModeEnabled: true
+    )
+    #expect(!decide(
+        sessions: [session(.working)], now: now, settings: settings, power: hot,
+        lowPowerModeOwnedByLetItBrew: true
+    ).holdSystem)
+}
+
+private func waiting(
+    _ detail: String = SessionWaitDetail.approval,
+    tool: AgentID = .claude,
+    since: Date = now.addingTimeInterval(-60),
+    id: String = UUID().uuidString,
+    transition: String = "wait-1"
+) -> SessionRecord {
+    var record = SessionRecord(
+        id: id, tool: tool.rawValue, state: .waiting, detail: detail,
+        cwd: "/tmp/repo", pid: 1, updatedAt: since
+    )
+    record.stateChangedAt = since
+    record.stateTransitionID = transition
+    return record
+}
+
+private func answers(
+    _ sessions: [SessionRecord],
+    input: UserInputObservation
+) -> WaitAnswerLatch {
+    .observing(sessions, input: input)
+}
+
+@Test func waitingSessionsReleaseWithoutInput() {
+    for detail in [SessionWaitDetail.question, SessionWaitDetail.approval] {
+        let sessions = [waiting(detail)]
+        let decision = decide(
+            sessions: sessions, now: now, settings: Settings(), power: plugged,
+            waitAnswers: answers(sessions, input: .lastInput(at: now.addingTimeInterval(-600)))
+        )
+        #expect(!decision.holdSystem)
+        #expect(!decision.holdLidClosed)
+        #expect(decision.reason == "agents waiting for you")
+    }
+    // Callers that observe no input default to releasing.
+    #expect(!decide(
+        sessions: [waiting()], now: now, settings: Settings(), power: plugged
+    ).holdSystem)
+}
+
+@Test func inputAfterAWaitBeganHoldsUntilTheNextHook() {
+    let since = now.addingTimeInterval(-60)
+    let sessions = [waiting(SessionWaitDetail.approval, since: since)]
+    let answered = decide(
+        sessions: sessions, now: now, settings: Settings(), power: plugged,
+        waitAnswers: answers(sessions, input: .lastInput(at: since.addingTimeInterval(30)))
+    )
+    #expect(answered.holdSystem)
+    #expect(answered.holdLidClosed)
+    #expect(answered.reason == "1 working")
+}
+
+@Test func inputJustBeforeAClaudePermissionNotificationStillCounts() {
+    let since = now.addingTimeInterval(-60)
+    let tolerance = WaitAnswerLatch.answerLeadTolerance
+    var notified = waiting(SessionWaitDetail.approval, since: since)
+    notified.lastEvent = "Notification"
+    let sessions = [notified]
+    #expect(decide(
+        sessions: sessions, now: now, settings: Settings(), power: plugged,
+        waitAnswers: answers(sessions, input: .lastInput(at: since.addingTimeInterval(-tolerance)))
+    ).holdSystem)
+    #expect(!decide(
+        sessions: sessions, now: now, settings: Settings(), power: plugged,
+        waitAnswers: answers(
+            sessions, input: .lastInput(at: since.addingTimeInterval(-tolerance - 1))
+        )
+    ).holdSystem)
+}
+
+@Test func copilotPromptsKeepOnlyASmallLeadForHookDelivery() {
+    let since = now.addingTimeInterval(-60)
+    var wait = waiting(tool: .copilot, since: since)
+    wait.lastEvent = "Notification"
+    wait.eventObservedAt = since.timeIntervalSince1970 + 0.8
+    let notified = Date(timeIntervalSince1970: wait.eventObservedAt!)
+    let lead = WaitAnswerLatch.copilotAnswerLeadTolerance
+    func holds(_ input: Date) -> Bool {
+        decide(
+            sessions: [wait], now: now, settings: Settings(), power: plugged,
+            waitAnswers: answers([wait], input: .lastInput(at: input))
+        ).holdSystem
+    }
+    // An answer just before the hook landed still counts.
+    #expect(holds(notified.addingTimeInterval(-lead)))
+    // The Enter that submitted the turn seconds earlier does not.
+    #expect(!holds(notified.addingTimeInterval(-lead - 0.5)))
+    #expect(holds(since.addingTimeInterval(2)))
+}
+
+@Test func waitsWhoseAnswerSendsAHookNeverConsultInput() {
+    let since = now.addingTimeInterval(-60)
+    let reported: [(AgentID, String)] = [
+        (.claude, SessionWaitDetail.question), (.codex, SessionWaitDetail.question),
+        (.copilot, SessionWaitDetail.question), (.opencode, SessionWaitDetail.question),
+        (.opencode, SessionWaitDetail.approval), (.pi, SessionWaitDetail.question),
+    ]
+    for (tool, detail) in reported {
+        let sessions = [waiting(detail, tool: tool, since: since)]
+        for input in [UserInputObservation.unavailable, .lastInput(at: since.addingTimeInterval(5))] {
+            let latch = answers(sessions, input: input)
+            #expect(!latch.mayHaveBeenAnswered(sessions[0]), "\(tool) \(detail)")
+            #expect(!decide(
+                sessions: sessions, now: now, settings: Settings(), power: plugged,
+                waitAnswers: latch
+            ).holdSystem)
+        }
+    }
+    for tool in [AgentID.claude, .copilot] {
+        #expect(WaitAnswerLatch.answerIsSilent(waiting(tool: tool)))
+    }
+}
+
+@Test func eachSilentWaitConsultsItsOwnInput() {
+    let since = now.addingTimeInterval(-60)
+    let inTerminal = waiting(since: since, id: "terminal")
+    let inEditor = waiting(since: since, id: "editor")
+    var latch = WaitAnswerLatch()
+    latch.observe([inTerminal, inEditor]) { wait in
+        wait.id == "terminal" ? .lastInput(at: since.addingTimeInterval(5)) : .none
+    }
+    #expect(latch.holdsAwake(inTerminal))
+    #expect(!latch.holdsAwake(inEditor))
+}
+
+@Test func anUnreadableInputCounterKeepsWaitsHeld() {
+    let sessions = [waiting()]
+    #expect(decide(
+        sessions: sessions, now: now, settings: Settings(), power: plugged,
+        waitAnswers: answers(sessions, input: .unavailable)
+    ).holdSystem)
+}
+
+@Test func answeredWaitsStillYieldToSafetyGates() {
+    let lowBattery = PowerState(onBattery: true, batteryPercent: 5, thermal: .nominal)
+    let sessions = [waiting()]
+    #expect(!decide(
+        sessions: sessions, now: now, settings: Settings(), power: lowBattery,
+        waitAnswers: answers(sessions, input: .unavailable)
+    ).holdSystem)
+}
+
+@Test func workingSessionsHoldRegardlessOfInput() {
+    let sessions = [session(.working), waiting()]
+    let decision = decide(
+        sessions: sessions, now: now, settings: Settings(), power: plugged,
+        waitAnswers: answers(sessions, input: .none)
+    )
+    #expect(decision.holdSystem)
+    #expect(decision.reason == "1 working")
+}
+
+@Test func theLatchKeepsAnAnswerAfterLaterInputIsDiscarded() {
+    let since = now.addingTimeInterval(-60)
+    let sessions = [waiting(since: since)]
+    var latch = WaitAnswerLatch()
+    latch.observe(sessions, input: .lastInput(at: since.addingTimeInterval(5)))
+    // The next poll's only input was discarded, so it reports none.
+    latch.observe(sessions, input: .none)
+    #expect(latch.holdsAwake(sessions[0]))
+}
+
+@Test func theLatchForgetsEndedWaitsAndTreatsANewWaitAsUnanswered() {
+    let since = now.addingTimeInterval(-60)
+    let first = waiting(since: since, id: "s", transition: "wait-1")
+    var latch = WaitAnswerLatch()
+    latch.observe([first], input: .lastInput(at: since.addingTimeInterval(5)))
+    #expect(latch.mayHaveBeenAnswered(first))
+
+    let second = waiting(since: since.addingTimeInterval(30), id: "s", transition: "wait-2")
+    latch.observe([second], input: .lastInput(at: since.addingTimeInterval(5)))
+    #expect(!latch.mayHaveBeenAnswered(second))
+
+    // The first wait's key was forgotten, so its return is not pre-answered.
+    latch.observe([first], input: .none)
+    #expect(!latch.mayHaveBeenAnswered(first))
+}
+
+@Test func anUnavailableReadingRecoversWhenTheCounterReturns() {
+    let sessions = [waiting()]
+    var latch = WaitAnswerLatch()
+    latch.observe(sessions, input: .unavailable)
+    #expect(latch.holdsAwake(sessions[0]))
+    latch.observe(sessions, input: .none)
+    #expect(!latch.holdsAwake(sessions[0]))
+}
+
+@Test func theLatchNeverChangesWorkingOrIdleSessions() {
+    let latch = WaitAnswerLatch.observing([], input: .unavailable)
+    #expect(latch.holdsAwake(session(.working)))
+    #expect(!latch.holdsAwake(session(.idle)))
+    #expect(!latch.mayHaveBeenAnswered(session(.working)))
+}

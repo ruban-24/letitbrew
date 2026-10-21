@@ -65,7 +65,7 @@ public enum PiExtension {
         })
 
         export default function letItBrew(pi) {
-          let session, running = false, compacting = false, waiting = false
+          let session, running = false, compacting = false, waiting = false, dialogs = 0
           // Pi does not await UI notifications. Serialize subprocess writes so
           // a slow prompt-start cannot overwrite a later prompt-end or shutdown.
           let pending = Promise.resolve()
@@ -82,9 +82,16 @@ public enum PiExtension {
             // loaded lifetime owns a separate record, including across /reload.
             session = { id: ctx.sessionManager.getSessionId() + ":" + randomUUID(), cwd: ctx.cwd }
             running = compacting = waiting = false
+            dialogs = 0
             return send("SessionStart")
           })
-          pi.on("agent_start", () => { running = true; return activity() })
+          // A turn cannot begin under a dialog, so a new run ends any wait.
+          pi.on("agent_start", () => {
+            running = true
+            waiting = false
+            dialogs = 0
+            return activity()
+          })
           // agent_end is not final: retries, compaction and queued messages may
           // continue. Only agent_settled releases a completed run.
           pi.on("agent_settled", () => { running = false; return activity() })
@@ -92,8 +99,17 @@ public enum PiExtension {
           const compactDone = () => { compacting = false; return activity() }
           pi.on("session_compact", compactDone)
           pi.on("session_compact_failed", compactDone)
-          pi.on("ui_prompt_start", () => { waiting = true; return activity() })
+          // A dialog at the idle prompt is not agent work. Nested dialogs are
+          // one wait, which ends with the outermost.
+          pi.on("ui_prompt_start", () => {
+            if (!running && !compacting) return pending
+            if (++dialogs > 1) return pending
+            waiting = true
+            return activity()
+          })
           pi.on("ui_prompt_end", () => {
+            if (dialogs === 0) return pending
+            if (--dialogs > 0) return pending
             waiting = false
             return session && (running || compacting) ? send("UserInputResolved") : activity()
           })
@@ -101,6 +117,7 @@ public enum PiExtension {
             if (session) send("SessionEnd")
             session = undefined
             running = compacting = waiting = false
+            dialogs = 0
             return pending
           })
         }

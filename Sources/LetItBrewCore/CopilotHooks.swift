@@ -7,8 +7,10 @@ import Foundation
 /// Input hooks are observational: command output is discarded and the shell
 /// command always exits successfully, so Let It Brew cannot answer a question
 /// or allow, deny, or block a tool. Permission notifications and Copilot's
-/// question tool mark the session Idle; `PostToolUse` returns a completed
-/// question to Working. Copilot ignores hook output for `ErrorOccurred`; Let
+/// question tool mark the session Waiting; `PermissionRequest` alone does not,
+/// because it fires before allow rules and session approvals decide.
+/// `PostToolUse` and `PostToolUseFailure` return a completed, failed, or
+/// cancelled question to Working. Copilot ignores hook output for `ErrorOccurred`; Let
 /// It Brew releases Working only when its documented `recoverable` field is
 /// false.
 ///
@@ -60,11 +62,12 @@ public enum CopilotHooks {
         return report
     }
 
-    /// The complete v0.6.0 Copilot lifecycle surface. These are intentionally
-    /// PascalCase because they are Copilot CLI's source event names.
+    /// The complete Copilot lifecycle surface: v0.6.0's events plus
+    /// `PostToolUseFailure` from v1.0.0. These are intentionally PascalCase
+    /// because they are Copilot CLI's source event names.
     public static let events = [
         "SessionStart", "UserPromptSubmit", "PermissionRequest", "PreToolUse", "PostToolUse",
-        "Notification", "ErrorOccurred", "Stop", "SessionEnd",
+        "PostToolUseFailure", "Notification", "ErrorOccurred", "Stop", "SessionEnd",
     ]
 
     /// Persistent hooks embed an absolute fallback rather than using PATH, so

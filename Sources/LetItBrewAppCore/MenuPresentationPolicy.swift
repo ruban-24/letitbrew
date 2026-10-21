@@ -1,9 +1,49 @@
 import Foundation
 import LetItBrewCore
 
-public enum MenuSessionState: Sendable {
+public enum MenuSessionState: Equatable, Sendable {
     case working
+    case waitingForAnswer
+    case waitingForApproval
     case idle
+
+    /// Maps a record's state for presentation. A wait that local input may
+    /// have answered holds as Working, so it is shown as Working too.
+    public static func resolve(
+        _ record: SessionRecord,
+        waitAnswers: WaitAnswerLatch
+    ) -> MenuSessionState {
+        switch record.state {
+        case .working:
+            return .working
+        case .idle:
+            return .idle
+        case .waiting:
+            if waitAnswers.mayHaveBeenAnswered(record) {
+                return .working
+            }
+            return record.detail == SessionWaitDetail.approval
+                ? .waitingForApproval
+                : .waitingForAnswer
+        }
+    }
+
+    var isListed: Bool {
+        self != .idle
+    }
+
+    public var isWaiting: Bool {
+        self == .waitingForAnswer || self == .waitingForApproval
+    }
+
+    var text: String {
+        switch self {
+        case .working: "Working"
+        case .waitingForAnswer: "Waiting for your answer"
+        case .waitingForApproval: "Needs your approval"
+        case .idle: "Idle"
+        }
+    }
 }
 
 public enum MenuSnapshotOrderPolicy {
@@ -47,6 +87,7 @@ public struct SessionMenuInput: Sendable {
     public let state: MenuSessionState
     public let activeWorkingTime: TimeInterval
     public let updatedAt: Date
+    public let agentPID: Int32?
 
     public init(
         id: String,
@@ -55,7 +96,8 @@ public struct SessionMenuInput: Sendable {
         repositoryPath: String,
         state: MenuSessionState,
         activeWorkingTime: TimeInterval,
-        updatedAt: Date
+        updatedAt: Date,
+        agentPID: Int32? = nil
     ) {
         self.id = id
         self.tool = tool
@@ -64,6 +106,7 @@ public struct SessionMenuInput: Sendable {
         self.state = state
         self.activeWorkingTime = activeWorkingTime
         self.updatedAt = updatedAt
+        self.agentPID = agentPID
     }
 }
 
@@ -76,9 +119,12 @@ public struct MenuSessionPresentation: Identifiable, Equatable, Sendable {
     public let stateText: String
     public let activeTimeText: String
     public let updatedAt: Date
+    public let isWaiting: Bool
+    /// The agent process, for bringing its app forward. Nil when unknown.
+    public let agentPID: Int32?
 
     public var accessibilityState: String {
-        "Working"
+        stateText
     }
 }
 
@@ -136,8 +182,9 @@ public enum MenuRepositoryLayoutItem: Identifiable, Equatable, Sendable {
 }
 
 public enum MenuSessionPresentationPolicy {
-    /// Keep surviving rows in their presented order and append new Working
-    /// sessions. Recency only chooses the initial order and orders newcomers.
+    /// Keep surviving rows in their presented order and append new Working or
+    /// Waiting sessions. Recency only chooses the initial order and orders
+    /// newcomers. A session moving between Working and Waiting keeps its row.
     public static func rows(
         from inputs: [SessionMenuInput],
         now _: Date,
@@ -145,7 +192,7 @@ public enum MenuSessionPresentationPolicy {
     ) -> [MenuSessionPresentation] {
         let ranks = Dictionary(uniqueKeysWithValues: previousIDs.enumerated().map { ($1, $0) })
         return inputs
-            .filter { $0.state == .working }
+            .filter { $0.state.isListed }
             .map { input in
                 MenuSessionPresentation(
                 id: input.id,
@@ -153,9 +200,11 @@ public enum MenuSessionPresentationPolicy {
                 toolName: displayTool(input.tool),
                 project: input.project.isEmpty ? "Unknown project" : input.project,
                 repositoryID: input.repositoryPath,
-                stateText: "Working",
+                stateText: input.state.text,
                 activeTimeText: duration(input.activeWorkingTime) + " active",
-                updatedAt: input.updatedAt
+                updatedAt: input.updatedAt,
+                isWaiting: input.state.isWaiting,
+                agentPID: input.agentPID
             )
             }
             .sorted {
@@ -211,9 +260,7 @@ public enum MenuRepositoryPresentationPolicy {
                     id: repositoryID,
                     project: sessions.first?.project ?? "Unknown project",
                     summaryText: summary(for: sessions),
-                    sessionCountText: sessions.count == 1
-                        ? "1 working"
-                        : "\(sessions.count) working",
+                    sessionCountText: sessionCount(for: sessions),
                     sessions: sessions.map {
                         MenuRepositorySessionPresentation(
                             session: $0,
@@ -238,6 +285,15 @@ public enum MenuRepositoryPresentationPolicy {
         let rhsUpdated = rhs.sessions.map(\.session.updatedAt).max() ?? .distantPast
         if lhsUpdated != rhsUpdated { return lhsUpdated > rhsUpdated }
         return lhs.id < rhs.id
+    }
+
+    private static func sessionCount(for sessions: [MenuSessionPresentation]) -> String {
+        let waiting = sessions.count(where: \.isWaiting)
+        let working = sessions.count - waiting
+        return [
+            working > 0 ? "\(working) working" : nil,
+            waiting > 0 ? "\(waiting) waiting" : nil,
+        ].compactMap { $0 }.joined(separator: " · ")
     }
 
     private static func summary(for sessions: [MenuSessionPresentation]) -> String {
@@ -382,11 +438,13 @@ public enum MenuHeaderCopy {
     public static func resolve(
         isPaused: Bool,
         isKeepingAwake: Bool,
-        releaseConstraint: ReleaseConstraint? = nil
+        releaseConstraint: ReleaseConstraint? = nil,
+        isWaitingForYou: Bool = false
     ) -> String {
         if isPaused { return "Let It Brew is paused" }
         if isKeepingAwake { return "Keeping your Mac awake" }
         if let releaseConstraint { return releaseConstraint.message }
+        if isWaitingForYou { return "Agents are waiting for you" }
         return "Watching for agents"
     }
 }

@@ -9,16 +9,34 @@ Per-session records contain structural metadata used to decide whether the Mac
 should stay awake:
 
 - session ID and agent;
-- Working or Idle state;
+- Working, Waiting, or Idle state;
 - project path;
-- process ID when known;
+- the agent's process ID when known, found from the hook's parent processes;
 - semantic activity token and lifecycle event; and
 - timestamps.
+
+The process ID is used to bring the session's terminal, editor, or agent app
+forward when you click its menu row, to ignore a Waiting session whose agent
+has exited, and to find the app whose input can answer a Claude or Copilot
+approval. Let It Brew reads each ancestor's process ID, parent ID, and short
+command name, never its arguments or environment. When no ancestor is a regular
+app, as with a terminal host that runs detached from its app, it also reads
+the executable path of the process at the root of that chain to find the app
+bundle that holds it, when you click a row and while such an approval waits.
+That path is not stored.
 
 `notification_type` is structural metadata. Let It Brew does not decode or
 record notification prose, prompts, responses, reasoning, tool inputs, tool
 outputs, other tool details, or final assistant text. Only `tool_name` is reduced
-to the semantic activity token.
+to the semantic activity token. Question text and approval details are never
+read; a Waiting record says only whether it waits for an answer or an approval.
+
+To tell whether you may have approved a Claude or Copilot prompt, the app reads
+how long ago a key was last pressed and a mouse button or trackpad last
+clicked, from the macOS HID system's per-event idle counters. It notes which
+app was in front at the time, from macOS's own record of the frontmost app, so
+only input in the waiting session's own app counts. It reads no keys or
+positions, needs no permission, and stores nothing.
 
 Nothing from session records is uploaded.
 
@@ -34,8 +52,8 @@ records. Downloads begin only after you confirm an available update.
 |---|---|
 | `~/Library/Application Support/LetItBrew/sessions/` | Records for observed local sessions. |
 | `~/Library/Application Support/LetItBrew/` | Connection registry, lease, and recovery state. |
-| `/Library/Application Support/LetItBrew/` | Background-service recovery state for the system-wide sleep setting. |
-| macOS user defaults | Pause, battery threshold, connected-power-only, Low Power Mode, display-sleep, closed-lid, and Launch at Login preferences. |
+| `/Library/Application Support/LetItBrew/` | Background-service recovery state for the system-wide sleep setting, and the per-source energy mode recorded before closed-lid Low Power Mode. |
+| macOS user defaults | Pause, battery threshold, connected-power-only, Low Power Mode, closed-lid Low Power Mode, display-sleep, closed-lid, and Launch at Login preferences. |
 | `~/Library/Application Support/LetItBrew/agent-hook-targets.json` | The exact user-scoped configuration targets that Let It Brew owns. |
 | `~/.claude/settings.json` | Claude Code user settings. Only Let It Brew-owned hook entries are changed after its watched switch is turned on. |
 | `~/.codex/hooks.json` | Default Codex hook file. When `CODEX_HOME` is set, Let It Brew uses `<CODEX_HOME>/hooks.json`. |

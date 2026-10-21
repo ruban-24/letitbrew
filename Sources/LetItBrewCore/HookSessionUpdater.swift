@@ -58,18 +58,19 @@ public enum HookSessionUpdater {
                     }) else { return }
                 } else if agent == .codex, ["Stop", "Interrupt"].contains(event),
                           identity.childID == nil,
-                          let turn = storage.load(id: parent.encoded), turn.state == .working,
-                          let turnStartedAt = [
-                              turn.promptObservedAt, turn.stateChangedAt?.timeIntervalSince1970,
-                          ].compactMap({ $0 }).max() {
+                          let turn = storage.load(id: parent.encoded), turn.state.isInTurn,
+                          let turnStartedAt = turn.promptObservedAt
+                              ?? turn.stateChangedAt?.timeIntervalSince1970 {
                     // Codex can omit a child's SubagentStop. A child silent for
                     // the parent's whole turn, ended by Stop or Interrupt, is not
                     // running; one heard during this turn may be, so it waits for
                     // a later turn's end or SessionEnd.
                     // The latest prompt starts the turn even when an earlier one
-                    // ended without a hook and left the parent Working. Legacy
-                    // records fall back to stateChangedAt, which persists rounded
-                    // down to whole seconds: that can only keep a child longer.
+                    // ended without a hook and left the parent Working. A wait and
+                    // its answer move stateChangedAt inside the turn, so the prompt
+                    // wins whenever it is known. Legacy records fall back to
+                    // stateChangedAt, which persists rounded down to whole seconds:
+                    // that can only keep a child longer.
                     // The parent keeps the cutoff, which reads and later child
                     // hooks honor, so an interrupted deletion below is only tidying.
                     // Each deletion is ordered at the cutoff, not this edge: a child
@@ -166,10 +167,10 @@ public enum HookSessionUpdater {
 
             // Copilot may run its independent hook commands out of lifecycle
             // order. A delayed SessionStart is still a creation edge, not
-            // evidence that an already-working prompt became idle.
+            // evidence that a prompt already in its turn became idle.
             if agent == .copilot,
                event == "SessionStart",
-               previous?.state == .working {
+               previous?.state.isInTurn == true {
                 return .keep
             }
 
@@ -198,7 +199,8 @@ public enum HookSessionUpdater {
                     state: state,
                     detail: detail,
                     cwd: payload.cwd ?? FileManager.default.currentDirectoryPath,
-                    pid: agentPID,
+                    // A hook whose ancestry walk failed keeps the known agent.
+                    pid: agentPID ?? previous?.pid,
                     updatedAt: observedAt,
                     lastEvent: event,
                     startedAt: SessionTimeline.startedAt(previous: previous, now: observedAt),

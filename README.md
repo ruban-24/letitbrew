@@ -35,10 +35,15 @@ work is happening.
 
 - **Follows real work.** The hold starts and stops with supported
   local agent activity.
-- **Releases when work stops.** Questions, completion, pause, battery limits, and
-  thermal pressure let the Mac sleep.
+- **Releases when work stops.** Questions, approvals waiting for you,
+  completion, pause, battery limits, and thermal pressure let the Mac sleep.
 - **Works with the lid closed.** Active work can continue after you shut the
   MacBook.
+- **Saves power with the lid shut.** Closed-lid work runs in Low Power Mode,
+  and your exact energy setting comes back when the lid opens or work stops.
+- **Shows when an agent needs you.** Sessions waiting for an answer or approval
+  are marked in the menu. Click any session to bring its terminal, editor, or
+  agent app forward.
 - **Follows your power rules.** Choose connected-power-only operation, set a
   battery floor, use Low Power Mode, and decide whether displays may sleep.
 - **Stays out of the way.** It has no Dock icon, main window, or notifications.
@@ -109,11 +114,17 @@ that were already open when hooks changed may need to be restarted.
 ## Safety and privacy
 
 Let It Brew releases its holds when no observed local session is Working, an
-agent asks a question, you pause the app, the configured battery floor is
-reached, or macOS reports serious or critical thermal pressure.
+agent asks a question or waits for your approval, you pause the app, the
+configured battery floor is reached, or macOS reports serious or critical
+thermal pressure. Approving a Claude or Copilot command sends no signal of its
+own, so if you press a key or click in that session's app after the prompt
+appears, Let It Brew assumes you may have approved and keeps the Mac awake until
+the agent reports again. Typing in other apps does not count.
 
 Closed-lid support uses a privileged background service because it must change
-and safely restore a system-wide sleep setting. Declining the background item
+and safely restore a system-wide sleep setting, and the energy mode it switches
+to Low Power Mode. It records each original value before changing anything and
+restores it exactly, including after a crash or restart. Declining the background item
 leaves ordinary open-lid behavior working. The
 [architecture document](docs/ARCHITECTURE.md) explains the service, its safety
 gates, and how the app proves it is talking to the right process.

@@ -37,8 +37,11 @@ await check('ui_prompt_end', 'UserInputResolved')
 await check('session_before_compact', 'UserPromptSubmit')
 await check('session_compact', 'UserPromptSubmit')
 await check('agent_settled', 'Stop')
-await check('ui_prompt_start', 'UserInputRequested')
-await check('ui_prompt_end', 'Stop') // an idle menu dialog must not start work
+// A dialog at the idle prompt is not agent work: it neither waits nor resumes.
+const beforeIdleDialog = (await emissions()).length
+await first.send('ui_prompt_start')
+await first.send('ui_prompt_end')
+assert.equal((await emissions()).length, beforeIdleDialog, 'an idle menu dialog is ignored')
 await check('session_before_compact', 'UserPromptSubmit')
 await check('session_compact_failed', 'Stop') // failed/cancelled manual compaction
 await check('session_before_compact', 'UserPromptSubmit')
@@ -46,6 +49,21 @@ await check('session_compact', 'Stop')
 await check('agent_start', 'UserPromptSubmit')
 await check('session_before_compact', 'UserPromptSubmit')
 await check('session_compact_failed', 'UserPromptSubmit') // automatic retry stays working
+await check('agent_settled', 'Stop')
+// Nested dialogs are one wait, ended by the outermost.
+await check('agent_start', 'UserPromptSubmit')
+await check('ui_prompt_start', 'UserInputRequested')
+const beforeNested = (await emissions()).length
+await first.send('ui_prompt_start')
+await first.send('ui_prompt_end')
+assert.equal((await emissions()).length, beforeNested, 'an inner dialog neither waits nor resumes')
+await check('ui_prompt_end', 'UserInputResolved')
+// A new run cannot begin under a dialog, so it ends the wait.
+await check('ui_prompt_start', 'UserInputRequested')
+await check('agent_start', 'UserPromptSubmit')
+const afterReset = (await emissions()).length
+await first.send('ui_prompt_end')
+assert.equal((await emissions()).length, afterReset, 'a stale dialog end is ignored')
 await check('agent_settled', 'Stop')
 // UI notifications are emitted without awaiting the handlers in Pi. Preserve
 // start/end/settled order even when all arrive before the first child exits.

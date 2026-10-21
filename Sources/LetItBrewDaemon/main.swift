@@ -66,6 +66,18 @@ private final class DaemonClientSession: NSObject, LetItBrewDaemonXPCProtocol {
         reply(response.succeeded, response.message)
     }
 
+    func setLowPowerModeHold(
+        _ enabled: Bool,
+        withReply reply: @escaping (Bool, String?, Int) -> Void
+    ) {
+        let result = coordinator.setLowPowerMode(enabled, for: id)
+        if case .failed(let message) = result {
+            logger.error("Low Power Mode request failed: \(message, privacy: .public)")
+        }
+        let response = result.reply
+        reply(response.succeeded, response.message, response.personalSources)
+    }
+
     func invalidate() {
         let result = coordinator.connectionInvalidated(id)
         if case .failed(let message) = result {
@@ -157,9 +169,16 @@ let debtURL = stateDirectory.appendingPathComponent(
     "\(daemonIdentity.identifier).sleep-debt.json",
     isDirectory: false
 )
+let powerModeDebtURL = stateDirectory.appendingPathComponent(
+    "\(daemonIdentity.identifier).power-mode-debt.json",
+    isDirectory: false
+)
+let pmsetControl = PMSetDaemonSleepControl()
 let coordinator = DaemonHoldCoordinator(
     debtStore: FileDaemonSleepDebtStore(url: debtURL),
-    sleepControl: PMSetDaemonSleepControl()
+    sleepControl: pmsetControl,
+    powerModeDebtStore: FileDaemonPowerModeDebtStore(url: powerModeDebtURL),
+    powerModeControl: pmsetControl
 )
 
 switch coordinator.reconcileAtLaunch() {
@@ -174,6 +193,18 @@ case .blocked(let message):
     // Every acquire retries reconciliation; this never silently accepts a
     // hold while an earlier restore remains unresolved.
     logger.critical("Launch reconciliation blocked: \(message, privacy: .public)")
+}
+
+switch coordinator.reconcilePowerModeAtLaunch() {
+case .clean:
+    break
+case .clearedAlreadyRestored:
+    logger.notice("Cleared a completed energy mode restore record at launch.")
+case .restored:
+    logger.notice("Restored the recorded energy mode at launch.")
+case .blocked(let message):
+    // Never blocks closed-lid holds; the next handshake or release retries.
+    logger.error("Energy mode restore at launch failed: \(message, privacy: .public)")
 }
 
 private let delegate = DaemonListenerDelegate(

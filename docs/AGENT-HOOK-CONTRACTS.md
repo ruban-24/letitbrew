@@ -4,7 +4,16 @@
 
 Let It Brew observes local lifecycle hooks only. It does not enumerate agent
 processes, inspect CPU use, search for installed executables, parse conversations,
-or read Claude/Codex/OpenCode/Copilot/Pi prompt and response content.
+or read Claude/Codex/OpenCode/Copilot/Pi prompt and response content. Each hook
+command reads only its own parent chain to record the agent's process ID, which
+the menu uses to bring the agent's app forward; it affects the hold only by
+naming the app whose input can answer a Claude or Copilot approval.
+
+Every adapter reduces to Working, Waiting, and Idle. A Waiting session releases
+the hold. Waits whose answer sends a hook resume through that hook; Claude and
+Copilot approvals, which send none, hold again once a local key press or click
+reaches the session's own app; see [ARCHITECTURE.md](ARCHITECTURE.md) for that
+rule.
 
 ## Claude Code
 
@@ -47,7 +56,14 @@ or read Claude/Codex/OpenCode/Copilot/Pi prompt and response content.
   cleanup was interrupted; a precise reopen timestamp keeps leftovers from a
   previous run excluded after resume. Missing/unreadable parent state does not
   itself suppress a child's work.
-- Permission events preserve prior state. API-error turns use `StopFailure`;
+- `PermissionRequest` preserves prior state: Claude runs it before another
+  `PermissionRequest` hook or auto mode decides, so it does not prove a prompt
+  is shown. A `permission_prompt` `Notification` is Waiting (approval): Claude
+  sends it only after its prompt has waited on screen for about six seconds,
+  and not when a hook answers sooner. `PreToolUse` for `AskUserQuestion` is
+  Waiting (question); its `PostToolUse` returns the session to Working. Other
+  notification types, including `elicitation_dialog`, preserve prior state.
+  API-error turns use `StopFailure`;
   user-interrupted turns have no immediate documented terminal hook. Observed
   on Claude Code 2.1.304: Esc while a tool runs, while text streams, or while
   text streams after a completed tool emits no `Stop`, `StopFailure`,
@@ -55,7 +71,10 @@ or read Claude/Codex/OpenCode/Copilot/Pi prompt and response content.
   turn stays Working until the next prompt's `Stop`, a manual `/compact`,
   `SessionEnd`, Stop Tracking, or the 12-hour expiry.
   Permission approval has no matching immediate hook to resume a hold before
-  the tool executes, so releasing on the prompt would risk sleeping mid-tool.
+  the tool executes. A Waiting approval therefore releases the hold only until
+  a local key press or click in the session's own app follows the prompt;
+  after that it holds as Working until the next hook. An approval from another device with
+  the lid open has no local input and can still sleep mid-tool.
   Without a later authoritative event, interrupted turns and stopped parents
   with unreported background completion can remain Working until the existing
   12-hour expiry. Silence alone does not prove work ended. A background task
@@ -78,7 +97,11 @@ or read Claude/Codex/OpenCode/Copilot/Pi prompt and response content.
 - `session_id` is the parent session ID for subagent hooks. Combine it with
   `agent_id` for an independent child record.
 - `SessionStart` source `compact`, `PreCompact`, and `PostCompact` preserve
-  the prior state. Permission waits preserve prior state.
+  the prior state. `PermissionRequest` preserves prior state: Codex runs it
+  before its own auto-reviewer (`approvals_reviewer = auto_review`) and the
+  person decide, and hooks cannot tell which one answered, so an approval
+  keeps the Mac awake as before. `PreToolUse` for `request_user_input`
+  (Codex 0.145+) is Waiting (question); its `PostToolUse` returns to Working.
 - `Interrupt` (Codex 0.150+) is Idle; it is the only hook an Esc-cancelled turn
   fires. Codex caps its timeout at 3 seconds, so it is installed with 3; every
   other event uses 5. Older Codex ignores the key, so runtime trust
@@ -106,10 +129,10 @@ or read Claude/Codex/OpenCode/Copilot/Pi prompt and response content.
   UserPromptSubmit; `session.status` idle and `session.idle`→Stop;
   `session.deleted`→SessionEnd.
 - `permission.updated`, `permission.asked`, and `permission.v2.asked` map to
-  PermissionRequest and Idle. `permission.replied` and
+  PermissionRequest and Waiting (approval). `permission.replied` and
   `permission.v2.replied` return the session to Working for every reply.
-- `question.asked` maps to Idle. `question.replied` and `question.rejected`
-  return the session to Working.
+- `question.asked` maps to Waiting (question). `question.replied` and
+  `question.rejected` return the session to Working.
 - OpenCode v2 beta is not claimed by this release.
 
 ## GitHub Copilot CLI
@@ -118,12 +141,20 @@ or read Claude/Codex/OpenCode/Copilot/Pi prompt and response content.
 - Sources: https://docs.github.com/en/copilot/reference/hooks-reference and
   https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/use-hooks
 - Use PascalCase compatibility events for snake_case payloads: SessionStart,
-  UserPromptSubmit, PermissionRequest, PreToolUse, PostToolUse, Notification,
-  ErrorOccurred, Stop, and SessionEnd.
-- PermissionRequest becomes Idle. PreToolUse becomes Idle for `ask_user`,
-  `ask_user_question`, and `AskUserQuestion`; other tools become Working.
-  PostToolUse returns a completed question to Working. Notification becomes
-  Idle for `permission_prompt` and `elicitation_dialog`.
+  UserPromptSubmit, PermissionRequest, PreToolUse, PostToolUse,
+  PostToolUseFailure, Notification, ErrorOccurred, Stop, and SessionEnd.
+  PostToolUseFailure is installed from v1.0.0.
+- PermissionRequest keeps the prior state: Copilot runs it before allow rules,
+  session approvals, and auto-allow decide, so it does not prove a person is
+  being asked. It becomes Waiting (question) only for the question tool.
+  PreToolUse becomes Waiting (question) for `ask_user`, `ask_user_question`,
+  and `AskUserQuestion`; other tools become Working. PostToolUse and
+  PostToolUseFailure return a completed, failed, or cancelled question to
+  Working. Notification becomes Waiting (approval) for `permission_prompt` and
+  `elicitation_dialog`. Copilot fires no hook when an approval is granted, so
+  a local key press or click in the session's own app after the wait holds it
+  as Working until the next
+  hook.
 - `ErrorOccurred` is observational and its output is not processed. A payload
   with `recoverable: false` maps to Idle; `true`, missing, or malformed
   recoverability preserves the prior state so a continuing turn stays Working.
@@ -145,8 +176,10 @@ or read Claude/Codex/OpenCode/Copilot/Pi prompt and response content.
 - `session_before_compact` keeps the Mac awake for manual or automatic
   compaction. `session_compact` and `session_compact_failed` restore the
   underlying run state, including cancellation.
-- `ui_prompt_start` sets Idle. `ui_prompt_end` resumes Working only if a run
-  or compaction is still active; opening an idle dialog cannot create work.
+- `ui_prompt_start` sets Waiting (question) only while a run or compaction is
+  active; a dialog at the idle prompt is ignored. Nested dialogs are one wait,
+  and `ui_prompt_end` for the outermost resumes Working. `agent_start` ends
+  any wait, because a run cannot begin under a dialog.
   This covers Pi's blocking extension UI, not arbitrary terminal input or
   external third-party dialogs. Prompt titles and contents are not forwarded.
 - `session_shutdown` removes that lifetime's record. A random lifetime suffix

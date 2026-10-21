@@ -71,3 +71,72 @@ import Testing
     // a real answer rather than "couldn't read".
     _ = try #require(PMSetSleepControl().isSleepDisabled() as Bool?)
 }
+
+private let laptopCustom = """
+Battery Power:
+ Sleep On Power Button 1
+ powermode            0
+ standby              1
+ displaysleep         30
+AC Power:
+ Sleep On Power Button 1
+ powermode            2
+ womp                 1
+"""
+
+@Test func readsEachSourcesPowerModeExactly() {
+    #expect(PMSet.parsePowerModes(from: laptopCustom) == PowerModeSnapshot(
+        battery: PowerModeValue(key: "powermode", value: 0),
+        charger: PowerModeValue(key: "powermode", value: 2)
+    ))
+}
+
+@Test func readsTheOlderLowPowerModeName() {
+    let output = """
+    Battery Power:
+     lowpowermode         1
+    AC Power:
+     lowpowermode         0
+    """
+    let snapshot = PMSet.parsePowerModes(from: output)
+    #expect(snapshot?.battery == PowerModeValue(key: "lowpowermode", value: 1))
+    #expect(snapshot?.charger == PowerModeValue(key: "lowpowermode", value: 0))
+    #expect(snapshot?.isLowPowerEverywhere == false)
+}
+
+@Test func aDesktopHasOnlyTheChargerSource() {
+    let output = """
+    AC Power:
+     powermode            1
+    UPS Power:
+     powermode            0
+    """
+    let snapshot = PMSet.parsePowerModes(from: output)
+    #expect(snapshot == PowerModeSnapshot(charger: PowerModeValue(key: "powermode", value: 1)))
+    #expect(snapshot?.sources == [.charger])
+    #expect(snapshot?.isLowPowerEverywhere == true)
+}
+
+@Test func aMacWithoutAnEnergyModeReportsNoSources() {
+    let output = """
+    Battery Power:
+     standby              1
+    AC Power:
+     standby              1
+    """
+    #expect(PMSet.parsePowerModes(from: output)?.sources == [])
+    #expect(PMSet.parsePowerModes(from: output)?.isLowPowerEverywhere == false)
+}
+
+@Test func untrustworthyPowerModeOutputIsRejected() {
+    #expect(PMSet.parsePowerModes(from: nil) == nil)
+    #expect(PMSet.parsePowerModes(from: "") == nil)
+    #expect(PMSet.parsePowerModes(from: "Battery Power:\n powermode  low\n") == nil)
+    #expect(PMSet.parsePowerModes(from: "Battery Power:\n powermode  -1\n") == nil)
+    #expect(PMSet.parsePowerModes(
+        from: "Battery Power:\n powermode  0\n powermode  1\n"
+    ) == nil)
+    #expect(PMSet.parsePowerModes(
+        from: "Battery Power:\n powermode  0\n lowpowermode  0\n"
+    ) == nil)
+}

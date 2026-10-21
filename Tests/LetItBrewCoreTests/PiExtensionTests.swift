@@ -56,7 +56,8 @@ import Testing
         switch emission.event {
         case "SessionEnd": #expect(record == nil)
         case "UserPromptSubmit", "UserInputResolved": #expect(record?.state == .working)
-        case "SessionStart", "Stop", "UserInputRequested": #expect(record?.state == .idle)
+        case "SessionStart", "Stop": #expect(record?.state == .idle)
+        case "UserInputRequested": #expect(record?.state == .waiting)
         default: Issue.record("Unexpected Pi event: \(emission.event)")
         }
     }

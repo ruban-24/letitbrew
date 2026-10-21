@@ -113,8 +113,10 @@ public struct SessionRecord: Codable, Equatable, Sendable {
     /// Semantic activity token, never English prose.
     public var detail: String?
     public var cwd: String
-    /// The agent process, found by the ancestry walk. Nil when the walk could
-    /// not identify one; such a session is evicted by TTL alone.
+    /// The agent process, found by walking the hook's parents past shell
+    /// wrappers. Brings the agent's app forward from the menu and names the
+    /// app whose input can answer a Claude or Copilot approval; it never
+    /// affects eviction. Nil when the walk failed.
     public var pid: Int32?
     public var updatedAt: Date
     /// Unix seconds captured at the same hook edge as `updatedAt`, retaining

@@ -47,6 +47,17 @@ If that value is not what you expect after uninstalling, please
 [open an issue](https://github.com/ruban-24/letitbrew/issues/new/choose) with the reading
 rather than overwriting it. A wrong baseline is a bug worth fixing.
 
+The same applies to Low Power Mode. While agents work with the lid closed, the
+background service may switch each power source to Low Power Mode, and it
+restores the exact recorded energy mode for each source when the work stops,
+and again before the service is unregistered. Do not force a value with
+`pmset`. If a source was not restored, choose its energy mode again in
+**System Settings → Battery**. To check it:
+
+```sh
+pmset -g custom | grep -E 'Power:|powermode'
+```
+
 ## Verifying the removal
 
 ```sh
@@ -62,5 +73,6 @@ defaults read com.ruban24.letitbrew
 Should report that the domain does not exist.
 
 `/Library/Application Support/LetItBrew/` is deliberately left behind by the
-manual path — it holds the background service's recovery state and is harmless.
-Remove it only after confirming the service is unregistered.
+manual path — it holds the background service's recovery state for the sleep
+setting and the energy mode, and is harmless. Remove it only after confirming
+the service is unregistered.

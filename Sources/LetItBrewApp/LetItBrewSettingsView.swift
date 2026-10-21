@@ -274,6 +274,30 @@ struct LetItBrewSettingsView: View {
                     isOn: $model.onlyWhileConnectedToPower
                 )
                 Toggle("Respect Low Power Mode", isOn: $model.respectLowPowerMode)
+                    .help("Lets the Mac sleep when you turn on Low Power Mode. Let It Brew's own closed-lid switch doesn't count.")
+            }
+
+            Section("Closed lid") {
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle(
+                        "Use Low Power Mode while the lid is closed",
+                        isOn: $model.useLowPowerModeWithLidClosed
+                    )
+                    .disabled(!model.keepWorkingWithLidClosed)
+
+                    Text("Switches to Low Power Mode while agents work with the lid shut and no external display, then restores your own setting when the lid opens or the work stops.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if let message = model.lowPowerModeMessage {
+                        Text(message)
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
+                    }
+                }
             }
 
             Section("Display") {
