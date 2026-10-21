@@ -6,8 +6,16 @@ public protocol DaemonSleepSettingControlling: AnyObject {
     func writeDisabled(_ disabled: Bool) -> Bool
 }
 
-/// The privileged daemon's only system mutation.
-public final class PMSetDaemonSleepControl: DaemonSleepSettingControlling {
+public protocol DaemonPowerModeControlling: AnyObject {
+    /// Nil when the setting could not be read or trusted.
+    func readPowerModes() -> PowerModeSnapshot?
+    func writePowerMode(_ value: PowerModeValue, for source: PowerModeSource) -> Bool
+}
+
+/// The privileged daemon's only system mutations: `disablesleep`, and the
+/// per-source energy mode it switches to Low Power for closed-lid work.
+public final class PMSetDaemonSleepControl: DaemonSleepSettingControlling,
+    DaemonPowerModeControlling {
     public init() {}
 
     public func readDisabled() -> Bool? {
@@ -16,6 +24,16 @@ public final class PMSetDaemonSleepControl: DaemonSleepSettingControlling {
 
     public func writeDisabled(_ disabled: Bool) -> Bool {
         run(["-a", "disablesleep", disabled ? "1" : "0"]) != nil
+    }
+
+    public func readPowerModes() -> PowerModeSnapshot? {
+        PMSet.parsePowerModes(from: run(["-g", "custom"]))
+    }
+
+    public func writePowerMode(_ value: PowerModeValue, for source: PowerModeSource) -> Bool {
+        // Only the two energy-mode names parsePowerModes reads may be written.
+        guard PMSet.powerModeKeys.contains(value.key), value.value >= 0 else { return false }
+        return run([source.pmsetFlag, value.key, String(value.value)]) != nil
     }
 
     private func run(_ arguments: [String]) -> String? {

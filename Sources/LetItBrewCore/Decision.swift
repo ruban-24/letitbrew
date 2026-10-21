@@ -60,6 +60,119 @@ public struct Decision: Equatable, Sendable {
     }
 }
 
+/// Remembers which Waiting sessions local input may have answered.
+///
+/// A Waiting session is blocked on the person, so it releases the hold. But
+/// approving a Claude or Copilot prompt fires no hook before the approved tool
+/// runs, and a skipped question may not fire one either. A key press or click
+/// after the wait began is therefore treated as a possible answer: the session
+/// holds again, as Working, until its next hook. The worst case is the hold a
+/// Claude approval kept before Waiting existed.
+///
+/// The latch keeps that evidence for the life of the wait, so a later input
+/// the caller discards (such as a click in Let It Brew's own menu) cannot
+/// erase an earlier answer.
+public struct WaitAnswerLatch: Equatable, Sendable {
+    /// Input this long before a Claude permission notification still counts:
+    /// Claude sends it about six seconds after the prompt appears, so it can
+    /// land just after the keystroke that answered. Every other wait is
+    /// reported as its prompt appears, so earlier input, such as the Enter
+    /// that submitted the turn, never answers it.
+    public static let answerLeadTolerance: TimeInterval = 3
+
+    /// For callers that observe no input: every wait releases.
+    public static let none = WaitAnswerLatch()
+
+    private var answered: Set<String> = []
+    private var unreadable: Set<String> = []
+
+    public init() {}
+
+    /// Approving a Claude or Copilot prompt sends no hook until the approved
+    /// tool finishes, so only local input can suggest it was answered. Every
+    /// other wait reports its answer with a hook and never consults input.
+    public static func answerIsSilent(_ session: SessionRecord) -> Bool {
+        session.state == .waiting && session.detail == SessionWaitDetail.approval
+            && (session.tool == AgentID.claude.rawValue || session.tool == AgentID.copilot.rawValue)
+    }
+
+    /// A latch built from one observation, for one-shot callers.
+    public static func observing(
+        _ sessions: [SessionRecord],
+        input: UserInputObservation
+    ) -> WaitAnswerLatch {
+        var latch = WaitAnswerLatch()
+        latch.observe(sessions, input: input)
+        return latch
+    }
+
+    /// Latches every silent wait that the input followed, and forgets waits
+    /// that have ended or been replaced by a newer wait.
+    public mutating func observe(_ sessions: [SessionRecord], input: UserInputObservation) {
+        observe(sessions) { _ in input }
+    }
+
+    /// As above, with the input that could have answered each wait, such as
+    /// only the input that went to that session's own app.
+    public mutating func observe(
+        _ sessions: [SessionRecord],
+        input: (SessionRecord) -> UserInputObservation
+    ) {
+        let waits = sessions.filter(Self.answerIsSilent)
+        answered.formIntersection(waits.map(Self.key))
+        unreadable = []
+        for wait in waits {
+            switch input(wait) {
+            case .unavailable:
+                unreadable.insert(Self.key(wait))
+            case .lastInput(let lastInput):
+                if lastInput >= Self.earliestAnswer(to: wait) {
+                    answered.insert(Self.key(wait))
+                }
+            }
+        }
+    }
+
+    /// True when a Waiting session should be held and presented as Working.
+    public func mayHaveBeenAnswered(_ session: SessionRecord) -> Bool {
+        guard Self.answerIsSilent(session) else { return false }
+        let key = Self.key(session)
+        return unreadable.contains(key) || answered.contains(key)
+    }
+
+    public func holdsAwake(_ session: SessionRecord) -> Bool {
+        switch session.state {
+        case .working: true
+        case .idle: false
+        case .waiting: mayHaveBeenAnswered(session)
+        }
+    }
+
+    private static func waitingSince(_ session: SessionRecord) -> Date {
+        session.stateChangedAt ?? session.updatedAt
+    }
+
+    private static func earliestAnswer(to wait: SessionRecord) -> Date {
+        if wait.tool == AgentID.claude.rawValue, wait.lastEvent == "Notification" {
+            return waitingSince(wait).addingTimeInterval(-answerLeadTolerance)
+        }
+        // Persisted state edges round down to whole seconds. When the wait's
+        // latest hook is its first, the precise hook time is the wait start.
+        if let observed = wait.eventObservedAt,
+           let changed = wait.stateChangedAt,
+           observed.rounded(.down) == changed.timeIntervalSince1970.rounded(.down) {
+            return Date(timeIntervalSince1970: observed)
+        }
+        return waitingSince(wait)
+    }
+
+    /// One wait: a new wait on the same session has a new transition.
+    private static func key(_ session: SessionRecord) -> String {
+        let since = waitingSince(session).timeIntervalSince1970
+        return "\(session.id)\u{1F}\(session.stateTransitionID ?? "")\u{1F}\(since)"
+    }
+}
+
 /// Decides whether to hold the Mac awake right now.
 ///
 /// Pure on purpose: no clock, no IOKit, no file access. The caller supplies a
@@ -72,7 +185,9 @@ public func decide(
     sessions: [SessionRecord],
     now: Date,
     settings: Settings,
-    power: PowerState
+    power: PowerState,
+    waitAnswers: WaitAnswerLatch = .none,
+    lowPowerModeOwnedByLetItBrew: Bool = false
 ) -> Decision {
     // 0. IMPORTANT 4: an untrusted reading must never be treated as a
     // confirmed "plugged in at 100%" — that would bypass the battery floor
@@ -96,7 +211,10 @@ public func decide(
     }
 
     // 3. Low Power Mode releases active holds when the setting is enabled.
-    if settings.respectLowPowerMode, power.lowPowerModeEnabled {
+    // Low Power Mode that Let It Brew turned on for closed-lid work is not the
+    // person's choice, so it must not release the hold that requested it.
+    if settings.respectLowPowerMode, power.lowPowerModeEnabled,
+       !lowPowerModeOwnedByLetItBrew {
         return Decision(holdSystem: false, holdLidClosed: false, reason: "low power mode")
     }
 
@@ -106,8 +224,8 @@ public func decide(
                         reason: "thermal pressure")
     }
 
-    // 5. Working sessions hold.
-    let working = sessions.count { $0.state == .working }
+    // 5. Working sessions hold, as do waits that local input may have answered.
+    let working = sessions.count { waitAnswers.holdsAwake($0) }
     if working > 0 {
         return Decision(
             holdSystem: true,
@@ -121,6 +239,9 @@ public func decide(
     // existing one-second poll, so Stop/SessionEnd releases on the next poll.
     guard !sessions.isEmpty else {
         return Decision(holdSystem: false, holdLidClosed: false, reason: "no agent sessions")
+    }
+    if sessions.contains(where: { $0.state == .waiting }) {
+        return Decision(holdSystem: false, holdLidClosed: false, reason: "agents waiting for you")
     }
     return Decision(holdSystem: false, holdLidClosed: false, reason: "all agents idle")
 }

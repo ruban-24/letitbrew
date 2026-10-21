@@ -178,18 +178,93 @@ import LetItBrewCore
     #expect(summary == "1 Claude Code · 1 Codex · 1 OpenCode · 1 GitHub Copilot CLI")
 }
 
-@Test func sessionRowsKeepOnlyWorkingInputs() {
+@Test func sessionRowsKeepWorkingAndWaitingInputs() {
     let now = Date(timeIntervalSince1970: 10_000)
-    let cases: [(SessionMenuInput, [String])] = [
-        (input(id: "working", state: .working, updatedAt: now), ["working"]),
-        (input(id: "idle", state: .idle, updatedAt: now), []),
+    let cases: [(SessionMenuInput, [String], String?, Bool)] = [
+        (input(id: "working", state: .working, updatedAt: now), ["working"], "Working", false),
+        (input(id: "answer", state: .waitingForAnswer, updatedAt: now), ["answer"],
+         "Waiting for your answer", true),
+        (input(id: "approval", state: .waitingForApproval, updatedAt: now), ["approval"],
+         "Needs your approval", true),
+        (input(id: "idle", state: .idle, updatedAt: now), [], nil, false),
     ]
 
-    for (session, expectedIDs) in cases {
+    for (session, expectedIDs, expectedText, expectedWaiting) in cases {
         let rows = MenuSessionPresentationPolicy.rows(from: [session], now: now)
         #expect(rows.map(\.id) == expectedIDs)
-        #expect(rows.allSatisfy { $0.stateText == "Working" })
+        #expect(rows.first?.stateText == expectedText)
+        #expect(rows.first?.accessibilityState == expectedText)
+        #expect(rows.allSatisfy { $0.isWaiting == expectedWaiting })
     }
+}
+
+@Test func aSessionKeepsItsRowWhileItWaitsAndResumes() {
+    let now = Date(timeIntervalSince1970: 10_000)
+    let first = MenuSessionPresentationPolicy.rows(from: [
+        input(id: "a", updatedAt: now.addingTimeInterval(-2)),
+        input(id: "b", updatedAt: now.addingTimeInterval(-1)),
+    ], now: now)
+    #expect(first.map(\.id) == ["b", "a"])
+
+    let waiting = MenuSessionPresentationPolicy.rows(from: [
+        input(id: "a", updatedAt: now.addingTimeInterval(-2)),
+        input(id: "b", state: .waitingForApproval, updatedAt: now),
+    ], now: now, previousIDs: first.map(\.id))
+    #expect(waiting.map(\.id) == ["b", "a"])
+}
+
+@Test func groupCountsSeparateWorkingFromWaiting() throws {
+    let now = Date(timeIntervalSince1970: 10_000)
+    let mixed = try #require(group(repositoryPath: "/work/app", sessions: [
+        input(id: "a", updatedAt: now),
+        input(id: "b", state: .waitingForAnswer, updatedAt: now),
+        input(id: "c", state: .waitingForApproval, updatedAt: now),
+    ], now: now))
+    #expect(mixed.sessionCountText == "1 working · 2 waiting")
+
+    let waitingOnly = try #require(group(repositoryPath: "/work/app", sessions: [
+        input(id: "a", state: .waitingForAnswer, updatedAt: now),
+        input(id: "b", state: .waitingForApproval, updatedAt: now),
+    ], now: now))
+    #expect(waitingOnly.sessionCountText == "2 waiting")
+}
+
+@Test func rowsCarryTheAgentProcessForBringingItsAppForward() {
+    let now = Date(timeIntervalSince1970: 10_000)
+    let rows = MenuSessionPresentationPolicy.rows(from: [
+        SessionMenuInput(
+            id: "pid", tool: "claude", project: "app", repositoryPath: "/work/app",
+            state: .working, activeWorkingTime: 1, updatedAt: now, agentPID: 812
+        ),
+        input(id: "unknown", updatedAt: now),
+    ], now: now)
+    #expect(rows.map(\.agentPID) == [812, nil])
+}
+
+@Test func menuStateHoldsAnAnsweredWaitAsWorking() {
+    let since = Date(timeIntervalSince1970: 1_000)
+    var record = SessionRecord(
+        id: "wait", tool: "claude", state: .waiting, detail: SessionWaitDetail.approval,
+        cwd: "/work/app", pid: nil, updatedAt: since
+    )
+    record.stateChangedAt = since
+    func resolve(_ input: UserInputObservation) -> MenuSessionState {
+        MenuSessionState.resolve(record, waitAnswers: .observing([record], input: input))
+    }
+    #expect(resolve(.none) == .waitingForApproval)
+    #expect(resolve(.lastInput(at: since.addingTimeInterval(5))) == .working)
+    #expect(resolve(.unavailable) == .working)
+
+    record.detail = SessionWaitDetail.question
+    #expect(resolve(.none) == .waitingForAnswer)
+    // A question's answer sends a hook, so input never makes it look answered.
+    #expect(resolve(.lastInput(at: since.addingTimeInterval(5))) == .waitingForAnswer)
+    #expect(resolve(.unavailable) == .waitingForAnswer)
+    record.detail = nil
+    #expect(resolve(.none) == .waitingForAnswer)
+
+    record.state = .idle
+    #expect(resolve(.unavailable) == .idle)
 }
 
 @Test func sessionRowsKeepBlankToolIdentityWhileDisplayingUnknownAgent() throws {
@@ -622,4 +697,20 @@ private func group(
     MenuRepositoryPresentationPolicy.groups(
         from: MenuSessionPresentationPolicy.rows(from: sessions, now: now)
     ).first { $0.id == repositoryPath }
+}
+
+@Test func headerSaysAgentsAreWaitingOnlyWhenNothingElseExplainsTheState() {
+    #expect(MenuHeaderCopy.resolve(
+        isPaused: false, isKeepingAwake: false, isWaitingForYou: true
+    ) == "Agents are waiting for you")
+    #expect(MenuHeaderCopy.resolve(
+        isPaused: false, isKeepingAwake: true, isWaitingForYou: true
+    ) == "Keeping your Mac awake")
+    #expect(MenuHeaderCopy.resolve(
+        isPaused: true, isKeepingAwake: false, isWaitingForYou: true
+    ) == "Let It Brew is paused")
+    #expect(MenuHeaderCopy.resolve(
+        isPaused: false, isKeepingAwake: false,
+        releaseConstraint: .thermal, isWaitingForYou: true
+    ) == "Mac is too warm")
 }

@@ -9,7 +9,7 @@ private func copilotObject(_ data: Data) throws -> [String: Any] {
 @Test func copilotTracksPermissionWaitAndResumeEdgesWithoutDecisionOutput() {
     #expect(CopilotHooks.events == [
         "SessionStart", "UserPromptSubmit", "PermissionRequest", "PreToolUse", "PostToolUse",
-        "Notification", "ErrorOccurred", "Stop", "SessionEnd",
+        "PostToolUseFailure", "Notification", "ErrorOccurred", "Stop", "SessionEnd",
     ])
 }
 

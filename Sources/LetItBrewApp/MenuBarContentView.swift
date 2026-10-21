@@ -158,8 +158,12 @@ struct MenuBarContentView: View {
         .background(.regularMaterial)
         // Polling updates content in place. Only an explicit disclosure click
         // animates layout, so background work cannot animate the scroll area.
-        .onAppear(perform: updateExpansionState)
+        .onAppear {
+            model.menuDidOpen()
+            updateExpansionState()
+        }
         .onDisappear {
+            model.menuDidClose()
             expandedRepositoryID = nil
             initializedExpansion = false
             model.cancelUpdate(from: .menuBar)
@@ -322,6 +326,9 @@ struct MenuBarContentView: View {
                                 session: session.session,
                                 groupedProject: item.groupedProject,
                                 shortID: item.shortSessionID,
+                                onOpen: session.session.agentPID.map { pid in
+                                    { model.bringSessionForward(agentPID: pid) }
+                                },
                                 onStopTracking: { stopTracking(session.session) }
                             )
                         }
@@ -536,9 +543,39 @@ private struct SessionRowView: View {
     let session: MenuSessionPresentation
     let groupedProject: String?
     let shortID: String?
+    /// Brings the session's app forward. Nil when its agent process is unknown.
+    let onOpen: (() -> Void)?
     let onStopTracking: () -> Void
 
     var body: some View {
+        HStack(spacing: 10) {
+            if let onOpen {
+                Button(action: onOpen) {
+                    sessionSummary
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Show this session's app")
+                .accessibilityHint("Shows the app running this session")
+            } else {
+                sessionSummary
+            }
+
+            Button(action: onStopTracking) {
+                Image(systemName: "eye.slash")
+                    .foregroundStyle(.secondary)
+                    .frame(width: 24, height: 24)
+            }
+            .buttonStyle(.plain)
+            .popoverHoverHighlight()
+            .help("Stop watching this session")
+            .accessibilityLabel("Stop watching \(session.project)")
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 60)
+    }
+
+    private var sessionSummary: some View {
         HStack(spacing: 10) {
             AgentLogo(toolID: session.toolID)
                 .frame(width: 24, height: 24)
@@ -556,30 +593,23 @@ private struct SessionRowView: View {
                 }
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(.green)
+                        .fill(session.isWaiting ? Color.orange : Color.green)
                         .frame(width: 6, height: 6)
                         .accessibilityHidden(true)
                     Text(secondaryText)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(stateTextStyle)
                         .contentTransition(.opacity)
                 }
             }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(accessibilityLabel)
-
-            Button(action: onStopTracking) {
-                Image(systemName: "eye.slash")
-                    .foregroundStyle(.secondary)
-                    .frame(width: 24, height: 24)
-            }
-            .buttonStyle(.plain)
-            .popoverHoverHighlight()
-            .help("Stop watching this session")
-            .accessibilityLabel("Stop watching \(session.project)")
         }
-        .padding(.horizontal, 14)
-        .frame(height: 60)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var stateTextStyle: AnyShapeStyle {
+        session.isWaiting ? AnyShapeStyle(Color.orange) : AnyShapeStyle(.secondary)
     }
 
     private var primaryText: String {

@@ -12,10 +12,39 @@ against the SHA-256 published with the release.
 
 ---
 
-## 0.8.4 (build 35)
+## 1.0.0 (build 36)
+
+Added:
+
+- Closed-lid work runs in Low Power Mode. While agents work with the lid shut
+  and no external display, Let It Brew switches each power source to Low Power
+  Mode, then restores your exact setting, including High Power, when the lid
+  opens or the work stops. The background service records the original before
+  changing anything and restores it after a crash, restart, or uninstall. It is
+  on by default; turn it off in **Settings → Power & Display → Closed lid**.
+- Waiting sessions. A Claude Code, Codex, Copilot, OpenCode, or Pi session that
+  asks a question, or waits for an approval it is actually showing you, appears
+  in the menu with an orange "Waiting for your answer" or "Needs your approval"
+  and lets the Mac sleep. Answering sends a hook that resumes the session.
+  Approving a Claude or Copilot command sends none, so a key press or click in
+  that session's own app after the prompt appears keeps the Mac awake again
+  until the agent's next hook. Typing in other apps, pointer movement,
+  scrolling, and Let It Brew's own menu never count.
+- Click a session in the menu to bring its terminal, editor, or agent app
+  forward. No Accessibility or Automation permission is used, so the app is
+  activated rather than a specific window or tab.
 
 Fixed:
 
+- **Respect Low Power Mode** no longer releases a hold because of the Low Power
+  Mode Let It Brew itself turned on.
+- Copilot no longer lets the Mac sleep while a tool it approved on its own is
+  running. Its permission hook fires before allow rules and session approvals
+  decide, so only a prompt Copilot actually shows you counts as Waiting.
+- A failed or cancelled Copilot tool, including a question you dismissed,
+  returns the session to Working instead of leaving it Waiting.
+- A Pi dialog opened at the idle prompt no longer shows as Waiting, nested
+  dialogs count as one wait, and a new Pi run ends any wait left open.
 - Claude sessions no longer stay Working after Claude Code compacts an idle
   conversation, or after a compaction that was cancelled.
 - Running `/compact` in Claude marks the session Idle, which also clears a turn
@@ -30,8 +59,23 @@ Fixed:
   apps, so it can verify Codex hook approval without a separate CLI install.
   Thanks to @deepblueeeee.
 
+Changed:
+
+- Claude permission prompts let the Mac sleep once Claude's notification
+  confirms the prompt is on screen, instead of holding until the next hook.
+  Approvals that another hook or auto mode settles still hold.
+- Codex approvals still keep the Mac awake: Codex's auto-reviewer answers
+  through the same hook, so it cannot be told apart from you.
+- An approved Copilot command now keeps the Mac awake after a key press or
+  click in its session's app, instead of letting it sleep before the command
+  finishes.
+
 Limitations:
 
+- An approval given from another device with the lid open sends no local key
+  press or click, so the Mac can sleep before the approved command finishes.
+- Sessions under tmux or screen have no app to bring forward, and input in any
+  app can count as approving their Claude or Copilot prompts.
 - Claude Code sends no hook when Esc interrupts a turn. That session stays
   Working until its next prompt finishes, `/compact`, the session ends, Stop
   Tracking, or the 12-hour expiry.
@@ -40,9 +84,11 @@ Limitations:
 
 Updating:
 
-- v0.7.1 and later can install v0.8.4 from **Settings → About → Check for
+- v0.7.1 and later can install v1.0.0 from **Settings → About → Check for
   Updates…**. Users on v0.7.0 or earlier should quit the app and replace it
   manually using the DMG without uninstalling first.
+- Let It Brew updates its Copilot hooks and Pi extension when it launches.
+  Restart Copilot and Pi sessions that were already open to use them.
 - After updating, type `/hooks` in Codex and approve Let It Brew's new
   `Interrupt` hook, then restart Codex sessions that were already open. Until
   then, Agents settings shows Codex as needing that approval.

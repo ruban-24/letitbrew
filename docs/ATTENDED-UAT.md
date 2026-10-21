@@ -14,6 +14,91 @@ If a safety or power test fails, stop with physical access to the Mac, preserve
 the original `SleepDisabled` baseline, record the exact reproduction, and stop
 using the affected feature until it is understood.
 
+## v1.0.0 release scope
+
+This release adds three things: closed-lid Low Power Mode in the daemon, a
+Waiting state with an input check, and app-level session activation. It also
+carries the unpublished v0.8.4 fixes, so run the v0.8.4 release scope below
+with this build too.
+Record version 1.0.0, build 36, the full commit, and artifact hashes. Before
+starting, record `pmset -g custom | grep -E 'Power:|powermode'` and
+`pmset -g | grep SleepDisabled`. Both must read back identically after every
+case below.
+
+### Closed-lid Low Power Mode
+
+1. With the default setting on, on battery, start long Working agent work,
+   close the lid with no external display, and wait 30 seconds. Over SSH or
+   from another Mac with screen sharing, confirm every source reports `1` and
+   the work continues.
+2. Open the lid while work continues. Confirm each source returns to its
+   recorded value within a few seconds and the Mac stays awake.
+3. Close the lid again, then let the work finish. Confirm the energy mode is
+   restored before the Mac sleeps: wake it and compare.
+4. Repeat on the charger, and with one source already in Low Power Mode, and
+   with `powermode 2` (High Power) on a Mac that offers it. Each exact prior
+   value must come back.
+5. With an external display attached and the lid closed, confirm Low Power Mode
+   is not switched.
+6. Turn on **Respect Low Power Mode**. Confirm closed-lid work keeps holding
+   while Let It Brew's own switch is active, and that turning on Low Power
+   Mode yourself with the lid open still releases the hold. With Low Power
+   Mode set to "Only on Battery", start closed-lid work on the charger, then
+   unplug: the hold must release, because battery Low Power Mode is yours.
+7. Turn the closed-lid Low Power Mode setting off and confirm nothing is
+   switched.
+8. While switched, force-quit Let It Brew. Confirm the daemon restores the
+   energy mode and `SleepDisabled` when the connection drops.
+9. While switched, `sudo launchctl kickstart -k` the daemon. Confirm launch
+   reconciliation restores the energy mode, and that the app reconnects and
+   switches again only while the lid is still closed.
+10. Uninstall while switched. Confirm the energy mode is restored before the
+    service is unregistered.
+
+### Waiting and the input check
+
+1. Claude: trigger a permission prompt for a long command and leave it. After
+   about six seconds the row shows orange "Needs your approval" and the header
+   reads "Agents are waiting for you". Close the lid and confirm the Mac sleeps.
+2. Claude: approve a prompt after the six-second notification, for a command
+   that runs several minutes, then walk away with the lid open. Confirm the row
+   shows Working and the Mac stays awake until the command finishes.
+3. Claude: approve within six seconds. Confirm the session never shows Waiting.
+4. Claude and Codex: ask a question (`AskUserQuestion`, `request_user_input`).
+   Confirm Waiting with no input, then Working after answering.
+5. Codex: trigger an approval with and without `approvals_reviewer =
+   auto_review`. Confirm the session stays Working and holds in both.
+6. Copilot, OpenCode, and Pi: confirm their questions and approvals show
+   Waiting, release without input, and resume after an answer. Copilot: allow
+   a long command with an allow rule or "approve for session", run it again,
+   and confirm it stays Working with no input. Pi: open a dialog at the idle
+   prompt and confirm no Waiting row appears.
+7. Quit an agent that is Waiting without answering. Confirm its row disappears.
+8. With a Claude approval Waiting, move the pointer, scroll, open and close Let
+   It Brew's menu, and type in another app, such as a chat. Confirm the row
+   stays Waiting and the Mac may still sleep. Then type one key in the
+   session's own terminal or app and confirm the row shows Working and holds.
+   Repeat with the session under tmux: input in any app counts there. With a
+   question Waiting, type in the session's app without answering and confirm
+   the row stays Waiting.
+9. In the signed, Finder-launched app with no Input Monitoring permission,
+   confirm key presses and clicks are still observed (step 8) and that no
+   permission prompt appears.
+
+### Session jump
+
+Click a Working and a Waiting row for sessions in Terminal, iTerm2 (including
+with its session-restoration server), Ghostty, Orca (whose terminal host runs
+detached from the app), VS Code's terminal, the Claude desktop app, and the
+Codex app. Each should bring its app forward with no permission prompt. Before
+release, a dry run of the shipping lookup against live sessions resolved
+Ghostty, Orca, and the Codex app, including Codex nested under the ChatGPT
+app's bundled tools inside an Orca terminal, and a background process could
+activate an app on this macOS; one click in the signed app still confirms the
+popover path. Under tmux, confirm the click does nothing and nothing
+fails. Confirm rows recorded before this release, which have no process ID, are
+not clickable.
+
 ## v0.8.4 release scope
 
 v0.8.4 fixes Claude and Codex sessions left Working by compaction, interrupts,

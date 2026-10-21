@@ -112,8 +112,8 @@ public enum LetItBrewDaemonHandshakeCompatibility: Equatable, Sendable {
     }
 }
 
-/// The complete privileged surface. It intentionally exposes one named,
-/// reversible switch rather than an arbitrary command runner.
+/// The complete privileged surface. It intentionally exposes named,
+/// reversible switches rather than an arbitrary command runner.
 @objc public protocol LetItBrewDaemonXPCProtocol {
     func protocolVersion(withReply reply: @escaping (Int) -> Void)
     /// Additive protocol-v1 handshake. Every reply value is an XPC-safe scalar:
@@ -133,5 +133,15 @@ public enum LetItBrewDaemonHandshakeCompatibility: Equatable, Sendable {
     func setLidClosedHold(
         _ enabled: Bool,
         withReply reply: @escaping (Bool, String?) -> Void
+    )
+    /// Additive protocol-v1 switch, accepted only while this connection owns
+    /// a lid-closed hold. Releasing that hold or disconnecting restores the
+    /// recorded energy mode. The app sends it only after its handshake proved
+    /// the exact matching daemon build. The reply carries success, an optional
+    /// failure message, and a bitmask of the sources already in Low Power Mode
+    /// before the switch (1 battery, 2 charger), or -1 on failure.
+    func setLowPowerModeHold(
+        _ enabled: Bool,
+        withReply reply: @escaping (Bool, String?, Int) -> Void
     )
 }
