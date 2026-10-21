@@ -23,8 +23,9 @@ Added:
   changing anything and restores it after a crash, restart, or uninstall. It is
   on by default; turn it off in **Settings → Power & Display → Closed lid**.
 - Waiting sessions. A Claude Code, Codex, Copilot, OpenCode, or Pi session that
-  asks a question, or waits for an approval it is actually showing you, appears
-  in the menu with an orange "Waiting for your answer" or "Needs your approval"
+  asks a question, or a Claude Code, Copilot, OpenCode, or Pi session waiting
+  for an approval it is actually showing you, appears in the menu with an
+  orange "Waiting for your answer" or "Needs your approval"
   and lets the Mac sleep. Answering sends a hook that resumes the session.
   Approving a Claude or Copilot command sends none, so a key press or click in
   that session's own app after the prompt appears keeps the Mac awake again

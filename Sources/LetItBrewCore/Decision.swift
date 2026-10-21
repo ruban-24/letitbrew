@@ -75,10 +75,12 @@ public struct Decision: Equatable, Sendable {
 public struct WaitAnswerLatch: Equatable, Sendable {
     /// Input this long before a Claude permission notification still counts:
     /// Claude sends it about six seconds after the prompt appears, so it can
-    /// land just after the keystroke that answered. Every other wait is
-    /// reported as its prompt appears, so earlier input, such as the Enter
-    /// that submitted the turn, never answers it.
+    /// land just after the keystroke that answered.
     public static let answerLeadTolerance: TimeInterval = 3
+    /// Copilot's notification timing is unverified, so a fast answer keeps a
+    /// margin for hook delivery without counting the Enter that submitted a
+    /// turn seconds earlier.
+    public static let copilotAnswerLeadTolerance: TimeInterval = 1
 
     /// For callers that observe no input: every wait releases.
     public static let none = WaitAnswerLatch()
@@ -153,9 +155,12 @@ public struct WaitAnswerLatch: Equatable, Sendable {
     }
 
     private static func earliestAnswer(to wait: SessionRecord) -> Date {
-        if wait.tool == AgentID.claude.rawValue, wait.lastEvent == "Notification" {
-            return waitingSince(wait).addingTimeInterval(-answerLeadTolerance)
-        }
+        let lead = wait.tool == AgentID.claude.rawValue
+            ? answerLeadTolerance : copilotAnswerLeadTolerance
+        return waitStart(wait).addingTimeInterval(-lead)
+    }
+
+    private static func waitStart(_ wait: SessionRecord) -> Date {
         // Persisted state edges round down to whole seconds. When the wait's
         // latest hook is its first, the precise hook time is the wait start.
         if let observed = wait.eventObservedAt,

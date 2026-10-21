@@ -8,8 +8,15 @@ import LetItBrewCore
 /// can hide an earlier answer; `WaitAnswerLatch` keeps evidence it already saw
 /// on an earlier poll.
 public struct OwnMenuInputFilter: Equatable, Sendable {
-    /// The status-item click lands just before the menu reports it is open.
+    /// The status-item click lands at most this long before the menu reports
+    /// it is open. Only that click is discarded, so an Enter or click that
+    /// answered just before it still counts.
     public static let openingLead: TimeInterval = 1
+    /// Times read from the counters jitter slightly between readings.
+    public static let sameEventTolerance: TimeInterval = 0.05
+    /// A menu that never reported closing stops discarding input after this
+    /// long, so a missed close cannot hide answers indefinitely.
+    public static let maximumOpenDuration: TimeInterval = 300
     /// A click that closes the menu lands just before it reports closing.
     public static let closingLag: TimeInterval = 0.25
     /// Input this recent waits for the next poll, so the menu can report it
@@ -18,12 +25,18 @@ public struct OwnMenuInputFilter: Equatable, Sendable {
 
     private var openedAt: Date?
     private var closedAt: Date?
+    private var openingClick: Date?
 
     public init() {}
 
-    public mutating func menuOpened(at date: Date) {
+    /// `lastClick` is the click counter as the menu opens: the status-item
+    /// click, unless the menu was opened another way.
+    public mutating func menuOpened(at date: Date, lastClick: Date?) {
         openedAt = date
         closedAt = nil
+        openingClick = lastClick.flatMap {
+            date.timeIntervalSince($0) <= Self.openingLead ? $0 : nil
+        }
     }
 
     public mutating func menuClosed(at date: Date) {
@@ -50,9 +63,12 @@ public struct OwnMenuInputFilter: Equatable, Sendable {
     }
 
     private func isOwnMenuInput(_ date: Date) -> Bool {
-        guard let openedAt else { return false }
-        guard date >= openedAt.addingTimeInterval(-Self.openingLead) else { return false }
-        guard let closedAt else { return true }
-        return date <= closedAt.addingTimeInterval(Self.closingLag)
+        if let openingClick, abs(date.timeIntervalSince(openingClick)) <= Self.sameEventTolerance {
+            return true
+        }
+        guard let openedAt, date >= openedAt else { return false }
+        let end = closedAt?.addingTimeInterval(Self.closingLag)
+            ?? openedAt.addingTimeInterval(Self.maximumOpenDuration)
+        return date <= end
     }
 }

@@ -343,22 +343,24 @@ private func answers(
     ).holdSystem)
 }
 
-@Test func theKeyThatSubmittedATurnNeverAnswersAnImmediateCopilotPrompt() {
+@Test func copilotPromptsKeepOnlyASmallLeadForHookDelivery() {
     let since = now.addingTimeInterval(-60)
-    // Copilot notifies as its prompt appears, so it gets no lead tolerance.
     var wait = waiting(tool: .copilot, since: since)
     wait.lastEvent = "Notification"
     wait.eventObservedAt = since.timeIntervalSince1970 + 0.8
-    // Enter submitted the turn half a second before the agent asked.
-    let enter = Date(timeIntervalSince1970: since.timeIntervalSince1970 + 0.3)
-    #expect(!decide(
-        sessions: [wait], now: now, settings: Settings(), power: plugged,
-        waitAnswers: answers([wait], input: .lastInput(at: enter))
-    ).holdSystem)
-    #expect(decide(
-        sessions: [wait], now: now, settings: Settings(), power: plugged,
-        waitAnswers: answers([wait], input: .lastInput(at: since.addingTimeInterval(2)))
-    ).holdSystem)
+    let notified = Date(timeIntervalSince1970: wait.eventObservedAt!)
+    let lead = WaitAnswerLatch.copilotAnswerLeadTolerance
+    func holds(_ input: Date) -> Bool {
+        decide(
+            sessions: [wait], now: now, settings: Settings(), power: plugged,
+            waitAnswers: answers([wait], input: .lastInput(at: input))
+        ).holdSystem
+    }
+    // An answer just before the hook landed still counts.
+    #expect(holds(notified.addingTimeInterval(-lead)))
+    // The Enter that submitted the turn seconds earlier does not.
+    #expect(!holds(notified.addingTimeInterval(-lead - 0.5)))
+    #expect(holds(since.addingTimeInterval(2)))
 }
 
 @Test func waitsWhoseAnswerSendsAHookNeverConsultInput() {

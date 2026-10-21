@@ -75,7 +75,10 @@ The common lifecycle mapping is:
 - Question tools (`AskUserQuestion` for Claude, `request_user_input` for Codex,
   and Copilot's `ask_user` family) set **Waiting** at `PreToolUse`; the answer's
   `PostToolUse` sets Working again. OpenCode and Pi input requests and
-  Copilot and OpenCode permission requests also set Waiting.
+  OpenCode permission requests also set Waiting. Copilot's `PermissionRequest`
+  keeps the prior state unless it names the question tool, because it fires
+  before allow rules decide; its `permission_prompt` and `elicitation_dialog`
+  notifications set Waiting.
 - Claude's `permission_prompt` `Notification` sets **Waiting**. Claude sends it
   only after its prompt has waited on screen for about six seconds, so a
   request another hook or auto mode settles never sends it. `PermissionRequest`
@@ -111,9 +114,10 @@ silent children too. The sweep's turn start is the latest prompt whenever it is
 known, because a wait and its answer move `stateChangedAt` inside the turn.
 
 The hook CLI records the agent's process ID by walking its parents past shell
-wrappers (`sh`, `bash`, `zsh`, `env`, and similar). The ID is presentation
-only: it lets the menu bring the agent's app forward and hide a Waiting row
-whose agent exited. It never affects the hold or eviction.
+wrappers (`sh`, `bash`, `zsh`, `env`, and similar). The ID lets the menu
+bring the agent's app forward and hide a Waiting row whose agent exited, and it
+names the app whose input can answer a Claude or Copilot approval. It never
+affects eviction, and it affects the hold only through that approval input.
 
 Each adapter's exact source-event vocabulary is frozen in
 [AGENT-HOOK-CONTRACTS.md](AGENT-HOOK-CONTRACTS.md); unsupported source events do
@@ -137,15 +141,20 @@ every activation change, and the app is the one the menu brings forward for
 that session. Typing in a chat therefore cannot answer a terminal's prompt. A
 session whose app is unknown, as under tmux, falls back to input in any app.
 The click that brings the app forward counts for it, because the app may act
-on that first click. Only Claude's permission notification
-also accepts input up to three seconds before it, because it arrives about six
-seconds after its prompt and can land just after the answering keystroke; every
-other wait is reported as its prompt appears, so the Enter that submitted the
-turn never answers it. Input from the last half second waits for the next poll,
-so the menu can report that it opened before its own opening click is judged. Pointer movement and scrolling never count; key
-presses and clicks while Let It Brew's own menu is open, or the click that
-opened it, are discarded by `OwnMenuInputFilter`, so checking the menu cannot
-answer a wait. The times come from the HID system's per-event idle counters,
+on that first click. Input from before the first activation Let It Brew saw,
+such as an approval made before it relaunched, counts for every app. Claude's
+permission notification also accepts input up to three seconds before it,
+because it arrives about six seconds after its prompt and can land just after
+the answering keystroke. Copilot's accepts one second, a margin for hook
+delivery that the Enter submitting a turn seconds earlier does not reach.
+Input from the last half second waits for the next poll, so the menu can
+report that it opened before its own opening click is judged. Pointer movement
+and scrolling never count. `OwnMenuInputFilter` discards the status-item click
+that opened Let It Brew's menu, recognized as the latest click when the menu
+reports opening, and key presses and clicks while the menu is open, so
+checking the menu cannot answer a wait while an answer just before it still
+counts. A menu that never reports closing stops discarding after five minutes.
+The times come from the HID system's per-event idle counters,
 which need no permission; an unreadable counter keeps those approvals held. Because the
 counters report only each kind's latest event, the latch keeps a wait answered
 for its lifetime once any poll saw an answer. The worst case for a Claude
@@ -206,9 +215,12 @@ Working and Waiting sessions become menu rows; Waiting rows show an orange
 position as it moves between the two. Group badges count each, as in
 "1 working · 2 waiting". Clicking a row whose agent process is known brings
 forward the first regular app among the agent's ancestors (a terminal, editor,
-or the Claude or Codex app). A terminal host that runs detached from its app,
-such as iTerm2's server or Orca's terminal host, is matched instead by the app
-bundle that holds its executable, outermost ancestor first.
+or the Claude or Codex app). When none is, the process launchd started at
+the root of the lineage is consulted: a detached terminal host such as Orca's
+is matched by the app bundle that holds its executable, by location or bundle
+identifier, and iTerm2's server, which runs from a copy outside its bundle, by
+name. Tools below the root are never matched, because an agent may itself ship
+inside another app's bundle.
 Activation is app-level only: no Accessibility or Automation access is
 requested, so a specific window or tab is not selected, and sessions under
 tmux or screen have no reachable app.

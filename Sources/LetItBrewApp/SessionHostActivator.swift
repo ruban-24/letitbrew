@@ -6,6 +6,13 @@ import LetItBrewCore
 /// for Accessibility or Automation access to pick a window or tab.
 @MainActor
 enum SessionHostActivator {
+    /// Terminal servers that run from outside their app's bundle, so neither
+    /// their parent nor their executable names the app. Prefixes, because the
+    /// kernel's command name is truncated and versioned.
+    private static let detachedServers: [(prefix: String, bundleID: String)] = [
+        ("iTermServer", "com.googlecode.iterm2"),
+    ]
+
     /// Returns false when no hosting app could be found, for example under
     /// tmux or screen, or when the agent has already exited.
     @discardableResult
@@ -17,8 +24,8 @@ enum SessionHostActivator {
         return app.activate()
     }
 
-    /// The nearest regular app among the agent's ancestors, or the running
-    /// app whose bundle holds a detached host in the agent's lineage.
+    /// The nearest regular app among the agent's ancestors, or the app that
+    /// owns the detached host at the root of the agent's lineage.
     static func hostApp(of agentPID: Int32) -> NSRunningApplication? {
         let lineage = ProcessAncestry.lineage(of: agentPID)
         for process in lineage {
@@ -28,20 +35,22 @@ enum SessionHostActivator {
             return app
         }
         // Some terminal hosts run detached, so launchd rather than their app
-        // is their parent: iTerm2's server, Orca's terminal host, or a helper
+        // is their parent: Orca's terminal host, iTerm2's server, or a helper
         // its app left behind. They are not registered apps, but the bundle
         // holding the executable names the app, by location or identifier.
-        // The host is the outermost such ancestor: an agent may itself run
-        // from inside another app's bundle, such as the Codex CLI that ships
-        // in the ChatGPT app, while it is hosted by a terminal.
-        for process in lineage.reversed() {
-            guard let path = ProcessAncestry.executablePath(of: process.pid),
-                  let bundle = ProcessAncestry.outermostAppBundle(containing: path),
-                  let app = runningApp(forBundleAt: bundle)
-            else { continue }
+        // Only that root process is consulted: an agent or tool below it may
+        // itself ship inside another app's bundle, such as the Codex CLI in
+        // the ChatGPT app, and under tmux the root names no app at all.
+        guard let root = lineage.last, root.parentPID == 1 else { return nil }
+        if let path = ProcessAncestry.executablePath(of: root.pid),
+           let bundle = ProcessAncestry.outermostAppBundle(containing: path),
+           let app = runningApp(forBundleAt: bundle) {
             return app
         }
-        return nil
+        guard let server = detachedServers.first(where: { root.name.hasPrefix($0.prefix) })
+        else { return nil }
+        return NSRunningApplication.runningApplications(withBundleIdentifier: server.bundleID)
+            .first(where: isCandidate)
     }
 
     private static func runningApp(forBundleAt path: String) -> NSRunningApplication? {

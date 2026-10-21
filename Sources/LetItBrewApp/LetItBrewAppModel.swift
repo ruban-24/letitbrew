@@ -934,7 +934,10 @@ final class LetItBrewAppModel: ObservableObject {
     }
 
     func menuDidOpen() {
-        ownMenuInputFilter.menuOpened(at: Date())
+        let now = Date()
+        ownMenuInputFilter.menuOpened(
+            at: now, lastClick: CGUserAnswerInput().current(now: now)?.lastClick
+        )
     }
 
     func menuDidClose() {

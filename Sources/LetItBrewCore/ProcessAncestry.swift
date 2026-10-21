@@ -16,8 +16,8 @@ public struct ProcessIdentity: Equatable, Sendable {
 }
 
 /// Walks process parents to find the agent that ran a hook, and later the app
-/// that hosts that agent. Used only to bring the right app forward when the
-/// person clicks a session; it never decides whether the Mac stays awake.
+/// that hosts that agent: to bring it forward when the person clicks a
+/// session, and to tell which app's input can answer an approval.
 public enum ProcessAncestry {
     public typealias Lookup = @Sendable (Int32) -> ProcessIdentity?
 
@@ -79,9 +79,8 @@ public enum ProcessAncestry {
         return ProcessIdentity(pid: pid, parentPID: info.kp_eproc.e_ppid, name: name)
     }
 
-    /// The process's executable path. Read only while bringing a session's
-    /// app forward, to find the app bundle of a host that runs detached from
-    /// its app; never stored.
+    /// The process's executable path, read to find the app bundle of a host
+    /// that runs detached from its app; never stored.
     public static func executablePath(of pid: Int32) -> String? {
         var buffer = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
         guard proc_pidpath(pid, &buffer, UInt32(buffer.count)) > 0 else { return nil }

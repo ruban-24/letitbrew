@@ -89,3 +89,15 @@ private func lastInput(_ attribution: FrontmostInputAttribution, _ app: Int32) -
     attribution.credit(inputAt: time(2 * retention + 5))
     #expect(lastInput(attribution, chat) == time(2 * retention + 5))
 }
+
+@Test func inputFromBeforeLaunchCountsForEveryApp() {
+    var attribution = FrontmostInputAttribution()
+    // Relaunched at 100 s; the approval was made before that in an app whose
+    // activation was never seen.
+    attribution.activate(chat, at: time(100))
+    attribution.credit(inputAt: time(40))
+    #expect(lastInput(attribution, terminal) == time(40))
+    #expect(lastInput(attribution, chat) == time(40))
+    attribution.credit(inputAt: time(120))
+    #expect(lastInput(attribution, terminal) == time(40))
+}

@@ -6,7 +6,8 @@ Let It Brew observes local lifecycle hooks only. It does not enumerate agent
 processes, inspect CPU use, search for installed executables, parse conversations,
 or read Claude/Codex/OpenCode/Copilot/Pi prompt and response content. Each hook
 command reads only its own parent chain to record the agent's process ID, which
-the menu uses to bring the agent's app forward; that ID never affects the hold.
+the menu uses to bring the agent's app forward; it affects the hold only by
+naming the app whose input can answer a Claude or Copilot approval.
 
 Every adapter reduces to Working, Waiting, and Idle. A Waiting session releases
 the hold. Waits whose answer sends a hook resume through that hook; Claude and

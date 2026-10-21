@@ -114,8 +114,9 @@ public struct SessionRecord: Codable, Equatable, Sendable {
     public var detail: String?
     public var cwd: String
     /// The agent process, found by walking the hook's parents past shell
-    /// wrappers. Used only to bring the agent's app forward from the menu; it
-    /// never affects the hold or eviction. Nil when the walk failed.
+    /// wrappers. Brings the agent's app forward from the menu and names the
+    /// app whose input can answer a Claude or Copilot approval; it never
+    /// affects eviction. Nil when the walk failed.
     public var pid: Int32?
     public var updatedAt: Date
     /// Unix seconds captured at the same hook edge as `updatedAt`, retaining

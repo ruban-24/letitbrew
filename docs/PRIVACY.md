@@ -15,13 +15,15 @@ should stay awake:
 - semantic activity token and lifecycle event; and
 - timestamps.
 
-The process ID is used only to bring the session's terminal, editor, or agent
-app forward when you click its menu row, and to hide a Waiting row whose agent
-has exited. Let It Brew reads each ancestor's process ID, parent ID, and short
-command name, never its arguments or environment. When you click a row and no
-ancestor is a regular app, as with a terminal host that runs detached from its
-app, it also reads the ancestors' executable paths to find the app bundle that
-holds them. Those paths are not stored.
+The process ID is used to bring the session's terminal, editor, or agent app
+forward when you click its menu row, to hide a Waiting row whose agent has
+exited, and to find the app whose input can answer a Claude or Copilot
+approval. Let It Brew reads each ancestor's process ID, parent ID, and short
+command name, never its arguments or environment. When no ancestor is a regular
+app, as with a terminal host that runs detached from its app, it also reads
+the executable path of the process at the root of that chain to find the app
+bundle that holds it, when you click a row and while such an approval waits.
+That path is not stored.
 
 `notification_type` is structural metadata. Let It Brew does not decode or
 record notification prose, prompts, responses, reasoning, tool inputs, tool

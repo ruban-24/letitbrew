@@ -23,6 +23,10 @@ public struct FrontmostInputAttribution: Equatable, Sendable {
 
     private var activations: [Activation] = []
     private var lastInputByApp: [Int32: Date] = [:]
+    /// Input from before the first recorded activation, such as an approval
+    /// made before Let It Brew relaunched. Its app is unknown, so it counts
+    /// for every app.
+    private var unattributedInput: Date = .distantPast
 
     public init() {}
 
@@ -44,8 +48,10 @@ public struct FrontmostInputAttribution: Equatable, Sendable {
     /// brought it forward.
     public mutating func credit(inputAt date: Date) {
         var apps: [Int32] = []
-        if let app = activations.last(where: { $0.at <= date })?.app {
-            apps.append(app)
+        if let inEffect = activations.last(where: { $0.at <= date }) {
+            if let app = inEffect.app { apps.append(app) }
+        } else {
+            unattributedInput = max(unattributedInput, date)
         }
         let lead = date.addingTimeInterval(Self.activationLead)
         for activation in activations where activation.at > date && activation.at <= lead {
@@ -66,6 +72,6 @@ public struct FrontmostInputAttribution: Equatable, Sendable {
         global: UserInputObservation
     ) -> UserInputObservation {
         guard case .lastInput = global else { return .unavailable }
-        return .lastInput(at: lastInputByApp[app] ?? .distantPast)
+        return .lastInput(at: max(lastInputByApp[app] ?? .distantPast, unattributedInput))
     }
 }

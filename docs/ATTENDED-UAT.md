@@ -80,10 +80,16 @@ case below.
    session's own terminal or app and confirm the row shows Working and holds.
    Repeat with the session under tmux: input in any app counts there. With a
    question Waiting, type in the session's app without answering and confirm
-   the row stays Waiting.
-9. In the signed, Finder-launched app with no Input Monitoring permission,
-   confirm key presses and clicks are still observed (step 8) and that no
-   permission prompt appears.
+   the row stays Waiting. Approve with Enter, then open Let It Brew's menu
+   within a second, and confirm the row shows Working and holds.
+9. Approve a long Claude command, then quit and relaunch Let It Brew while it
+   runs. Confirm the row shows Working and the Mac stays awake.
+10. Copilot: deny an approval, dismiss a question, and press Esc during a
+    wait. Confirm each session returns to Idle or Working and does not stay
+    Working after the turn has ended. Record any case that has no hook.
+11. In the signed, Finder-launched app with no Input Monitoring permission,
+    confirm key presses and clicks are still observed (step 8) and that no
+    permission prompt appears.
 
 ### Session jump
 
