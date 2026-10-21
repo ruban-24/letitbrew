@@ -14,6 +14,21 @@ If a safety or power test fails, stop with physical access to the Mac, preserve
 the original `SleepDisabled` baseline, record the exact reproduction, and stop
 using the affected feature until it is understood.
 
+## v0.8.4 release scope
+
+v0.8.4 fixes Claude and Codex sessions left Working by compaction, interrupts,
+and missing subagent completion, and finds Codex bundled in newer desktop apps.
+Record version 0.8.4, build 35, the full commit, and artifact hashes with the results. In the
+signed app, run the Claude and Codex cases below, including idle compaction,
+manual `/compact`, Codex Esc after approving the new `Interrupt` hook in
+`/hooks`, and Codex subagents, with another session running to confirm it
+remains protected. Verify that normal long-running work still holds the Mac
+awake. With only the ChatGPT desktop app's bundled Codex available, confirm
+Agents settings verifies already-trusted Codex hooks. Record Claude Esc
+interrupts separately; Claude sends no hook for them, so they stay Working.
+Run the signed-artifact and download-channel checks on the final release.
+Power, daemon, login-item, and updater code are unchanged.
+
 ## v0.8.3 release scope
 
 v0.8.3 fixes Claude parent/child completion and cleanup.
@@ -276,6 +291,17 @@ session stays Idle. Exercise two simultaneous distinct `agent_id` values; each
 remains Working until its own `SubagentStop`. End a session with children and
 confirm none of its rows remain. Where the documented permission lifecycle is
 observed, it preserves the existing Working state.
+
+Codex cannot be made to omit `SubagentStop` on demand, so replay that case
+through the installed helper with a throwaway session. Pipe each payload, such
+as `{"session_id":"uat-silent","cwd":"/tmp","agent_id":"A"}` (omit `agent_id`
+for parent events), to `/Applications/Let It Brew.app/Contents/Helpers/letitbrew
+hook codex <Event>`. Send `UserPromptSubmit`, `SubagentStart` for `A`, `Stop`,
+`UserPromptSubmit`, `SubagentStart` for `B`, then `Stop`. Confirm `A` disappears
+at the second `Stop` while `B`, heard during that turn, stays Working and holds
+the Mac. Repeat with a new session ID and `Interrupt` in place of the final
+`Stop`. End both sessions with `SessionEnd` and confirm none of their rows
+remain.
 
 ### OpenCode
 
