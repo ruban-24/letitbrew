@@ -73,7 +73,8 @@ case below.
    a long command with an allow rule or "approve for session", run it again,
    and confirm it stays Working with no input. Pi: open a dialog at the idle
    prompt and confirm no Waiting row appears.
-7. Quit an agent that is Waiting without answering. Confirm its row disappears.
+7. Quit an agent that is Waiting without answering, before and after typing in
+   its app. Confirm its row disappears and the Mac may sleep.
 8. With a Claude approval Waiting, move the pointer, scroll, open and close Let
    It Brew's menu, and type in another app, such as a chat. Confirm the row
    stays Waiting and the Mac may still sleep. Then type one key in the

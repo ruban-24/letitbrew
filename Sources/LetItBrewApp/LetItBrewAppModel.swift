@@ -2162,15 +2162,22 @@ final class LetItBrewAppModel: ObservableObject {
         if readsLiveState {
             creditInput(snapshot.answerInput, now: snapshot.now)
         }
-        let hosts = hostApps(forSilentWaitsIn: snapshot.sessions)
-        waitAnswers.observe(snapshot.sessions) { wait in
+        // A wait whose agent process has exited can no longer be answered: it
+        // neither shows nor holds, even if input latched it before the agent quit.
+        let liveness = KillZeroLiveness()
+        let liveSessions = snapshot.sessions.filter { record in
+            guard record.state == .waiting, let pid = record.pid else { return true }
+            return liveness.isAlive(pid: pid)
+        }
+        let hosts = hostApps(forSilentWaitsIn: liveSessions)
+        waitAnswers.observe(liveSessions) { wait in
             // An agent with no known app falls back to input anywhere.
             guard let agent = wait.pid, let host = hosts[agent] else { return input }
             return inputAttribution.observation(forApp: host, global: input)
         }
 
         let nextSessions = MenuSessionPresentationPolicy.rows(
-            from: snapshot.sessions.map {
+            from: liveSessions.map {
                 Self.menuInput($0, waitAnswers: waitAnswers, now: snapshot.now)
             },
             now: snapshot.now,
@@ -2182,7 +2189,7 @@ final class LetItBrewAppModel: ObservableObject {
         sessions = nextSessions
 
         let decision = decide(
-            sessions: snapshot.sessions,
+            sessions: liveSessions,
             now: snapshot.now,
             settings: settings,
             power: snapshot.power,
@@ -2561,13 +2568,7 @@ final class LetItBrewAppModel: ObservableObject {
         waitAnswers: WaitAnswerLatch,
         now: Date
     ) -> SessionMenuInput {
-        var state = MenuSessionState.resolve(record, waitAnswers: waitAnswers)
-        // Presentation only: a wait whose agent process has exited can no
-        // longer be answered, so its row is hidden. Waits never hold the Mac,
-        // so this cannot change the awake decision.
-        if state.isWaiting, let pid = record.pid, !KillZeroLiveness().isAlive(pid: pid) {
-            state = .idle
-        }
+        let state = MenuSessionState.resolve(record, waitAnswers: waitAnswers)
         return SessionMenuInput(
             id: record.id,
             tool: record.tool,

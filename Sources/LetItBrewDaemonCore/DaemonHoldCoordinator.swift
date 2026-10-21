@@ -87,6 +87,7 @@ public final class DaemonHoldCoordinator: @unchecked Sendable {
     private let powerModeDebtStore: DaemonPowerModeDebtStoring?
     private let powerModeControl: DaemonPowerModeControlling?
     private let now: () -> Date
+    private let pauseBeforeRetry: (TimeInterval) -> Void
     private var holders: Set<UUID> = []
     private var lowPowerHolders: Set<UUID> = []
     /// Non-nil only after a successful upgrade preparation. The daemon then
@@ -94,18 +95,24 @@ public final class DaemonHoldCoordinator: @unchecked Sendable {
     /// and service unregistration.
     private var preparedUpgradeBaseline: Bool?
 
+    /// Energy mode restore attempts before an upgrade or uninstall proceeds.
+    static let upgradeRestoreAttempts = 3
+    static let upgradeRestoreRetryDelay: TimeInterval = 0.5
+
     public init(
         debtStore: DaemonSleepDebtStoring,
         sleepControl: DaemonSleepSettingControlling,
         powerModeDebtStore: DaemonPowerModeDebtStoring? = nil,
         powerModeControl: DaemonPowerModeControlling? = nil,
-        now: @escaping () -> Date = Date.init
+        now: @escaping () -> Date = Date.init,
+        pauseBeforeRetry: @escaping (TimeInterval) -> Void = { Thread.sleep(forTimeInterval: $0) }
     ) {
         self.debtStore = debtStore
         self.sleepControl = sleepControl
         self.powerModeDebtStore = powerModeDebtStore
         self.powerModeControl = powerModeControl
         self.now = now
+        self.pauseBeforeRetry = pauseBeforeRetry
     }
 
     public var holdCount: Int {
@@ -183,11 +190,21 @@ public final class DaemonHoldCoordinator: @unchecked Sendable {
             case .blocked(let message):
                 return .failed(message)
             }
-            // Restore the energy mode before an upgrade or uninstall. A
-            // restore that still fails never blocks either: the next daemon
-            // reconciles the same record at launch, and Low Power Mode cannot
-            // keep the Mac awake.
-            _ = reconcilePowerModeDebt()
+            // Restore the energy mode before an upgrade or uninstall, retrying
+            // a passing failure, because no daemon follows an uninstall. A
+            // restore that still fails never blocks either: a later daemon
+            // reconciles the same record at launch, Low Power Mode cannot keep
+            // the Mac awake, and a record that can never be restored must not
+            // strand the upgrade or uninstall itself.
+            for attempt in 0..<Self.upgradeRestoreAttempts {
+                if case .blocked = reconcilePowerModeDebt() {
+                    if attempt + 1 < Self.upgradeRestoreAttempts {
+                        pauseBeforeRetry(Self.upgradeRestoreRetryDelay)
+                    }
+                    continue
+                }
+                break
+            }
 
             guard let baseline = sleepControl.readDisabled() else {
                 return .failed(
@@ -388,7 +405,7 @@ public final class DaemonHoldCoordinator: @unchecked Sendable {
             if changed {
                 guard let restored = powerModeControl.readPowerModes(),
                       debt.prior.sources.allSatisfy({ source in
-                          restored[source] == nil
+                          live[source] == nil
                               || restored[source]?.value == debt.prior[source]?.value
                       })
                 else {
@@ -396,6 +413,13 @@ public final class DaemonHoldCoordinator: @unchecked Sendable {
                         "Could not confirm the restored energy mode; the restore record remains."
                     )
                 }
+            }
+            // A recorded source missing from the reading was not restored, so
+            // the record stays until every source reads back.
+            guard debt.prior.sources.allSatisfy({ live[$0] != nil }) else {
+                return .blocked(
+                    "A recorded power source is missing from the energy mode; the restore record remains."
+                )
             }
             guard powerModeDebtStore.remove() else {
                 return .blocked(

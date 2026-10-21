@@ -16,8 +16,8 @@ should stay awake:
 - timestamps.
 
 The process ID is used to bring the session's terminal, editor, or agent app
-forward when you click its menu row, to hide a Waiting row whose agent has
-exited, and to find the app whose input can answer a Claude or Copilot
+forward when you click its menu row, to ignore a Waiting session whose agent
+has exited, and to find the app whose input can answer a Claude or Copilot
 approval. Let It Brew reads each ancestor's process ID, parent ID, and short
 command name, never its arguments or environment. When no ancestor is a regular
 app, as with a terminal host that runs detached from its app, it also reads

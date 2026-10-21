@@ -59,12 +59,23 @@ private final class FakePowerModeControl: DaemonPowerModeControlling {
     var failingWrites: Set<PowerModeSource> = []
     var writesStick = true
     var writes: [String] = []
+    /// Reads that fail before the live value is returned again.
+    var failingReads = 0
+    /// What reads report once any write has happened, when set.
+    var readAfterWrite: PowerModeSnapshot?
 
     init(live: PowerModeSnapshot?) {
         self.live = live
     }
 
-    func readPowerModes() -> PowerModeSnapshot? { live }
+    func readPowerModes() -> PowerModeSnapshot? {
+        guard failingReads == 0 else {
+            failingReads -= 1
+            return nil
+        }
+        if let readAfterWrite, !writes.isEmpty { return readAfterWrite }
+        return live
+    }
 
     func writePowerMode(_ value: PowerModeValue, for source: PowerModeSource) -> Bool {
         writes.append("\(source.rawValue):\(value.key)=\(value.value)")
@@ -80,11 +91,16 @@ private func mode(_ value: Int, key: String = "powermode") -> PowerModeValue {
 
 private let laptop = PowerModeSnapshot(battery: mode(0), charger: mode(2))
 
+private final class PauseLog {
+    var count = 0
+}
+
 private struct Harness {
     let sleepDebt = MemorySleepDebtStore()
     let sleep = MemorySleepControl()
     let debt: FakePowerModeDebtStore
     let power: FakePowerModeControl
+    let pauses = PauseLog()
     let coordinator: DaemonHoldCoordinator
 
     init(live: PowerModeSnapshot? = laptop, debt: DaemonPowerModeDebtState = .none) {
@@ -95,7 +111,8 @@ private struct Harness {
             sleepControl: sleep,
             powerModeDebtStore: self.debt,
             powerModeControl: power,
-            now: { Date(timeIntervalSince1970: 50) }
+            now: { Date(timeIntervalSince1970: 50) },
+            pauseBeforeRetry: { [pauses] _ in pauses.count += 1 }
         )
     }
 }
@@ -359,11 +376,55 @@ private struct Harness {
     #expect(restorable.coordinator.prepareForUpgrade() == .ready(baseline: false))
     #expect(restorable.power.live == laptop)
 
+    // A passing failure is retried, because no daemon follows an uninstall.
+    let transient = Harness(
+        live: PowerModeSnapshot(battery: mode(1), charger: mode(1)), debt: .valid(debt)
+    )
+    transient.power.failingReads = 1
+    #expect(transient.coordinator.prepareForUpgrade() == .ready(baseline: false))
+    #expect(transient.power.live == laptop)
+    #expect(transient.debt.state == .none)
+    #expect(transient.pauses.count == 1)
+
     // A restore that still fails never blocks an upgrade or uninstall; the
-    // record stays for the next daemon's launch.
+    // record stays for a later daemon's launch.
     let stuck = Harness(live: nil, debt: .valid(debt))
     #expect(stuck.coordinator.prepareForUpgrade() == .ready(baseline: false))
     #expect(stuck.debt.state == .valid(debt))
+    #expect(stuck.pauses.count == DaemonHoldCoordinator.upgradeRestoreAttempts - 1)
+}
+
+@Test func aRecordedSourceMissingFromTheReadingKeepsTheRecord() {
+    let debt = DaemonPowerModeDebt(prior: laptop, setAt: Date(timeIntervalSince1970: 1))
+    // The battery source is missing from this reading; the charger is still
+    // switched and is restored now.
+    let harness = Harness(live: PowerModeSnapshot(charger: mode(1)), debt: .valid(debt))
+    guard case .blocked = harness.coordinator.reconcilePowerModeAtLaunch() else {
+        Issue.record("A missing source must keep the restore record")
+        return
+    }
+    #expect(harness.debt.state == .valid(debt))
+    #expect(harness.power.live?[.charger] == mode(2))
+
+    // Once the source reads back, the next attempt restores it and clears the record.
+    harness.power.live?[.battery] = mode(1)
+    #expect(harness.coordinator.reconcilePowerModeAtLaunch() == .restored(priorValue: false))
+    #expect(harness.power.live == laptop)
+    #expect(harness.debt.state == .none)
+}
+
+@Test func aSourceMissingFromTheConfirmationKeepsTheRecord() {
+    let debt = DaemonPowerModeDebt(prior: laptop, setAt: Date(timeIntervalSince1970: 1))
+    let harness = Harness(
+        live: PowerModeSnapshot(battery: mode(1), charger: mode(1)), debt: .valid(debt)
+    )
+    // Writes land, but the confirming read omits the battery source.
+    harness.power.readAfterWrite = PowerModeSnapshot(charger: mode(2))
+    guard case .blocked = harness.coordinator.reconcilePowerModeAtLaunch() else {
+        Issue.record("An unconfirmed restore must keep the restore record")
+        return
+    }
+    #expect(harness.debt.state == .valid(debt))
 }
 
 @Test func aRecordSavedUnderTheOlderNameRestoresAfterARename() {

@@ -115,9 +115,10 @@ known, because a wait and its answer move `stateChangedAt` inside the turn.
 
 The hook CLI records the agent's process ID by walking its parents past shell
 wrappers (`sh`, `bash`, `zsh`, `env`, and similar). The ID lets the menu
-bring the agent's app forward and hide a Waiting row whose agent exited, and it
-names the app whose input can answer a Claude or Copilot approval. It never
-affects eviction, and it affects the hold only through that approval input.
+bring the agent's app forward, and it names the app whose input can answer a
+Claude or Copilot approval. A Waiting session whose agent has exited neither
+shows nor holds, even if input latched it before the agent quit. The ID never
+affects eviction, and it affects the hold only through those two rules.
 
 Each adapter's exact source-event vocabulary is frozen in
 [AGENT-HOOK-CONTRACTS.md](AGENT-HOOK-CONTRACTS.md); unsupported source events do
@@ -290,12 +291,15 @@ source's exact energy mode — key (`powermode` on newer macOS, `lowpowermode`
 on older) and value — in a second restore record beside the sleep debt. It
 then writes `1` only to sources not already in Low Power Mode, and confirms the
 result. A failed or partial switch is rolled back from that record. The last
-release restores every recorded source exactly, then removes the record after
-a read-back. Values, not names, are compared and restored, and each write uses
-the name the live system reports, so a record survives macOS renaming the
-setting. Launch reconciles a leftover record, and every later release or
-handshake retries a failed restore. Upgrade and uninstall preparation retry it
-too, but never block on it: the next daemon reconciles the same record.
+release restores every recorded source exactly, then removes the record only
+after every recorded source reads back with its recorded value; a source
+missing from either reading keeps the record. Values, not names, are compared
+and restored, and each write uses the name the live system reports, so a
+record survives macOS renaming the setting. Launch reconciles a leftover
+record, and every later release or handshake retries a failed restore. Upgrade
+and uninstall preparation retry it up to three times, because no daemon follows
+an uninstall, but never block on it: a record that can never be restored must
+not strand the upgrade or uninstall, and a later daemon reconciles it.
 
 Low Power Mode never gates `disablesleep`. A failure to switch or restore the
 energy mode is reported in Settings, but cannot keep a Mac awake or block a
