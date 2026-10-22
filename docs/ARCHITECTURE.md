@@ -282,7 +282,7 @@ to `/usr/bin/pmset` and does nothing else.
 While a confirmed lid-closed hold is active, the lid is shut, and no external
 display is attached, the app asks the daemon to switch every power source to
 Low Power Mode. This is on by default and can be turned off under
-**Settings → Power & Display → Closed lid**. The daemon accepts the request
+**Settings → Closed Lid**. The daemon accepts the request
 only from a client that owns a lid-closed hold, so Low Power Mode is nested
 inside it: releasing that hold, or disconnecting, releases it too.
 

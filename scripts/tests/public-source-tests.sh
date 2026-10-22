@@ -68,8 +68,8 @@ if ! grep -qE '^[[:space:]]+MARKETING_VERSION: 1\.0\.0$' project.yml; then
     fail "project.yml MARKETING_VERSION is not 1.0.0"
 fi
 
-if ! grep -qE '^[[:space:]]+CURRENT_PROJECT_VERSION: 36$' project.yml; then
-    fail "project.yml CURRENT_PROJECT_VERSION is not 36"
+if ! grep -qE '^[[:space:]]+CURRENT_PROJECT_VERSION: 37$' project.yml; then
+    fail "project.yml CURRENT_PROJECT_VERSION is not 37"
 fi
 
 if ! grep -Fq 'print("letitbrew 1.0.0")' Sources/letitbrew/main.swift; then
@@ -89,8 +89,8 @@ if ! grep -Fq '0.6.5 or earlier' SUPPORT.md \
 fi
 
 if ! grep -Fq '## v1.0.0 release scope' docs/ATTENDED-UAT.md \
-    || ! grep -Fq 'Record version 1.0.0, build 36' docs/ATTENDED-UAT.md; then
-    fail "attended UAT release scope is not 1.0.0 build 36"
+    || ! grep -Fq 'Record version 1.0.0, build 37' docs/ATTENDED-UAT.md; then
+    fail "attended UAT release scope is not 1.0.0 build 37"
 fi
 
 if ! grep -Fq '## Manual replacement bridge' docs/ATTENDED-UAT.md \

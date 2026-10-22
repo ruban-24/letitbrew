@@ -534,7 +534,7 @@ import LetItBrewCore
 
     #expect(state.expandedRepositoryID == "/work/app")
     #expect(items.map(\.id) == [.header("/work/app"), .session("survivor")])
-    #expect(MenuActivityViewportMetrics.height(for: items) == 116)
+    #expect(MenuActivityViewportMetrics.height(for: items) == 60)
     #expect(MenuRepositoryExpansionPolicy.reconcile(current: single.id, groups: []) == nil)
 }
 
@@ -633,7 +633,7 @@ import LetItBrewCore
     ))
 }
 
-@Test func activityViewportUsesTheRenderedLayoutAndCapsAtAHeaderPlusFourRows() throws {
+@Test func activityViewportFitsItsRowsUntilTheCap() throws {
     let now = Date(timeIntervalSince1970: 10_000)
     let headerPlusFourRows = try #require(group(
         repositoryPath: "/work/four",
@@ -642,10 +642,10 @@ import LetItBrewCore
         },
         now: now
     ))
-    let headerPlusFiveRows = try #require(group(
-        repositoryPath: "/work/five",
-        sessions: (1...5).map {
-            input(id: "five-\($0)", repositoryPath: "/work/five", updatedAt: now.addingTimeInterval(TimeInterval(-$0)))
+    let headerPlusTwelveRows = try #require(group(
+        repositoryPath: "/work/twelve",
+        sessions: (1...12).map {
+            input(id: "twelve-\($0)", repositoryPath: "/work/twelve", updatedAt: now.addingTimeInterval(TimeInterval(-$0)))
         },
         now: now
     ))
@@ -658,15 +658,108 @@ import LetItBrewCore
     #expect(MenuActivityViewportMetrics.height(for: MenuRepositoryLayoutPolicy.items(
         for: headerPlusFourRows,
         isExpanded: true
-    )) == 302)
+    )) == 150)
     #expect(MenuActivityViewportMetrics.height(for: MenuRepositoryLayoutPolicy.items(
-        for: headerPlusFiveRows,
+        for: headerPlusTwelveRows,
         isExpanded: true
-    )) == 302)
+    )) == MenuActivityViewportMetrics.maximumHeight)
     #expect(MenuActivityViewportMetrics.height(for: MenuRepositoryLayoutPolicy.items(
         for: singleSession,
         isExpanded: false
-    )) == 60)
+    )) == 42)
+}
+
+@Test func waitingSessionsComeFirstUnderTheirOwnSection() throws {
+    let now = Date(timeIntervalSince1970: 10_000)
+    let rows = MenuSessionPresentationPolicy.rows(from: [
+        input(id: "a", repositoryPath: "/work/app", updatedAt: now),
+        input(id: "b", repositoryPath: "/work/app", updatedAt: now.addingTimeInterval(-1)),
+        input(id: "c", repositoryPath: "/work/app", state: .waitingForApproval, updatedAt: now.addingTimeInterval(-2)),
+        input(id: "d", project: "site", repositoryPath: "/work/site", updatedAt: now.addingTimeInterval(-3)),
+    ], now: now)
+    let groups = MenuRepositoryPresentationPolicy.groups(from: rows.filter { !$0.isWaiting })
+    let items = MenuBoardLayoutPolicy.items(
+        waiting: rows.filter(\.isWaiting),
+        groups: groups,
+        expandedRepositoryID: "/work/app"
+    )
+
+    #expect(items.map(\.id) == [
+        .section(.needsYou),
+        .session("c"),
+        .section(.working),
+        .header("/work/app"),
+        .session("a"),
+        .session("b"),
+        .session("d"),
+    ])
+    #expect(items[1].isGroupedSession == false)
+    #expect(items[4].isGroupedSession)
+    // The lifted wait still shares its folder with a and b, so VoiceOver
+    // keeps its short ID; d is alone in its folder.
+    #expect(items[1].shortSessionID == "c")
+    #expect(items[6].shortSessionID == nil)
+    #expect(groups.first?.sessionCountText == "2 working")
+    // Two section headers, a folder header with two rows, and two sessions on their own.
+    #expect(MenuActivityViewportMetrics.height(for: items) == 226)
+}
+
+@Test func aSessionOnItsOwnRowKeepsItsShortIDWhenItsFolderHasAWait() {
+    let now = Date(timeIntervalSince1970: 10_000)
+    let rows = MenuSessionPresentationPolicy.rows(from: [
+        input(id: "5279876d-working", updatedAt: now),
+        input(id: "94eea3c2-waiting", state: .waitingForAnswer, updatedAt: now.addingTimeInterval(-1)),
+    ], now: now)
+    let items = MenuBoardLayoutPolicy.items(
+        waiting: rows.filter(\.isWaiting),
+        groups: MenuRepositoryPresentationPolicy.groups(from: rows.filter { !$0.isWaiting }),
+        expandedRepositoryID: nil
+    )
+
+    #expect(items.map(\.id) == [
+        .section(.needsYou),
+        .session("94eea3c2-waiting"),
+        .section(.working),
+        .session("5279876d-working"),
+    ])
+    #expect(items[1].shortSessionID == "94eea3c2")
+    #expect(items[3].shortSessionID == "5279876d")
+    #expect(items[3].isGroupedSession == false)
+}
+
+@Test func boardHasNoSectionsWithoutAWait() throws {
+    let now = Date(timeIntervalSince1970: 10_000)
+    let rows = MenuSessionPresentationPolicy.rows(from: [
+        input(id: "a", updatedAt: now),
+    ], now: now)
+    let items = MenuBoardLayoutPolicy.items(
+        waiting: [],
+        groups: MenuRepositoryPresentationPolicy.groups(from: rows),
+        expandedRepositoryID: nil
+    )
+    #expect(items.map(\.id) == [.session("a")])
+
+    let waitingOnly = MenuSessionPresentationPolicy.rows(from: [
+        input(id: "w", state: .waitingForAnswer, updatedAt: now),
+    ], now: now)
+    #expect(MenuBoardLayoutPolicy.items(
+        waiting: waitingOnly,
+        groups: [],
+        expandedRepositoryID: nil
+    ).map(\.id) == [.section(.needsYou), .session("w")])
+}
+
+@Test func headerDetailCountsWaitingSessionsApart() {
+    let now = Date(timeIntervalSince1970: 10_000)
+    let rows = MenuSessionPresentationPolicy.rows(from: [
+        input(id: "a", updatedAt: now),
+        input(id: "b", updatedAt: now.addingTimeInterval(-1)),
+        input(id: "c", state: .waitingForApproval, updatedAt: now.addingTimeInterval(-2)),
+    ], now: now)
+    #expect(MenuHeaderDetailCopy.resolve(context: .awake, rows: rows)
+        == "2 agents are working · 1 waiting")
+    #expect(MenuHeaderDetailCopy.resolve(context: .awake, rows: Array(rows.prefix(1)))
+        == "1 agent is working")
 }
 
 private func input(

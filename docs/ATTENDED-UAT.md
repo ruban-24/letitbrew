@@ -18,9 +18,9 @@ using the affected feature until it is understood.
 
 This release adds three things: closed-lid Low Power Mode in the daemon, a
 Waiting state with an input check, and app-level session activation. It also
-carries the unpublished v0.8.4 fixes, so run the v0.8.4 release scope below
-with this build too.
-Record version 1.0.0, build 36, the full commit, and artifact hashes. Before
+redesigns the menu and Settings and carries the unpublished v0.8.4 fixes, so
+run the v0.8.4 release scope below with this build too.
+Record version 1.0.0, build 37, the full commit, and artifact hashes. Before
 starting, record `pmset -g custom | grep -E 'Power:|powermode'` and
 `pmset -g | grep SleepDisabled`. Both must read back identically after every
 case below.
@@ -105,6 +105,31 @@ activate an app on this macOS; one click in the signed app still confirms the
 popover path. Under tmux, confirm the click does nothing and nothing
 fails. Confirm rows recorded before this release, which have no process ID, are
 not clickable.
+
+### Menu and Settings layout
+
+In light and dark mode, with the signed app:
+
+1. With one Waiting session and Working sessions in a shared folder and on
+   their own, open the menu. Confirm **Needs You** lists the waiting session
+   first, **Working** follows, folder rows do not repeat the folder name, and
+   the header reads, for example, "2 agents are working · 1 waiting".
+2. Hover a session: it highlights only if it can be brought forward, and its
+   active time gives way to the eye button. Stop watching one session from
+   the eye button and another from the right-click menu. With a Claude
+   approval Waiting, click its row, then right-click it and choose **Show
+   Session’s App**: both bring the app forward, and the row must stay
+   Waiting, because clicks in Let It Brew's menu never count as an answer.
+3. With more sessions than fit, confirm the list scrolls inside the menu and
+   the footer stays visible.
+4. Open Settings with ⌘, from the menu. Confirm the toolbar tabs General,
+   Agents, Power, Closed Lid, and About, that the window title follows the
+   tab, and that each pane fits without clipping. Run **Check for Updates…**
+   from General.
+5. On Agents, confirm the Claude Code, Codex, OpenCode, Copilot, and Pi marks
+   are legible in dark mode and each row shows its connection status.
+6. On Closed Lid, turn the closed-lid setting off and on, and confirm the
+   helper status and Low Power Mode setting follow it.
 
 ## v0.8.4 release scope
 
@@ -229,7 +254,7 @@ exact path `/Applications/Let It Brew.app`. Record the old and new marketing
 versions, decimal builds, full artifact hashes, app/daemon/helper CDHashes, and
 the exact `SleepDisabled` entry before changing anything.
 
-First exercise **Settings → About → Check for Updates…** when the current
+First exercise **Settings → General → Check for Updates…** when the current
 published release is equal to or older than the installed app. It must report
 **Let It Brew is up to date.** without downloading or quitting.
 

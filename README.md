@@ -138,7 +138,7 @@ paths it uses.
 
 Let It Brew checks GitHub for a newer release about 30 seconds after launch, no
 more than once per day. It never downloads an update without confirmation. You
-can also open **Settings → About → Check for Updates…** at any time. Settings,
+can also open **Settings → General → Check for Updates…** at any time. Settings,
 agent connections, and session records stay in place.
 
 To remove the app, open **Settings → About → Uninstall Let It Brew…**. Let It

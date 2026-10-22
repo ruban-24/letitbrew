@@ -143,40 +143,61 @@ public struct MenuRepositoryPresentation: Identifiable, Equatable, Sendable {
     public let sessions: [MenuRepositorySessionPresentation]
 }
 
+/// The menu board's two sections. Only shown while something is waiting, so
+/// the sessions that need the person come first.
+public enum MenuBoardSection: String, Equatable, Sendable {
+    case needsYou = "Needs You"
+    case working = "Working"
+
+    public var title: String { rawValue }
+}
+
 public enum MenuRepositoryLayoutItem: Identifiable, Equatable, Sendable {
     public enum ID: Hashable, Sendable {
+        case section(MenuBoardSection)
         case header(String)
         case session(String)
     }
 
+    case section(MenuBoardSection)
     case header(MenuRepositoryPresentation)
-    case session(MenuRepositorySessionPresentation, displaysShortID: Bool)
+    /// `displaysShortID` marks a session that shares its folder with others,
+    /// so its short ID tells them apart. `isGrouped` is only the styling: a
+    /// row under its folder's header rather than on its own.
+    case session(MenuRepositorySessionPresentation, displaysShortID: Bool, isGrouped: Bool)
 
     public var id: ID {
         switch self {
+        case .section(let section): .section(section)
         case .header(let group): .header(group.id)
-        case .session(let item, _): .session(item.id)
+        case .session(let item, _, _): .session(item.id)
         }
     }
 
     public var shortSessionID: String? {
         switch self {
-        case .header: nil
-        case .session(let item, let displaysShortID):
+        case .section, .header: nil
+        case .session(let item, let displaysShortID, _):
             displaysShortID ? item.shortID : nil
         }
     }
 
     public var groupedProject: String? {
         switch self {
-        case .header: nil
-        case .session(let item, let displaysShortID):
+        case .section, .header: nil
+        case .session(let item, let displaysShortID, _):
             displaysShortID ? item.session.project : nil
         }
     }
 
     public var isSession: Bool {
         if case .session = self { return true }
+        return false
+    }
+
+    /// A session listed under its folder's header, rather than on its own.
+    public var isGroupedSession: Bool {
+        if case .session(_, _, isGrouped: true) = self { return true }
         return false
     }
 }
@@ -313,7 +334,7 @@ public enum MenuRepositoryPresentationPolicy {
         AgentID.allCases.firstIndex { $0.displayName == name } ?? .max
     }
 
-    private static func uniqueShortIDs(for ids: [String]) -> [String: String] {
+    static func uniqueShortIDs(for ids: [String]) -> [String: String] {
         var result: [String: String] = [:]
         for id in ids {
             var length = min(8, id.count)
@@ -336,15 +357,77 @@ public enum MenuRepositoryLayoutPolicy {
     ) -> [MenuRepositoryLayoutItem] {
         guard group.sessions.count > 1 || isExpanded else {
             return group.sessions.map {
-                .session($0, displaysShortID: false)
+                .session($0, displaysShortID: false, isGrouped: false)
             }
         }
 
         var items: [MenuRepositoryLayoutItem] = [.header(group)]
         if isExpanded {
             items.append(contentsOf: group.sessions.map {
-                .session($0, displaysShortID: true)
+                .session($0, displaysShortID: true, isGrouped: true)
             })
+        }
+        return items
+    }
+}
+
+public enum MenuBoardLayoutPolicy {
+    /// Waiting sessions are lifted out of their folders into a "Needs You"
+    /// section at the top; the rest keep their folder layout under "Working".
+    /// A session that stops waiting returns to its folder. Without a wait
+    /// there are no section headers.
+    public static func items(
+        waiting: [MenuSessionPresentation],
+        groups: [MenuRepositoryPresentation],
+        expandedRepositoryID: String?
+    ) -> [MenuRepositoryLayoutItem] {
+        // A folder's sessions, waiting or not, so a session on its own row
+        // still carries a short ID when its folder has others.
+        var folderSessionIDs: [String: [String]] = [:]
+        for group in groups {
+            folderSessionIDs[group.id, default: []] += group.sessions.map(\.id)
+        }
+        for session in waiting {
+            folderSessionIDs[session.repositoryID, default: []].append(session.id)
+        }
+        let shortIDs = folderSessionIDs.values.reduce(into: [String: String]()) { result, ids in
+            result.merge(MenuRepositoryPresentationPolicy.uniqueShortIDs(for: ids)) { $1 }
+        }
+        func sharesFolder(_ repositoryID: String) -> Bool {
+            (folderSessionIDs[repositoryID]?.count ?? 0) > 1
+        }
+
+        let working = groups.flatMap {
+            MenuRepositoryLayoutPolicy.items(
+                for: $0,
+                isExpanded: expandedRepositoryID == $0.id
+            )
+        }.map { item -> MenuRepositoryLayoutItem in
+            guard case .session(let session, false, let isGrouped) = item,
+                  sharesFolder(session.session.repositoryID)
+            else { return item }
+            return .session(
+                MenuRepositorySessionPresentation(
+                    session: session.session,
+                    shortID: shortIDs[session.id] ?? session.shortID
+                ),
+                displaysShortID: true,
+                isGrouped: isGrouped
+            )
+        }
+        guard !waiting.isEmpty else { return working }
+
+        var items: [MenuRepositoryLayoutItem] = [.section(.needsYou)]
+        items.append(contentsOf: waiting.map {
+            .session(
+                MenuRepositorySessionPresentation(session: $0, shortID: shortIDs[$0.id] ?? $0.id),
+                displaysShortID: sharesFolder($0.repositoryID),
+                isGrouped: false
+            )
+        })
+        if !working.isEmpty {
+            items.append(.section(.working))
+            items.append(contentsOf: working)
         }
         return items
     }
@@ -403,11 +486,27 @@ public enum MenuRepositoryExpansionPolicy {
     }
 }
 
+/// Row heights shared by the menu's views and its scroll viewport, so the
+/// viewport fits its rows exactly until it reaches the cap and scrolls.
 public enum MenuActivityViewportMetrics {
+    public static let sectionHeaderHeight: CGFloat = 26
+    public static let repositoryHeaderHeight: CGFloat = 30
+    /// A session on its own: project name over agent and state.
+    public static let sessionHeight: CGFloat = 42
+    /// A session under its folder's header: one line.
+    public static let groupedSessionHeight: CGFloat = 30
+    public static let maximumHeight: CGFloat = 320
+
+    public static func height(of item: MenuRepositoryLayoutItem) -> CGFloat {
+        switch item {
+        case .section: sectionHeaderHeight
+        case .header: repositoryHeaderHeight
+        case .session: item.isGroupedSession ? groupedSessionHeight : sessionHeight
+        }
+    }
+
     public static func height(for items: [MenuRepositoryLayoutItem]) -> CGFloat {
-        min(items.reduce(CGFloat.zero) { partialResult, item in
-            partialResult + (item.isSession ? 60 : 54)
-        } + CGFloat(max(0, items.count - 1) * 2), 302)
+        min(items.reduce(CGFloat.zero) { $0 + height(of: $1) }, maximumHeight)
     }
 }
 
@@ -547,10 +646,14 @@ public enum MenuHeaderDetailCopy {
     ) -> String {
         switch context {
         case .awake:
-            let workingCount = rows.count
-            if workingCount == 1 { return "1 agent is working" }
-            if workingCount > 1 { return "\(workingCount) agents are working" }
-            return "No agents are working"
+            let waitingCount = rows.count(where: \.isWaiting)
+            let workingCount = rows.count - waitingCount
+            let working = switch workingCount {
+            case 0: "No agents are working"
+            case 1: "1 agent is working"
+            default: "\(workingCount) agents are working"
+            }
+            return waitingCount == 0 ? working : "\(working) · \(waitingCount) waiting"
         case .idle:
             return "Your Mac can sleep normally"
         case .paused:
