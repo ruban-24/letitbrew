@@ -17,6 +17,11 @@ final class LetItBrewBootstrap: NSObject, NSApplicationDelegate, @unchecked Send
 #endif
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+#if DEBUG
+        if ProcessInfo.processInfo.environment["LETITBREW_DESIGN_PREVIEW_APPEARANCE"] == "dark" {
+            NSApplication.shared.appearance = NSAppearance(named: .darkAqua)
+        }
+#endif
         switch LetItBrewRuntimeLaunchMode.current {
         case .registerDaemon:
             finishRegistration(register: true)
@@ -44,9 +49,8 @@ final class LetItBrewBootstrap: NSObject, NSApplicationDelegate, @unchecked Send
 #endif
         case .designPreviewSettings:
 #if DEBUG
-            Task { @MainActor [weak self] in
-                self?.showSettingsDesignPreview()
-            }
+            // LetItBrewSettingsPreviewApp opens its own Settings window.
+            break
 #else
             Self.fail(DaemonConnectionFailure.unavailable(
                 "Design preview is available only in Debug builds."
@@ -64,7 +68,7 @@ final class LetItBrewBootstrap: NSObject, NSApplicationDelegate, @unchecked Send
 #if DEBUG
     @MainActor
     private func showDesignPreview() {
-        let model = makeDesignPreviewModel()
+        let model = LetItBrewAppModel.designPreview()
         let content = MenuBarContentView()
             .environmentObject(model)
             .frame(width: 380, height: 570, alignment: .top)
@@ -73,48 +77,6 @@ final class LetItBrewBootstrap: NSObject, NSApplicationDelegate, @unchecked Send
             size: NSSize(width: 380, height: 570),
             title: "Let It Brew Design Preview"
         )
-    }
-
-    @MainActor
-    private func showSettingsDesignPreview() {
-        let content = LetItBrewSettingsView()
-            .environmentObject(makeDesignPreviewModel())
-        showDesignPreviewWindow(
-            rootView: content,
-            size: NSSize(width: 570, height: 470),
-            title: "Let It Brew Settings Preview"
-        )
-    }
-
-    @MainActor
-    private func makeDesignPreviewModel() -> LetItBrewAppModel {
-        let now = Date()
-        return LetItBrewAppModel.preview(sessions: [
-            SessionRecord(
-                id: "newest-codex", tool: "codex", state: .working,
-                detail: "running-command", cwd: "/Projects/app", pid: nil,
-                updatedAt: now, lastEvent: "PreToolUse",
-                startedAt: now.addingTimeInterval(-3_800), accumulatedWorkingTime: 3_800
-            ),
-            SessionRecord(
-                id: "newest-claude", tool: "claude", state: .working,
-                detail: "editing-file", cwd: "/Projects/app", pid: nil,
-                updatedAt: now.addingTimeInterval(-5), lastEvent: "PreToolUse",
-                startedAt: now.addingTimeInterval(-2_400), accumulatedWorkingTime: 2_395
-            ),
-            SessionRecord(
-                id: "older-codex", tool: "codex", state: .working,
-                detail: "running-command", cwd: "/Archive/app", pid: nil,
-                updatedAt: now.addingTimeInterval(-30), lastEvent: "PreToolUse",
-                startedAt: now.addingTimeInterval(-1_800), accumulatedWorkingTime: 1_770
-            ),
-            SessionRecord(
-                id: "older-claude", tool: "claude", state: .working,
-                detail: "editing-file", cwd: "/Archive/app", pid: nil,
-                updatedAt: now.addingTimeInterval(-35), lastEvent: "PreToolUse",
-                startedAt: now.addingTimeInterval(-1_200), accumulatedWorkingTime: 1_165
-            ),
-        ], now: now)
     }
 
     @MainActor
@@ -328,3 +290,40 @@ final class LetItBrewBootstrap: NSObject, NSApplicationDelegate, @unchecked Send
         exit(EXIT_FAILURE)
     }
 }
+
+#if DEBUG
+extension LetItBrewAppModel {
+    /// Sample sessions for the design previews: a folder with two agents, a
+    /// session on its own, and one waiting for approval, on battery.
+    @MainActor
+    static func designPreview() -> LetItBrewAppModel {
+        let now = Date()
+        return LetItBrewAppModel.preview(sessions: [
+            SessionRecord(
+                id: "newest-codex", tool: "codex", state: .working,
+                detail: "running-command", cwd: "/Projects/letitbrew", pid: nil,
+                updatedAt: now, lastEvent: "PreToolUse",
+                startedAt: now.addingTimeInterval(-3_800), accumulatedWorkingTime: 3_800
+            ),
+            SessionRecord(
+                id: "newest-claude", tool: "claude", state: .working,
+                detail: "editing-file", cwd: "/Projects/letitbrew", pid: nil,
+                updatedAt: now.addingTimeInterval(-5), lastEvent: "PreToolUse",
+                startedAt: now.addingTimeInterval(-2_400), accumulatedWorkingTime: 2_395
+            ),
+            SessionRecord(
+                id: "waiting-claude", tool: "claude", state: .waiting,
+                detail: SessionWaitDetail.approval, cwd: "/Projects/website", pid: nil,
+                updatedAt: now.addingTimeInterval(-40), lastEvent: "PermissionRequest",
+                startedAt: now.addingTimeInterval(-900), accumulatedWorkingTime: 860
+            ),
+            SessionRecord(
+                id: "older-codex", tool: "codex", state: .working,
+                detail: "running-command", cwd: "/Archive/api", pid: nil,
+                updatedAt: now.addingTimeInterval(-30), lastEvent: "PreToolUse",
+                startedAt: now.addingTimeInterval(-1_800), accumulatedWorkingTime: 1_770
+            ),
+        ], power: PowerState(onBattery: true, batteryPercent: 64, thermal: .nominal), now: now)
+    }
+}
+#endif

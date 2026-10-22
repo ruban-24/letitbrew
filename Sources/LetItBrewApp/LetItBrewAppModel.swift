@@ -2183,8 +2183,10 @@ final class LetItBrewAppModel: ObservableObject {
             now: snapshot.now,
             previousIDs: sessions.map(\.id)
         )
+        // Waiting sessions are listed in their own section, not their folder.
         sessionGroups = MenuRepositoryPresentationPolicy.groups(
-            from: nextSessions, previousIDs: sessionGroups.map(\.id)
+            from: nextSessions.filter { !$0.isWaiting },
+            previousIDs: sessionGroups.map(\.id)
         )
         sessions = nextSessions
 

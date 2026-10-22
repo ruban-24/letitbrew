@@ -4,105 +4,57 @@ import SwiftUI
 
 struct LetItBrewSettingsView: View {
     @EnvironmentObject private var model: LetItBrewAppModel
-    @State private var selectedPane: SettingsPane = .general
-    @State private var hoveredPane: SettingsPane?
+    @State private var selectedPane: SettingsPane
     @State private var presentedRecovery: RecoveryGuidance?
     @State private var uninstallHovered = false
-    @Environment(\.colorScheme) private var colorScheme
-    @FocusState private var focusedPane: SettingsPane?
+
+    init(initialPane: SettingsPane = .general) {
+        _selectedPane = State(initialValue: initialPane)
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            settingsNavigation
-            selectedSettings
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // A TabView at the root of the Settings scene gives the standard
+        // toolbar tabs; the window resizes to each pane and takes its title.
+        TabView(selection: $selectedPane) {
+            general
+                .settingsPane(.general)
+            agents
+                .settingsPane(.agents)
+            power
+                .settingsPane(.power)
+            closedLid
+                .settingsPane(.closedLid)
+            about
+                .settingsPane(.about)
         }
-        .frame(width: 540, height: 430)
-        .padding(12)
         .sheet(isPresented: updateCompletionReportBinding) { updateCompletionReport }
         .sheet(isPresented: uninstallReportBinding) { uninstallReport }
         .sheet(item: $presentedRecovery) { guidance in
             recoverySheet(guidance)
         }
-    }
-
-    private var settingsNavigation: some View {
-        HStack(spacing: 6) {
-            ForEach(SettingsPane.allCases) { pane in
-                settingsButton(for: pane)
-            }
+        .confirmationDialog(
+            updateConfirmationTitle,
+            isPresented: updateConfirmationBinding,
+            titleVisibility: .visible
+        ) {
+            Button("Install Update") { model.confirmUpdate() }
+            Button("Cancel", role: .cancel) { model.cancelUpdate(from: .settings) }
+        } message: {
+            Text(updateConfirmationMessage)
         }
-        .focusSection()
-        .padding(.horizontal, 12)
-        .padding(.top, 8)
-        .padding(.bottom, 10)
-    }
-
-    private func selectionOpacity(hovered: Bool) -> Double {
-        let base = colorScheme == .dark ? 0.22 : 0.12
-        return hovered ? base + 0.05 : base
-    }
-
-    private func settingsButton(for pane: SettingsPane) -> some View {
-        let isSelected = selectedPane == pane
-        let isFocused = focusedPane == pane
-
-        return Button {
-            selectedPane = pane
-        } label: {
-            VStack(spacing: 4) {
-                Image(systemName: pane.systemImage)
-                    .font(.system(size: 19, weight: isSelected ? .semibold : .regular))
-                    .frame(height: 22)
-                Text(pane.title)
-                    .font(.caption.weight(isSelected ? .semibold : .regular))
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .frame(height: 26, alignment: .top)
-            }
-            .frame(width: 74, height: 64)
-            .contentShape(RoundedRectangle(cornerRadius: 8))
-        }
-        .buttonStyle(.plain)
-        .background {
-            RoundedRectangle(cornerRadius: 8)
-                .fill(isSelected
-                      ? Color.accentColor.opacity(selectionOpacity(hovered: hoveredPane == pane))
-                      : hoveredPane == pane
-                        ? Color.primary.opacity(0.06)
-                        : Color.clear)
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(isFocused ? Color.accentColor : Color.clear, lineWidth: 2)
-        }
-        .focused($focusedPane, equals: pane)
-        .onHover { isHovered in
-            if isHovered {
-                hoveredPane = pane
-            } else if hoveredPane == pane {
-                hoveredPane = nil
-            }
-        }
-        .accessibilityLabel(pane.title)
-        .accessibilityHint("Show \(pane.title) settings")
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-        .accessibilityIdentifier("settings-pane-\(pane.id)")
-    }
-
-    @ViewBuilder
-    private var selectedSettings: some View {
-        switch selectedPane {
-        case .general:
-            general
-        case .agents:
-            agents
-        case .powerAndDisplay:
-            powerAndDisplay
-        case .about:
-            about
+        .confirmationDialog(
+            "Uninstall Let It Brew?",
+            isPresented: uninstallConfirmationBinding,
+            titleVisibility: .visible
+        ) {
+            Button("Uninstall", role: .destructive) { model.confirmUninstall() }
+            Button("Cancel", role: .cancel) { model.cancelUninstall() }
+        } message: {
+            Text("This disconnects all connected agent integrations, stops Let It Brew's background service, removes its settings and session records, and moves Let It Brew to the Trash.")
         }
     }
+
+    // MARK: General
 
     private var general: some View {
         Form {
@@ -117,19 +69,72 @@ struct LetItBrewSettingsView: View {
                 openLoginItems: { model.openLoginItemSettings() }
             )
 
-            Section("Closed lid") {
-                Toggle("Keep agents working when the lid is closed", isOn: Binding(
-                    get: { model.keepWorkingWithLidClosed },
-                    set: { model.setKeepWorkingWithLidClosed($0) }
-                ))
+            Section("Updates") {
+                LabeledContent {
+                    updateAccessory
+                } label: {
+                    Text("Let It Brew \(shortVersion)")
+                    Text(updateStatus)
+                }
 
-                Text(closedLidDescription)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if case .failed(let failure, _) = model.updateState {
+                    let guidance = OperationRecoveryCatalog.update(
+                        kind: failure.kind,
+                        diagnostic: model.updateDiagnostic(for: failure)
+                    )
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(guidance.title)
+                            .fontWeight(.medium)
+                        Text(guidance.summary)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        HStack(spacing: 8) {
+                            Spacer()
+                            Button("Dismiss") { model.dismissUpdateStatus() }
+                            Button("Recovery Steps…") { presentedRecovery = guidance }
+                            Button("Try Again") { model.retryUpdate() }
+                                .disabled(model.updateInProgress)
+                        }
+                    }
+                }
             }
         }
         .formStyle(.grouped)
     }
+
+    @ViewBuilder
+    private var updateAccessory: some View {
+        switch model.updateState {
+        case .idle, .failed:
+            checkForUpdatesButton("Check for Updates…")
+        case .upToDate:
+            checkForUpdatesButton("Check Again")
+        case .checking, .installing, .readyToQuit:
+            ProgressView()
+                .controlSize(.small)
+        case .available:
+            EmptyView()
+        }
+    }
+
+    private func checkForUpdatesButton(_ title: String) -> some View {
+        Button(title) { model.checkForUpdates() }
+            .disabled(model.updateBlocksOtherActions || model.uninstallInProgress)
+    }
+
+    private var updateStatus: String {
+        switch model.updateState {
+        case .idle: "Checks for updates daily. Nothing installs until you choose."
+        case .checking: "Checking for updates…"
+        case .upToDate: "Let It Brew is up to date."
+        case .available(let release): "Version \(release.version.description) is available."
+        case .installing: "Downloading and verifying update…"
+        case .readyToQuit: "Update ready. Restarting Let It Brew…"
+        case .failed: "The last update check didn’t finish."
+        }
+    }
+
+    // MARK: Agents
 
     private var agents: some View {
         Form {
@@ -154,22 +159,27 @@ struct LetItBrewSettingsView: View {
                             .textSelection(.enabled)
                     }
 
-                    Button {
-                        model.refreshAgentConnections()
-                    } label: {
-                        Label("Refresh Connections", systemImage: "arrow.clockwise")
+                    HStack {
+                        Spacer()
+                        Button {
+                            model.refreshAgentConnections()
+                        } label: {
+                            Label("Refresh Connections", systemImage: "arrow.clockwise")
+                        }
+                        .controlSize(.small)
+                        .disabled(
+                            model.hookActionInProgress
+                                || model.uninstallInProgress
+                                || model.updateBlocksOtherActions
+                                || !model.agentHooks.contains {
+                                    model.isAgentWatched($0.id) || $0.disposition == .disconnectFailed
+                                }
+                        )
+                        .help("Check watched agent connections again")
+                        .accessibilityHint("Retry failed cleanup and check watched agent connections again")
                     }
-                    .controlSize(.small)
-                    .disabled(
-                        model.hookActionInProgress
-                            || model.uninstallInProgress
-                            || model.updateBlocksOtherActions
-                            || !model.agentHooks.contains {
-                                model.isAgentWatched($0.id) || $0.disposition == .disconnectFailed
-                            }
-                    )
-                    .accessibilityHint("Retry failed cleanup and check watched agent connections again")
                 }
+                .font(.callout)
             }
         }
         .formStyle(.grouped)
@@ -178,158 +188,132 @@ struct LetItBrewSettingsView: View {
         }
     }
 
-    private var powerAndDisplay: some View {
+    // MARK: Power
+
+    private var power: some View {
+        Form {
+            Section("Battery") {
+                Toggle(isOn: $model.onlyWhileConnectedToPower) {
+                    Text("Only keep Mac awake while connected to power")
+                }
+
+                Picker("Stop keeping Mac awake below", selection: batteryFloorPercent) {
+                    ForEach(Self.batteryFloorChoices, id: \.self) { percent in
+                        Text("\(percent)%").tag(percent)
+                    }
+                }
+                .disabled(model.onlyWhileConnectedToPower)
+
+                Toggle(isOn: $model.respectLowPowerMode) {
+                    Text("Respect Low Power Mode")
+                    Text("Lets the Mac sleep when you turn on Low Power Mode. Let It Brew’s own closed-lid switch doesn’t count.")
+                }
+            }
+
+            Section {
+                Toggle(isOn: $model.allowDisplaysToSleep) {
+                    Text("Allow displays to sleep while agents are working")
+                    Text(model.allowDisplaysToSleep
+                         ? "Displays may sleep while the system sleep hold remains active."
+                         : "Display idle sleep is held only while an agent keeps the Mac awake.")
+                }
+            } header: {
+                Text("Display")
+            } footer: {
+                Text("Let It Brew always releases its sleep holds under serious or critical thermal pressure.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    /// The battery floor in the five-point steps it is stored in.
+    private static let batteryFloorChoices = Array(stride(from: 5, through: 50, by: 5))
+
+    private var batteryFloorPercent: Binding<Int> {
+        Binding(
+            get: { Int(model.batteryFloor) },
+            set: { model.batteryFloor = Double($0) }
+        )
+    }
+
+    // MARK: Closed Lid
+
+    private var closedLid: some View {
         let helper = BackgroundHelperPresentationPolicy.resolve(
             closedLidEnabled: model.keepWorkingWithLidClosed,
             recoveryState: model.daemonRecoveryState
         )
-        let helperStatusColor: Color = if !model.keepWorkingWithLidClosed {
-            .secondary
-        } else {
-            switch model.daemonRecoveryState {
-            case .ready:
-                .green
-            case .approvalRequired:
-                .orange
-            case .retryableFailure, .ineligible:
-                .red
-            case .checking, .finishingUpdate, .restartingSupport, .deferredUntilEnabled:
-                .secondary
-            }
-        }
 
         return Form {
-            Section("Background helper") {
-                HStack(alignment: .center, spacing: 10) {
-                    Label(helper.status, systemImage: !model.keepWorkingWithLidClosed
-                          ? "minus.circle"
-                          : helper.requiresAttention
-                            ? "exclamationmark.triangle.fill"
-                            : helper.showsProgress
-                              ? "clock"
-                              : "checkmark.circle.fill")
-                        .foregroundStyle(helperStatusColor)
-
-                    Spacer()
-
-                    if helper.showsProgress {
-                        ProgressView()
-                            .controlSize(.small)
-                            .accessibilityLabel(helper.status)
-                    }
+            Section {
+                Toggle(isOn: Binding(
+                    get: { model.keepWorkingWithLidClosed },
+                    set: { model.setKeepWorkingWithLidClosed($0) }
+                )) {
+                    Text("Keep agents working when the lid is closed")
+                    Text("Uses a local background helper only when enabled. Let It Brew never sends your agent data off this Mac.")
                 }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Required for closed-lid operation. The helper runs locally and releases its hold if communication with Let It Brew stops.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    if helper.requiresAttention {
-                        Text(helper.detail)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .textSelection(.enabled)
-                    }
-                }
-
-                ForEach(Array(helper.actions.enumerated()), id: \.offset) { _, action in
-                    switch action {
-                    case .setUp:
-                        Button("Repair Helper") { model.setUpDaemon() }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
-                    case .retry:
-                        Button("Repair Helper") { model.retryDaemonConnection() }
-                            .controlSize(.small)
-                    case .openBackgroundItems:
-                        Button("Open Background Items…") { model.openLoginItemSettings() }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
-                    }
-                }
-            }
-
-            Section("Battery") {
-                HStack(spacing: 12) {
-                    Text("Stop keeping Mac awake below")
-                        .fixedSize()
-
-                    BatteryFloorSlider(
-                        value: $model.batteryFloor,
-                        isEnabled: !model.onlyWhileConnectedToPower
-                    )
-                        .frame(width: 190)
-                        .padding(.leading, 30)
-
-                    Text("\(Int(model.batteryFloor))%")
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
-                        .frame(width: 36, alignment: .trailing)
-                }
-
-                Toggle(
-                    "Only keep Mac awake while connected to power",
-                    isOn: $model.onlyWhileConnectedToPower
-                )
-                Toggle("Respect Low Power Mode", isOn: $model.respectLowPowerMode)
-                    .help("Lets the Mac sleep when you turn on Low Power Mode. Let It Brew's own closed-lid switch doesn't count.")
-            }
-
-            Section("Closed lid") {
-                VStack(alignment: .leading, spacing: 4) {
-                    Toggle(
-                        "Use Low Power Mode while the lid is closed",
-                        isOn: $model.useLowPowerModeWithLidClosed
-                    )
-                    .disabled(!model.keepWorkingWithLidClosed)
-
+                Toggle(isOn: $model.useLowPowerModeWithLidClosed) {
+                    Text("Use Low Power Mode while the lid is closed")
                     Text("Switches to Low Power Mode while agents work with the lid shut and no external display, then restores your own setting when the lid opens or the work stops.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .disabled(!model.keepWorkingWithLidClosed)
 
-                    if let message = model.lowPowerModeMessage {
-                        Text(message)
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .textSelection(.enabled)
-                    }
+                if let message = model.lowPowerModeMessage {
+                    Text(message)
+                        .font(.callout)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
                 }
             }
 
-            Section("Display") {
-                Toggle(
-                    "Allow displays to sleep while agents are working",
-                    isOn: $model.allowDisplaysToSleep
-                )
-            }
+            Section {
+                LabeledContent("Background helper") {
+                    HStack(spacing: 6) {
+                        if helper.showsProgress {
+                            ProgressView()
+                                .controlSize(.small)
+                                .accessibilityHidden(true)
+                        } else {
+                            Circle()
+                                .fill(helperStatusColor)
+                                .frame(width: 8, height: 8)
+                                .accessibilityHidden(true)
+                        }
+                        Text(helper.status)
+                            .foregroundStyle(.secondary)
+                    }
+                }
 
-            Section("Built-in protections") {
-                ProtectionRow(
-                    title: "Thermal protection",
-                    detail: "Releases sleep holds under serious or critical thermal pressure.",
-                    status: "Always on",
-                    systemImage: "thermometer.high"
-                )
+                if helper.requiresAttention {
+                    Text(helper.detail)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                }
 
-                ProtectionRow(
-                    title: "Helper fail-safe",
-                    detail: "Releases the closed-lid hold if the app and helper stop communicating.",
-                    status: "Always on",
-                    systemImage: "bolt.slash"
-                )
-
-                ProtectionRow(
-                    title: "Display handling",
-                    detail: model.allowDisplaysToSleep
-                        ? "Displays may sleep while the system sleep hold remains active."
-                        : "Display idle sleep is held only while an agent keeps the Mac awake.",
-                    status: model.allowDisplaysToSleep ? "Can sleep" : "Held while working",
-                    systemImage: "display"
-                )
+                if !helper.actions.isEmpty {
+                    HStack(spacing: 8) {
+                        Spacer()
+                        ForEach(Array(helper.actions.enumerated()), id: \.offset) { _, action in
+                            switch action {
+                            case .setUp:
+                                Button("Repair Helper") { model.setUpDaemon() }
+                                    .buttonStyle(.borderedProminent)
+                            case .retry:
+                                Button("Repair Helper") { model.retryDaemonConnection() }
+                            case .openBackgroundItems:
+                                Button("Open Background Items…") { model.openLoginItemSettings() }
+                                    .buttonStyle(.borderedProminent)
+                            }
+                        }
+                    }
+                }
 
                 if model.lidCloseDisplaySleepInProgress {
                     ProgressView("Turning off displays…")
@@ -337,151 +321,85 @@ struct LetItBrewSettingsView: View {
                 }
                 if let message = model.lidCloseDisplaySleepMessage {
                     Text(message)
-                        .font(.caption)
+                        .font(.callout)
                         .foregroundStyle(.red)
                         .textSelection(.enabled)
                 }
+            } footer: {
+                Text("Required for closed-lid operation. The helper runs locally and releases its hold if communication with Let It Brew stops.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
         .onAppear { model.refreshBackgroundHelper() }
     }
 
-    private var about: some View {
-        GeometryReader { proxy in
-            ScrollView {
-                VStack(spacing: 0) {
-                    VStack(spacing: 6) {
-                        Image(nsImage: NSApp.applicationIconImage)
-                            .resizable()
-                            .interpolation(.high)
-                            .frame(width: 72, height: 72)
-                            .accessibilityHidden(true)
-                        Text("Let It Brew")
-                            .font(.title2.weight(.semibold))
-                        Text(versionDescription)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    VStack(spacing: 18) {
-                        Text("Keeps your Mac awake while local agents work, then lets it sleep when they finish.")
-                            .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: 340)
-                            .foregroundStyle(.secondary)
-                        updateControl
-                    }
-                    .padding(.top, 16)
-
-                    Spacer(minLength: 28)
-
-                    VStack(spacing: 12) {
-                        HStack(alignment: .firstTextBaseline, spacing: 16) {
-                            Link("GitHub", destination: ProductLinks.repository)
-                                .accessibilityHint("Open the Let It Brew repository")
-                            Link("Release Notes", destination: ProductLinks.releases)
-                                .accessibilityHint("Open Let It Brew releases")
-                            Link("Report Issue", destination: ProductLinks.reportIssue)
-                                .accessibilityHint("Open a new Let It Brew issue")
-                            Link("Privacy", destination: ProductLinks.privacy)
-                                .accessibilityHint("Open the Let It Brew privacy notice")
-                        }
-                        .font(.caption)
-                        // Link paints itself with NSColor.linkColor, so the app
-                        // accent has to be applied explicitly here.
-                        .foregroundStyle(Color.accentColor)
-
-                        Divider()
-                            .frame(maxWidth: 280)
-
-                        uninstallControl
-                    }
-                }
-                .frame(
-                    maxWidth: .infinity,
-                    // ponytail: keeps the footer on the bottom edge while the
-                    // ScrollView still rescues tall update/uninstall failure text.
-                    minHeight: max(0, proxy.size.height - 56),
-                    alignment: .top
-                )
-                .padding(28)
-            }
-        }
-        .confirmationDialog(
-            updateConfirmationTitle,
-            isPresented: updateConfirmationBinding,
-            titleVisibility: .visible
-        ) {
-            Button("Install Update") { model.confirmUpdate() }
-            Button("Cancel", role: .cancel) { model.cancelUpdate(from: .settings) }
-        } message: {
-            Text(updateConfirmationMessage)
-        }
-        .confirmationDialog(
-            "Uninstall Let It Brew?",
-            isPresented: uninstallConfirmationBinding,
-            titleVisibility: .visible
-        ) {
-            Button("Uninstall", role: .destructive) { model.confirmUninstall() }
-            Button("Cancel", role: .cancel) { model.cancelUninstall() }
-        } message: {
-            Text("This disconnects all connected agent integrations, stops Let It Brew's background service, removes its settings and session records, and moves Let It Brew to the Trash.")
+    private var helperStatusColor: Color {
+        guard model.keepWorkingWithLidClosed else { return .secondary }
+        return switch model.daemonRecoveryState {
+        case .ready:
+            .green
+        case .approvalRequired:
+            .orange
+        case .retryableFailure, .ineligible:
+            .red
+        case .checking, .finishingUpdate, .restartingSupport, .deferredUntilEnabled:
+            .secondary
         }
     }
 
-    @ViewBuilder
-    private var updateControl: some View {
-        switch model.updateState {
-        case .idle:
-            Button("Check for Updates…") { model.checkForUpdates() }
-                .disabled(model.updateBlocksOtherActions || model.uninstallInProgress)
-        case .checking:
-            ProgressView("Checking for updates…")
-                .controlSize(.small)
-        case .upToDate:
-            VStack(spacing: 8) {
-                Text("Let It Brew is up to date.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                HStack(spacing: 12) {
-                    Button("Check Again") { model.checkForUpdates() }
-                    Button("Dismiss") { model.dismissUpdateStatus() }
+    // MARK: About
+
+    private var about: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                VStack(spacing: 6) {
+                    Image(nsImage: NSApp.applicationIconImage)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: 72, height: 72)
+                        .accessibilityHidden(true)
+                    Text("Let It Brew")
+                        .font(.title2.weight(.semibold))
+                    Text(versionDescription)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
                 }
-            }
-        case .available(let release):
-            Text("Version \(release.version.description) is available.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-        case .installing:
-            ProgressView("Downloading and verifying update…")
-                .controlSize(.small)
-        case .readyToQuit:
-            ProgressView("Update ready. Restarting Let It Brew…")
-                .controlSize(.small)
-        case .failed(let failure, _):
-            let guidance = OperationRecoveryCatalog.update(
-                kind: failure.kind,
-                diagnostic: model.updateDiagnostic(for: failure)
-            )
-            VStack(spacing: 8) {
-                Text(guidance.title)
-                    .font(.callout.weight(.medium))
-                Text(guidance.summary)
-                    .font(.callout)
+
+                Text("Keeps your Mac awake while local agents work, then lets it sleep when they finish.")
                     .multilineTextAlignment(.center)
-                    .frame(maxWidth: 360)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 340)
                     .foregroundStyle(.secondary)
-                HStack(spacing: 12) {
-                    Button("Try Again") { model.retryUpdate() }
-                        .disabled(model.updateInProgress)
-                    Button("Recovery Steps…") {
-                        presentedRecovery = guidance
-                    }
-                    Button("Dismiss") { model.dismissUpdateStatus() }
+                    .padding(.top, 14)
+
+                HStack(alignment: .firstTextBaseline, spacing: 16) {
+                    Link("GitHub", destination: ProductLinks.repository)
+                        .accessibilityHint("Open the Let It Brew repository")
+                    Link("Release Notes", destination: ProductLinks.releases)
+                        .accessibilityHint("Open Let It Brew releases")
+                    Link("Report Issue", destination: ProductLinks.reportIssue)
+                        .accessibilityHint("Open a new Let It Brew issue")
+                    Link("Privacy", destination: ProductLinks.privacy)
+                        .accessibilityHint("Open the Let It Brew privacy notice")
                 }
+                // Link paints itself with NSColor.linkColor, so the app
+                // accent has to be applied explicitly here.
+                .foregroundStyle(Color.accentColor)
+                .padding(.top, 20)
+
+                Divider()
+                    .frame(maxWidth: 280)
+                    .padding(.vertical, 16)
+
+                uninstallControl
             }
+            .frame(maxWidth: .infinity)
+            .padding(28)
         }
+        .scrollBounceBehavior(.basedOnSize)
     }
 
     private var uninstallControl: some View {
@@ -489,7 +407,6 @@ struct LetItBrewSettingsView: View {
             Button("Uninstall Let It Brew…") { model.beginUninstall() }
                 .disabled(model.uninstallInProgress || model.updateBlocksOtherActions)
                 .buttonStyle(.plain)
-                .font(.caption)
                 .foregroundStyle(uninstallHovered ? Color.red : Color.secondary)
                 .onHover { uninstallHovered = $0 }
             if case .blocked(let failure, let offersDiagnostic) = model.uninstallState {
@@ -733,15 +650,14 @@ struct LetItBrewSettingsView: View {
         )
     }
 
-    private var closedLidDescription: String {
-        "Uses a local background helper only when enabled. Let It Brew never sends your agent data off this Mac."
+    private var shortVersion: String {
+        Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleShortVersionString"
+        ) as? String ?? "Development"
     }
 
     private var versionDescription: String {
-        let version = Bundle.main.object(
-            forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "Development"
-        return "Version \(version)"
+        "Version \(shortVersion)"
     }
 }
 
@@ -802,98 +718,11 @@ private struct RecoveryGuidanceSheet: View {
     }
 }
 
-private struct BatteryFloorSlider: NSViewRepresentable {
-    @Binding var value: Double
-    let isEnabled: Bool
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(value: $value)
-    }
-
-    func makeNSView(context: Context) -> NSSlider {
-        let slider = NSSlider(
-            value: value,
-            minValue: 5,
-            maxValue: 50,
-            target: context.coordinator,
-            action: #selector(Coordinator.valueChanged(_:))
-        )
-        slider.numberOfTickMarks = 10
-        slider.tickMarkPosition = .below
-        slider.allowsTickMarkValuesOnly = true
-        slider.isContinuous = true
-        slider.setAccessibilityLabel("Stop keeping Mac awake below")
-        return slider
-    }
-
-    func updateNSView(_ slider: NSSlider, context: Context) {
-        context.coordinator.value = $value
-        slider.doubleValue = value
-        slider.isEnabled = isEnabled
-        slider.setAccessibilityValueDescription("\(Int(value)) percent")
-        slider.setAccessibilityHelp(isEnabled
-            ? "Sets the battery level where Let It Brew releases its sleep hold"
-            : "Unavailable because Let It Brew is limited to connected power")
-    }
-
-    final class Coordinator: NSObject {
-        var value: Binding<Double>
-
-        init(value: Binding<Double>) {
-            self.value = value
-        }
-
-        @MainActor @objc func valueChanged(_ slider: NSSlider) {
-            value.wrappedValue = slider.doubleValue
-        }
-    }
-}
-
-private struct ProtectionRow: View {
-    let title: String
-    let detail: String
-    let status: String
-    let systemImage: String
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 10) {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 26, height: 26)
-                    .background(
-                        Color.primary.opacity(0.06),
-                        in: RoundedRectangle(cornerRadius: 7)
-                    )
-                    .accessibilityHidden(true)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(title)
-                        .font(.callout.weight(.medium))
-                    Text(detail)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
-            Spacer(minLength: 8)
-
-            Text(status)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .frame(width: 122, alignment: .leading)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
-    }
-}
-
-private enum SettingsPane: String, CaseIterable, Identifiable {
+enum SettingsPane: String, CaseIterable, Identifiable {
     case general = "General"
     case agents = "Agents"
-    case powerAndDisplay = "Power & Display"
+    case power = "Power"
+    case closedLid = "Closed Lid"
     case about = "About"
 
     var id: String { rawValue.lowercased() }
@@ -903,9 +732,31 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         switch self {
         case .general: "gearshape"
         case .agents: "terminal"
-        case .powerAndDisplay: "battery.100percent"
+        case .power: "bolt"
+        case .closedLid: "laptopcomputer"
         case .about: "info.circle"
         }
+    }
+
+    /// Fixed per pane: the Settings window animates between them. Tall
+    /// failure text scrolls inside the pane instead of growing the window.
+    var height: CGFloat {
+        switch self {
+        case .general: 240
+        case .agents: 430
+        case .power: 380
+        case .closedLid: 360
+        case .about: 360
+        }
+    }
+}
+
+private extension View {
+    func settingsPane(_ pane: SettingsPane) -> some View {
+        frame(width: 520, height: pane.height)
+            .tabItem { Label(pane.title, systemImage: pane.systemImage) }
+            .tag(pane)
+            .accessibilityIdentifier("settings-pane-\(pane.id)")
     }
 }
 
@@ -916,57 +767,81 @@ private struct WatchedAgentRow: View {
     let setWatched: (Bool) -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            AgentLogo(toolID: health.id)
-                .frame(width: 28, height: 28)
+        Toggle(isOn: Binding(
+            get: { isWatched },
+            set: { watched in setWatched(watched) }
+        )) {
+            HStack(spacing: 10) {
+                AgentLogo(toolID: health.id)
+                    .frame(width: 22, height: 22)
+                    .padding(4)
+                    .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 7))
 
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(health.name)
-
-                    if isWatched && health.state == .connecting {
-                        ProgressView()
-                            .controlSize(.mini)
-                            .accessibilityLabel("Checking \(health.name)")
-                    }
-                }
-
-                if showsRecovery, let detail = health.details.first {
-                    HStack(alignment: .firstTextBaseline, spacing: 5) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.caption2)
-                            .foregroundStyle(.orange)
-                            .accessibilityHidden(true)
-                        Text(detail)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.85)
-                            .textSelection(.enabled)
-                    }
-                    .help(detail)
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel("\(health.name) connection needs attention: \(detail)")
+                    status
                 }
             }
-
-            Spacer(minLength: 12)
-
-            Toggle("Watch \(health.name)", isOn: Binding(
-                get: { isWatched },
-                set: { watched in setWatched(watched) }
-            ))
-            .labelsHidden()
-            .toggleStyle(.switch)
-            .controlSize(.mini)
-            .disabled(isWorking)
-            .accessibilityLabel("Watch \(health.name)")
-            .accessibilityHint(isWatched
-                ? "Stop watching \(health.name) sessions"
-                : "Watch \(health.name) sessions")
         }
-        .frame(minHeight: 54)
-        .accessibilityElement(children: .contain)
+        .toggleStyle(.switch)
+        .disabled(isWorking)
+        .accessibilityLabel("Watch \(health.name)")
+        .accessibilityValue(statusText)
+        .accessibilityHint(isWatched
+            ? "Stop watching \(health.name) sessions"
+            : "Watch \(health.name) sessions")
+    }
+
+    private var status: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 5) {
+            switch tone {
+            case .progress:
+                ProgressView()
+                    .controlSize(.mini)
+                    .accessibilityHidden(true)
+            case .attention:
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .accessibilityHidden(true)
+            case .connected:
+                Circle()
+                    .fill(.green)
+                    .frame(width: 6, height: 6)
+                    .accessibilityHidden(true)
+            case .off:
+                EmptyView()
+            }
+            Text(statusText)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .textSelection(.enabled)
+        }
+        .font(.callout)
+        .help(statusText)
+    }
+
+    private enum Tone { case progress, attention, connected, off }
+
+    private var tone: Tone {
+        if showsRecovery { return .attention }
+        guard isWatched else { return .off }
+        return switch health.state {
+        case .connecting: .progress
+        case .connected: .connected
+        case .actionNeeded, .couldNotConnect: .attention
+        }
+    }
+
+    private var statusText: String {
+        if showsRecovery, let detail = health.details.first {
+            return detail
+        }
+        guard isWatched else { return "Not watched" }
+        return switch health.state {
+        case .connecting: "Checking…"
+        case .connected: "Connected"
+        case .actionNeeded, .couldNotConnect: health.state.rawValue
+        }
     }
 
     private var showsRecovery: Bool {

@@ -45,43 +45,28 @@ private func flaskImage(level: CGFloat, side: CGFloat) -> NSImage {
     return image
 }
 
-private struct PopoverAppIcon: View {
-    var body: some View {
-        Image(nsImage: NSApplication.shared.applicationIconImage)
-            .resizable()
-            .scaledToFit()
-            .frame(width: 32, height: 32)
-            .accessibilityHidden(true)
-    }
-}
-
 private struct PopoverHoverHighlight: ViewModifier {
-    let cornerRadius: CGFloat
+    let isEnabled: Bool
     @State private var isHovered = false
 
     func body(content: Content) -> some View {
         content
             .background(
-                isHovered ? Color.primary.opacity(0.08) : .clear,
-                in: RoundedRectangle(cornerRadius: cornerRadius)
+                isEnabled && isHovered ? Color.primary.opacity(0.08) : .clear,
+                in: RoundedRectangle(cornerRadius: 6)
             )
             .onHover { isHovered = $0 }
     }
 }
 
 private extension View {
-    func popoverHoverHighlight(cornerRadius: CGFloat = 6) -> some View {
-        modifier(PopoverHoverHighlight(cornerRadius: cornerRadius))
-    }
-
-    func popoverActionRowAffordance() -> some View {
-        popoverHoverHighlight(cornerRadius: 0)
-            .overlay(alignment: .top) {
-                Divider()
-                    .opacity(0.5)
-            }
+    /// The rounded, inset highlight a menu item shows under the pointer.
+    func popoverHoverHighlight(_ isEnabled: Bool = true) -> some View {
+        modifier(PopoverHoverHighlight(isEnabled: isEnabled))
     }
 }
+
+private typealias RowMetrics = MenuActivityViewportMetrics
 
 struct MenuBarContentView: View {
     @EnvironmentObject private var model: LetItBrewAppModel
@@ -103,59 +88,33 @@ struct MenuBarContentView: View {
         VStack(spacing: 0) {
             header
                 .padding(.horizontal, 16)
-                .padding(.vertical, 14)
+                .padding(.top, 14)
+                .padding(.bottom, 12)
 
-            if let batteryPresentation {
-                supplementaryRow(.battery(batteryPresentation))
-            }
-
-            if !model.sessions.isEmpty {
+            if !boardItems.isEmpty {
+                menuDivider
                 sessionBoard
-                    .padding(.top, 2)
+                    .padding(.vertical, 5)
             }
 
-            if !otherSupplementaryRows.isEmpty {
-                supplementaryRowsView(otherSupplementaryRows)
-                    .padding(.top, 2)
-            }
-
-            if let setupAttention {
-                Button {
-                    showSettings()
-                } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "exclamationmark.circle.fill")
-                            .font(.system(size: 18))
-                            .foregroundStyle(.orange)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(setupAttention.title)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.orange)
-                            Text(setupAttention.detail)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        Spacer(minLength: 8)
-
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.tertiary)
+            if !otherSupplementaryRows.isEmpty || setupAttention != nil {
+                menuDivider
+                VStack(spacing: 4) {
+                    ForEach(Array(otherSupplementaryRows.enumerated()), id: \.offset) { _, row in
+                        supplementaryRow(row)
                     }
-                    .contentShape(Rectangle())
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
+                    if let setupAttention {
+                        setupAttentionRow(setupAttention)
+                    }
                 }
-                .buttonStyle(.plain)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.orange.opacity(0.07))
+                .padding(6)
             }
 
+            menuDivider
             footer
+                .padding(6)
         }
         .frame(width: 344)
-        .background(.regularMaterial)
         // Polling updates content in place. Only an explicit disclosure click
         // animates layout, so background work cannot animate the scroll area.
         .onAppear {
@@ -187,6 +146,11 @@ struct MenuBarContentView: View {
         }
     }
 
+    private var menuDivider: some View {
+        Divider()
+            .padding(.horizontal, 12)
+    }
+
     private var uninstallRecovery: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Uninstall needs attention", systemImage: "exclamationmark.circle.fill")
@@ -200,45 +164,52 @@ struct MenuBarContentView: View {
         }
         .padding(16)
         .frame(width: 344, alignment: .leading)
-        .background(.regularMaterial)
     }
 
     private var header: some View {
-        HStack(spacing: 12) {
-            PopoverAppIcon()
-
-            VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 12) {
                 Text(model.reason)
                     .font(.headline)
-                    .foregroundStyle(headerColor)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
                     .accessibilityAddTraits(.isHeader)
-                Text(headerDetail)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+
+                Spacer(minLength: 8)
+
+                Toggle("Let It Brew enabled", isOn: Binding(
+                    get: { model.isEnabled },
+                    set: { model.setEnabled($0) }
+                ))
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .accessibilityHint("Controls whether working agents may keep this Mac awake")
             }
-
-            Spacer(minLength: 8)
-
-            Toggle("Let It Brew enabled", isOn: Binding(
-                get: { model.isEnabled },
-                set: { model.setEnabled($0) }
-            ))
-            .labelsHidden()
-            .toggleStyle(.switch)
-            .controlSize(.small)
-            .accessibilityHint("Controls whether working agents may keep this Mac awake")
+            Text(headerDetail)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            if let batteryPresentation {
+                batteryLine(batteryPresentation)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func supplementaryRowsView(_ rows: [MenuSupplementaryRow]) -> some View {
-        VStack(spacing: 2) {
-            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                supplementaryRow(row)
-            }
+    private func batteryLine(_ presentation: MenuBatteryPresentation) -> some View {
+        Label {
+            Text(presentation.text)
+        } icon: {
+            Image(systemName: presentation.isAttention
+                  ? "exclamationmark.triangle.fill"
+                  : MenuBatteryIconPolicy.systemImageName(
+                    percent: model.currentPower.batteryPercent
+                  ))
+                .accessibilityHidden(true)
         }
+        .font(.subheadline)
+        .foregroundStyle(presentation.isAttention ? Color.orange : Color.secondary)
+        .padding(.top, 2)
     }
 
     @ViewBuilder
@@ -251,7 +222,7 @@ struct MenuBarContentView: View {
                     .accessibilityHidden(true)
 
                 Text(message)
-                    .font(.caption)
+                    .font(.subheadline)
                     .fixedSize(horizontal: false, vertical: true)
 
                 Spacer(minLength: 8)
@@ -260,26 +231,13 @@ struct MenuBarContentView: View {
                     .controlSize(.small)
                     .help("Try to release every sleep hold again")
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(Color.orange.opacity(0.07))
+            .padding(10)
+            .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
 
         case .battery(let presentation):
-            Label {
-                Text(presentation.text)
-                    .font(.caption)
-            } icon: {
-                Image(systemName: presentation.isAttention
-                      ? "exclamationmark.triangle.fill"
-                      : MenuBatteryIconPolicy.systemImageName(
-                        percent: model.currentPower.batteryPercent
-                      ))
-                    .accessibilityHidden(true)
-            }
-            .foregroundStyle(presentation.isAttention ? Color.orange : Color.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            batteryLine(presentation)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 10)
 
         case .update(let version):
             Button {
@@ -290,30 +248,75 @@ struct MenuBarContentView: View {
                         .foregroundStyle(Color(.brewPurple))
                         .accessibilityHidden(true)
                     Text("Update \(version.description) available")
-                        .font(.caption.weight(.medium))
                     Spacer(minLength: 8)
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.tertiary)
                         .accessibilityHidden(true)
                 }
+                .padding(.horizontal, 10)
+                .frame(height: 30)
                 .contentShape(Rectangle())
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
             }
             .buttonStyle(.plain)
-            .popoverActionRowAffordance()
+            .popoverHoverHighlight()
         }
+    }
+
+    private func setupAttentionRow(_ attention: MenuSetupAttentionPresentation) -> some View {
+        Button {
+            showSettings()
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.circle.fill")
+                    .font(.system(size: 16))
+                    .foregroundStyle(.orange)
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(attention.title)
+                        .fontWeight(.medium)
+                    Text(attention.detail)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+            }
+            .padding(10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
     }
 
     private var sessionBoard: some View {
         ScrollView {
             // Plain VStack, not Lazy: this single outer scroll view is capped by
             // the presentation policy and preserves insertion/removal transitions.
-            VStack(spacing: 2) {
-                ForEach(sessionLayoutItems) { item in
+            VStack(spacing: 0) {
+                ForEach(boardItems) { item in
                     Group {
                         switch item {
+                        case .section(let section):
+                            Text(section.title)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 10)
+                                .padding(.top, 6)
+                                .frame(
+                                    maxWidth: .infinity,
+                                    minHeight: RowMetrics.sectionHeaderHeight,
+                                    maxHeight: RowMetrics.sectionHeaderHeight,
+                                    alignment: .leading
+                                )
+                                .accessibilityAddTraits(.isHeader)
+
                         case .header(let group):
                             RepositoryGroupRowView(
                                 group: group,
@@ -324,7 +327,7 @@ struct MenuBarContentView: View {
                         case .session(let session, _):
                             SessionRowView(
                                 session: session.session,
-                                groupedProject: item.groupedProject,
+                                isGrouped: item.isGroupedSession,
                                 shortID: item.shortSessionID,
                                 onOpen: session.session.agentPID.map { pid in
                                     { model.bringSessionForward(agentPID: pid) }
@@ -336,17 +339,18 @@ struct MenuBarContentView: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
+            .padding(.horizontal, 6)
         }
-        .frame(height: MenuActivityViewportMetrics.height(for: sessionLayoutItems))
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(height: MenuActivityViewportMetrics.height(for: boardItems))
     }
 
-    private var sessionLayoutItems: [MenuRepositoryLayoutItem] {
-        model.sessionGroups.flatMap { group in
-            MenuRepositoryLayoutPolicy.items(
-                for: group,
-                isExpanded: expandedRepositoryID == group.id
-            )
-        }
+    private var boardItems: [MenuRepositoryLayoutItem] {
+        MenuBoardLayoutPolicy.items(
+            waiting: model.sessions.filter(\.isWaiting),
+            groups: model.sessionGroups,
+            expandedRepositoryID: expandedRepositoryID
+        )
     }
 
     private var repositoryStructure: [String] {
@@ -381,45 +385,32 @@ struct MenuBarContentView: View {
 
     private var footer: some View {
         VStack(spacing: 0) {
-            Button {
-                showSettings()
-            } label: {
-                HStack {
-                    Text("Settings…")
-                    Spacer(minLength: 12)
-                    Text("⌘,")
-                        .foregroundStyle(.secondary)
-                }
-                    .padding(.horizontal, 20)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .frame(height: 32)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .frame(height: 32)
-            .popoverActionRowAffordance()
-            .keyboardShortcut(",")
-
-            Button {
-                model.cleanQuit()
-            } label: {
-                HStack {
-                    Text("Quit Let It Brew")
-                    Spacer(minLength: 12)
-                    Text("⌘Q")
-                        .foregroundStyle(.secondary)
-                }
-                    .padding(.horizontal, 20)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .frame(height: 32)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .frame(height: 32)
-            .popoverActionRowAffordance()
-            .keyboardShortcut("q")
+            menuCommand("Settings…", shortcut: "⌘,") { showSettings() }
+                .keyboardShortcut(",")
+            menuCommand("Quit Let It Brew", shortcut: "⌘Q") { model.cleanQuit() }
+                .keyboardShortcut("q")
         }
-        .font(.caption)
+    }
+
+    private func menuCommand(
+        _ title: String,
+        shortcut: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack {
+                Text(title)
+                Spacer(minLength: 12)
+                Text(shortcut)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(height: 26)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .popoverHoverHighlight()
     }
 
     private var headerDetail: String {
@@ -429,10 +420,6 @@ struct MenuBarContentView: View {
         case .paused: .paused
         }
         return MenuHeaderDetailCopy.resolve(context: context, rows: model.sessions)
-    }
-
-    private var headerColor: Color {
-        .primary
     }
 
     private var batteryPresentation: MenuBatteryPresentation? {
@@ -500,127 +487,177 @@ private struct RepositoryGroupRowView: View {
 
     var body: some View {
         Button(action: onToggle) {
-            HStack(spacing: 10) {
-                Image(systemName: "chevron.down")
-                    .font(.caption2.weight(.semibold))
+            HStack(spacing: 6) {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                    .rotationEffect(.degrees(isExpanded ? 0 : -90))
-                    .frame(width: 24, height: 24)
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                    .frame(width: 14)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(group.project)
-                        .font(.subheadline.weight(.medium))
-                        .lineLimit(1)
-                    Text(group.summaryText)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                }
+                Text(group.project)
+                    .fontWeight(.semibold)
+                    .lineLimit(1)
 
                 Spacer(minLength: 8)
 
+                if !isExpanded {
+                    HStack(spacing: 3) {
+                        ForEach(agentIDs, id: \.self) { toolID in
+                            AgentLogo(toolID: toolID)
+                                .frame(width: 14, height: 14)
+                        }
+                    }
+                }
+
                 Text(group.sessionCountText)
-                    .font(.caption2)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(Color.secondary.opacity(0.11), in: Capsule())
             }
+            .padding(.horizontal, 10)
+            .frame(height: RowMetrics.repositoryHeaderHeight)
             .contentShape(Rectangle())
-            .padding(.horizontal, 14)
-            .frame(height: 54)
         }
         .buttonStyle(.plain)
+        .popoverHoverHighlight()
         .accessibilityLabel(
             "\(group.project) folder at \(group.id), \(group.sessionCountText), \(group.summaryText), \(isExpanded ? "expanded" : "collapsed")"
         )
         .accessibilityHint(isExpanded ? "Collapse sessions" : "Expand sessions")
     }
+
+    /// Each agent in the folder once, in row order.
+    private var agentIDs: [String] {
+        var seen: Set<String> = []
+        return group.sessions.map(\.session.toolID).filter { seen.insert($0).inserted }
+    }
 }
 
 private struct SessionRowView: View {
     let session: MenuSessionPresentation
-    let groupedProject: String?
+    /// Listed under its folder's header, so the folder name is not repeated.
+    let isGrouped: Bool
     let shortID: String?
     /// Brings the session's app forward. Nil when its agent process is unknown.
     let onOpen: (() -> Void)?
     let onStopTracking: () -> Void
+    @State private var isHovered = false
 
     var body: some View {
-        HStack(spacing: 10) {
-            if let onOpen {
-                Button(action: onOpen) {
-                    sessionSummary
+        HStack(spacing: 8) {
+            Group {
+                if let onOpen {
+                    Button(action: onOpen) {
+                        summary
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Show this session's app")
+                } else {
+                    summary
+                }
+            }
+
+            // Under the pointer the active time gives way to Stop Watching;
+            // VoiceOver reaches it as an action on the row.
+            ZStack(alignment: .trailing) {
+                activeTime
+                    .opacity(isHovered ? 0 : 1)
+                Button(action: onStopTracking) {
+                    Image(systemName: "eye.slash")
+                        .foregroundStyle(.secondary)
+                        .frame(width: 24, height: 22)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help("Show this session's app")
-                .accessibilityHint("Shows the app running this session")
-            } else {
-                sessionSummary
-            }
-
-            Button(action: onStopTracking) {
-                Image(systemName: "eye.slash")
-                    .foregroundStyle(.secondary)
-                    .frame(width: 24, height: 24)
-            }
-            .buttonStyle(.plain)
-            .popoverHoverHighlight()
-            .help("Stop watching this session")
-            .accessibilityLabel("Stop watching \(session.project)")
-        }
-        .padding(.horizontal, 14)
-        .frame(height: 60)
-    }
-
-    private var sessionSummary: some View {
-        HStack(spacing: 10) {
-            AgentLogo(toolID: session.toolID)
-                .frame(width: 24, height: 24)
-
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 8) {
-                    Text(primaryText)
-                        .font(.subheadline.weight(.medium))
-                        .lineLimit(1)
-                        .contentTransition(.opacity)
-                    Spacer(minLength: 8)
-                    Text(session.activeTimeText)
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(session.isWaiting ? Color.orange : Color.green)
-                        .frame(width: 6, height: 6)
-                        .accessibilityHidden(true)
-                    Text(secondaryText)
-                        .font(.caption)
-                        .foregroundStyle(stateTextStyle)
-                        .contentTransition(.opacity)
-                }
+                .help("Stop watching this session")
+                .opacity(isHovered ? 1 : 0)
+                .allowsHitTesting(isHovered)
+                .accessibilityHidden(true)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.leading, isGrouped ? 30 : 10)
+        .padding(.trailing, 10)
+        .frame(height: isGrouped ? RowMetrics.groupedSessionHeight : RowMetrics.sessionHeight)
+        .background(
+            isHovered && onOpen != nil ? Color.primary.opacity(0.08) : .clear,
+            in: RoundedRectangle(cornerRadius: 6)
+        )
+        .onHover { isHovered = $0 }
+        .contextMenu {
+            if let onOpen {
+                Button("Show Session’s App", action: onOpen)
+            }
+            Button("Stop Watching", action: onStopTracking)
+        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
+        .accessibilityAddTraits(onOpen == nil ? [] : .isButton)
+        .accessibilityHint(onOpen == nil ? "" : "Shows the app running this session")
+        .accessibilityAction { onOpen?() }
+        .accessibilityAction(named: "Stop Watching", onStopTracking)
+    }
+
+    @ViewBuilder
+    private var summary: some View {
+        if isGrouped {
+            HStack(spacing: 8) {
+                AgentLogo(toolID: session.toolID)
+                    .frame(width: 16, height: 16)
+                Text(session.toolName)
+                    .lineLimit(1)
+                stateLabel
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            HStack(spacing: 10) {
+                AgentLogo(toolID: session.toolID)
+                    .frame(width: 20, height: 20)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(session.project)
+                        .fontWeight(.medium)
+                        .lineLimit(1)
+                    HStack(spacing: 5) {
+                        stateDot
+                        Text("\(session.toolName) · \(session.stateText)")
+                            .font(.subheadline)
+                            .foregroundStyle(stateTextStyle)
+                            .lineLimit(1)
+                            .contentTransition(.opacity)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var stateLabel: some View {
+        HStack(spacing: 5) {
+            stateDot
+            Text(session.stateText)
+                .font(.subheadline)
+                .foregroundStyle(stateTextStyle)
+                .lineLimit(1)
+                .contentTransition(.opacity)
+        }
+    }
+
+    private var stateDot: some View {
+        Circle()
+            .fill(session.isWaiting ? Color.orange : Color.green)
+            .frame(width: 6, height: 6)
+    }
+
+    private var activeTime: some View {
+        Text(session.activeTimeText)
+            .font(.subheadline.monospacedDigit())
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
     }
 
     private var stateTextStyle: AnyShapeStyle {
         session.isWaiting ? AnyShapeStyle(Color.orange) : AnyShapeStyle(.secondary)
-    }
-
-    private var primaryText: String {
-        guard let groupedProject else { return session.project }
-        return "\(session.toolName) · \(groupedProject)"
-    }
-
-    private var secondaryText: String {
-        groupedProject == nil
-            ? "\(session.toolName) · \(session.stateText)"
-            : session.stateText
     }
 
     private var accessibilityLabel: String {
@@ -659,7 +696,10 @@ struct AgentLogo: View {
                     .interpolation(.high)
                     .scaledToFit()
             case "copilot":
+                // A black glyph: a template follows the label colour, so it
+                // stays visible in dark mode.
                 Image("CopilotAgent")
+                    .renderingMode(.template)
                     .resizable()
                     .interpolation(.high)
                     .scaledToFit()

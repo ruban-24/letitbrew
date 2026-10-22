@@ -12,7 +12,7 @@ against the SHA-256 published with the release.
 
 ---
 
-## 1.0.0 (build 36)
+## 1.0.0 (build 37)
 
 Added:
 
@@ -21,7 +21,7 @@ Added:
   Mode, then restores your exact setting, including High Power, when the lid
   opens or the work stops. The background service records the original before
   changing anything and restores it after a crash, restart, or uninstall. It is
-  on by default; turn it off in **Settings → Power & Display → Closed lid**.
+  on by default; turn it off in **Settings → Closed Lid**.
 - Waiting sessions. A Claude Code, Codex, Copilot, OpenCode, or Pi session that
   asks a question, or a Claude Code, Copilot, OpenCode, or Pi session waiting
   for an approval it is actually showing you, appears in the menu with an
@@ -34,6 +34,20 @@ Added:
 - Click a session in the menu to bring its terminal, editor, or agent app
   forward. No Accessibility or Automation permission is used, so the app is
   activated rather than a specific window or tab.
+
+Changed:
+
+- The menu is more compact and lists sessions waiting for you first, under
+  **Needs You**. Sessions in a folder sit under a slim folder header without
+  repeating its name, and the header counts waiting sessions apart from working
+  ones. Battery status moved into the header.
+- Hovering a session highlights it and swaps its active time for **Stop
+  Watching**; right-click a session for the same actions.
+- Settings uses the standard macOS toolbar tabs: General, Agents, Power, Closed
+  Lid, and About. Every closed-lid setting, including the background helper, is
+  now under **Closed Lid**, and **Check for Updates…** moved to General. Each
+  agent shows its connection status, and the battery limit is a menu.
+- The OpenCode and Copilot marks stay visible in dark mode.
 
 Fixed:
 
