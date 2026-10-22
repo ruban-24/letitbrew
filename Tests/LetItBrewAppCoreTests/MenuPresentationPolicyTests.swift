@@ -695,9 +695,36 @@ import LetItBrewCore
     ])
     #expect(items[1].isGroupedSession == false)
     #expect(items[4].isGroupedSession)
+    // The lifted wait still shares its folder with a and b, so VoiceOver
+    // keeps its short ID; d is alone in its folder.
+    #expect(items[1].shortSessionID == "c")
+    #expect(items[6].shortSessionID == nil)
     #expect(groups.first?.sessionCountText == "2 working")
     // Two section headers, a folder header with two rows, and two sessions on their own.
     #expect(MenuActivityViewportMetrics.height(for: items) == 226)
+}
+
+@Test func aSessionOnItsOwnRowKeepsItsShortIDWhenItsFolderHasAWait() {
+    let now = Date(timeIntervalSince1970: 10_000)
+    let rows = MenuSessionPresentationPolicy.rows(from: [
+        input(id: "5279876d-working", updatedAt: now),
+        input(id: "94eea3c2-waiting", state: .waitingForAnswer, updatedAt: now.addingTimeInterval(-1)),
+    ], now: now)
+    let items = MenuBoardLayoutPolicy.items(
+        waiting: rows.filter(\.isWaiting),
+        groups: MenuRepositoryPresentationPolicy.groups(from: rows.filter { !$0.isWaiting }),
+        expandedRepositoryID: nil
+    )
+
+    #expect(items.map(\.id) == [
+        .section(.needsYou),
+        .session("94eea3c2-waiting"),
+        .section(.working),
+        .session("5279876d-working"),
+    ])
+    #expect(items[1].shortSessionID == "94eea3c2")
+    #expect(items[3].shortSessionID == "5279876d")
+    #expect(items[3].isGroupedSession == false)
 }
 
 @Test func boardHasNoSectionsWithoutAWait() throws {

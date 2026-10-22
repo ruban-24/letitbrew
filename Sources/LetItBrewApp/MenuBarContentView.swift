@@ -64,6 +64,16 @@ private extension View {
     func popoverHoverHighlight(_ isEnabled: Bool = true) -> some View {
         modifier(PopoverHoverHighlight(isEnabled: isEnabled))
     }
+
+    /// The row's default VoiceOver action, only when its app can be opened.
+    @ViewBuilder
+    func accessibilityOpenAction(_ open: (() -> Void)?) -> some View {
+        if let open {
+            accessibilityAction(.default, open)
+        } else {
+            self
+        }
+    }
 }
 
 private typealias RowMetrics = MenuActivityViewportMetrics
@@ -324,7 +334,7 @@ struct MenuBarContentView: View {
                                 onToggle: { toggle(group.id) }
                             )
 
-                        case .session(let session, _):
+                        case .session(let session, _, _):
                             SessionRowView(
                                 session: session.session,
                                 isGrouped: item.isGroupedSession,
@@ -593,7 +603,7 @@ private struct SessionRowView: View {
         .accessibilityLabel(accessibilityLabel)
         .accessibilityAddTraits(onOpen == nil ? [] : .isButton)
         .accessibilityHint(onOpen == nil ? "" : "Shows the app running this session")
-        .accessibilityAction { onOpen?() }
+        .accessibilityOpenAction(onOpen)
         .accessibilityAction(named: "Stop Watching", onStopTracking)
     }
 
