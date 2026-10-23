@@ -23,6 +23,15 @@ public enum SessionWaitDetail {
     public static let approval = "waiting-approval"
 }
 
+/// Semantic detail tokens for a Working session whose turn has ended but
+/// whose `Stop` still reported background work. Never English prose.
+public enum SessionWorkDetail {
+    /// Only shells or monitors remain. Bounded by `Settings.backgroundShellHoldLimit`.
+    public static let backgroundShell = "background-shell"
+    /// A subagent or other agent-class task may still be working.
+    public static let backgroundAgent = "background-agent"
+}
+
 /// The effect one hook event has on a session's record.
 public enum HookEffect: Equatable, Sendable {
     /// Write the state, with an optional semantic detail token.
@@ -41,7 +50,7 @@ public enum HookReducer {
         notificationType: String?,
         source: String? = nil,
         trigger: String? = nil,
-        hasBackgroundTasks: Bool = false,
+        backgroundWork: HookPayload.BackgroundWork = .none,
         errorRecoverable: Bool? = nil
     ) -> HookEffect? {
         switch event {
@@ -121,7 +130,13 @@ public enum HookReducer {
         case "UserInputResolved":
             return agent == .opencode || agent == .pi ? .set(.working, detail: nil) : nil
         case "Stop":
-            return hasBackgroundTasks ? .set(.working, detail: nil) : .set(.idle, detail: nil)
+            // The turn ended. Agent-class background work holds like a turn;
+            // shell-only work holds for a bounded time; nothing running is Idle.
+            switch backgroundWork {
+            case .none: return .set(.idle, detail: nil)
+            case .shellOnly: return .set(.working, detail: SessionWorkDetail.backgroundShell)
+            case .agent: return .set(.working, detail: SessionWorkDetail.backgroundAgent)
+            }
         case "StopFailure":
             return .set(.idle, detail: nil)
         case "ErrorOccurred":

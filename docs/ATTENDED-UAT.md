@@ -20,7 +20,7 @@ This release adds three things: closed-lid Low Power Mode in the daemon, a
 Waiting state with an input check, and app-level session activation. It also
 redesigns the menu and Settings and carries the unpublished v0.8.4 fixes, so
 run the v0.8.4 release scope below with this build too.
-Record version 1.0.0, build 37, the full commit, and artifact hashes. Before
+Record version 1.0.0, build 38, the full commit, and artifact hashes. Before
 starting, record `pmset -g custom | grep -E 'Power:|powermode'` and
 `pmset -g | grep SleepDisabled`. Both must read back identically after every
 case below.
@@ -130,6 +130,32 @@ In light and dark mode, with the signed app:
    are legible in dark mode and each row shows its connection status.
 6. On Closed Lid, turn the closed-lid setting off and on, and confirm the
    helper status and Low Power Mode setting follow it.
+
+### Background work after a Claude turn ends
+
+Use a cheap model, for example `claude --model haiku`, in a fresh Claude Code
+session for each case. Read the session's record under
+`~/Library/Application Support/LetItBrew/sessions` and `pmset -g assertions`
+to confirm the hold, and the menu to confirm the row.
+
+1. Ask Claude to run `sleep 900` with `run_in_background` and reply without
+   waiting. After it replies, the record is Working with `last_event: Stop`
+   and `detail: background-shell`, the menu lists it as Working, and the Mac
+   is held. Kill the sleep and send any prompt: the next Stop makes it Idle.
+2. Repeat case 1 but leave the sleep running for over an hour (or, for a
+   faster check, confirm from the status output that the reason becomes
+   "background shell hold expired" once `updated_at` is an hour old). The
+   hold releases while the row stays listed until the next hook.
+3. Ask Claude to use the Agent tool with model haiku to start `sleep 800` in
+   the background and return. After the parent replies, the child record is
+   gone, the parent is Working with `detail: background-shell`, and killing
+   the sleep plus one more prompt makes it Idle.
+4. Ask Claude to start a background Agent, then stop that agent with
+   TaskStop before it finishes, and let the turn end. The child record is
+   deleted by the parent's Stop and the parent is Idle.
+5. Start a Codex session, let it work, and `kill -9` the Codex process. On
+   the next poll the row disappears and the hold releases. Repeat with a
+   Claude session: same result.
 
 ## v0.8.4 release scope
 

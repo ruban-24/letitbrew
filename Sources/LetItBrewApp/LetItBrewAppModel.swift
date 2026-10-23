@@ -2162,13 +2162,9 @@ final class LetItBrewAppModel: ObservableObject {
         if readsLiveState {
             creditInput(snapshot.answerInput, now: snapshot.now)
         }
-        // A wait whose agent process has exited can no longer be answered: it
-        // neither shows nor holds, even if input latched it before the agent quit.
-        let liveness = KillZeroLiveness()
-        let liveSessions = snapshot.sessions.filter { record in
-            guard record.state == .waiting, let pid = record.pid else { return true }
-            return liveness.isAlive(pid: pid)
-        }
+        // A session whose recorded agent process has exited neither shows nor
+        // holds. The same rule feeds `letitbrew watch` and `status`.
+        let liveSessions = SessionStore.excludingExitedAgents(snapshot.sessions)
         let hosts = hostApps(forSilentWaitsIn: liveSessions)
         waitAnswers.observe(liveSessions) { wait in
             // An agent with no known app falls back to input anywhere.

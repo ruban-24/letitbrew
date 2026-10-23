@@ -92,3 +92,96 @@ import Foundation
         .recordID(agent: .claude, event: "Stop")
         == "v1|6:claude|6:parent|0:")
 }
+
+// MARK: - Background task classification (captured from Claude Code 2.1.x Stop payloads)
+
+@Test func shellOnlyBackgroundWorkIsDistinguishedFromAgentWork() throws {
+    let shell = try JSONDecoder().decode(HookPayload.self, from: Data(#"""
+    {"session_id":"s","background_tasks":[
+      {"id":"by7dluj9t","type":"shell","status":"running","description":"private","command":"private"}]}
+    """#.utf8))
+    #expect(shell.backgroundWork == .shellOnly)
+    #expect(shell.hasBackgroundTasks)
+
+    let mixed = try JSONDecoder().decode(HookPayload.self, from: Data(#"""
+    {"session_id":"s","background_tasks":[
+      {"id":"a1ae869a95e1a9a18","type":"subagent","status":"running","agent_type":"general-purpose"},
+      {"id":"beyuypx27","type":"shell","status":"running"}]}
+    """#.utf8))
+    #expect(mixed.backgroundWork == .agent)
+
+    let monitor = try JSONDecoder().decode(HookPayload.self, from: Data(#"""
+    {"session_id":"s","background_tasks":[{"id":"m","type":"Monitor ","status":"running","server":"x"}]}
+    """#.utf8))
+    #expect(monitor.backgroundWork == .shellOnly)
+}
+
+@Test func unknownOrMissingTaskTypesCountAsAgentWork() throws {
+    for task in [#"{"id":"t","status":"running"}"#,
+                 #"{"id":"t","type":"cloud session","status":"running"}"#,
+                 #"{"id":"t","type":"teammate","status":"running"}"#,
+                 #"{"id":"t","type":42,"status":"running"}"#,
+                 #"{"id":"t","type":"shell"}"#,
+                 #"{"id":"t","type":"shell","status":null}"#] {
+        let payload = try JSONDecoder().decode(
+            HookPayload.self,
+            from: Data("{\"session_id\":\"s\",\"background_tasks\":[\(task)]}".utf8)
+        )
+        let expected: HookPayload.BackgroundWork = task.contains(#""type":"shell""#) ? .shellOnly : .agent
+        #expect(payload.backgroundWork == expected, "task: \(task)")
+    }
+}
+
+@Test func terminalStatusesNeverCountAsWork() throws {
+    let statuses = ["idle", "done", "success", "succeeded", "complete", "completed", "finished",
+                    "failed", "error", "terminated", "exited", "aborted", "expired", "skipped",
+                    "crashed", "killed", "cancelled", "canceled", "timed_out", "Completed", " killed "]
+    let tasks = statuses.map { #"{"id":"t","type":"subagent","status":"\#($0)"}"# }
+        .joined(separator: ",")
+    let payload = try JSONDecoder().decode(
+        HookPayload.self,
+        from: Data("{\"session_id\":\"s\",\"background_tasks\":[\(tasks)]}".utf8)
+    )
+    #expect(payload.backgroundWork == .none)
+    #expect(!payload.hasBackgroundTasks)
+    #expect(payload.hasBackgroundTaskSnapshot)
+    #expect(payload.runningBackgroundTaskIDs == [])
+}
+
+@Test func subagentStopSnapshotIsJudgedWithoutTheStoppingChild() throws {
+    // A backgrounded subagent's own SubagentStop still lists it as running.
+    let payload = try JSONDecoder().decode(HookPayload.self, from: Data(#"""
+    {"session_id":"s","agent_id":"a1ae869a95e1a9a18","hook_event_name":"SubagentStop",
+     "background_tasks":[
+      {"id":"a1ae869a95e1a9a18","type":"subagent","status":"running"},
+      {"id":"beyuypx27","type":"shell","status":"running"}]}
+    """#.utf8))
+    #expect(payload.backgroundWork == .agent)
+    #expect(payload.backgroundWork(excludingTaskID: payload.agentId) == .shellOnly)
+
+    let alone = try JSONDecoder().decode(HookPayload.self, from: Data(#"""
+    {"session_id":"s","agent_id":"child","background_tasks":[{"id":"child","type":"subagent","status":"running"}]}
+    """#.utf8))
+    #expect(alone.backgroundWork(excludingTaskID: "child") == .none)
+}
+
+@Test func runningTaskInventoryRequiresEveryEntryToBeIdentified() throws {
+    let complete = try JSONDecoder().decode(HookPayload.self, from: Data(#"""
+    {"session_id":"s","background_tasks":[
+      {"id":"child-a","type":"subagent","status":"running"},
+      {"id":"child-b","type":"subagent","status":"completed"},
+      {"id":"sh","type":"shell","status":"running"}]}
+    """#.utf8))
+    #expect(complete.runningBackgroundTaskIDs == ["child-a", "sh"])
+
+    let anonymous = try JSONDecoder().decode(HookPayload.self, from: Data(#"""
+    {"session_id":"s","background_tasks":[{"id":"child-a","type":"subagent","status":"running"},{"description":"ignored"}]}
+    """#.utf8))
+    #expect(anonymous.runningBackgroundTaskIDs == nil)
+    #expect(anonymous.backgroundWork == .agent)
+
+    let absent = try JSONDecoder().decode(HookPayload.self, from: Data(#"{"session_id":"s"}"#.utf8))
+    #expect(absent.runningBackgroundTaskIDs == nil)
+    #expect(absent.backgroundWork == .none)
+    #expect(!absent.hasBackgroundTaskSnapshot)
+}

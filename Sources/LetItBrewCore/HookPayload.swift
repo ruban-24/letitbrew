@@ -7,15 +7,45 @@ import Foundation
 /// tools add fields over time, and a decode failure here would mean a hook
 /// that reports nothing.
 public struct HookPayload: Decodable, Equatable, Sendable {
+    /// What kind of background work a Claude `Stop` or `SubagentStop`
+    /// snapshot still reports. Only each task's lifecycle `type` and
+    /// `status` are read.
+    public enum BackgroundWork: Equatable, Sendable {
+        /// No task may still be working.
+        case none
+        /// Only shells and monitors remain. The turn itself has ended, so
+        /// this hold is bounded; see `Settings.backgroundShellHoldLimit`.
+        case shellOnly
+        /// A subagent, teammate, workflow, or task of an unrecognized type
+        /// may still be working. Holds like a running turn.
+        case agent
+    }
+
+    /// One background task reduced to its lifecycle facts.
+    public struct BackgroundTask: Equatable, Sendable {
+        public var id: String?
+        /// `shell` and `monitor` are bounded work; every other or missing
+        /// type is treated as agent work so a vendor schema change cannot
+        /// weaken a hold.
+        public var isShell: Bool
+        public var mayBeWorking: Bool
+
+        public init(id: String? = nil, isShell: Bool = false, mayBeWorking: Bool = true) {
+            self.id = id
+            self.isShell = isShell
+            self.mayBeWorking = mayBeWorking
+        }
+    }
+
     public var sessionId: String?
     public var agentId: String?
     public var cwd: String?
     public var source: String?
     /// `manual` or `auto` on Claude compaction hooks.
     public var trigger: String?
-    public var hasBackgroundTasks: Bool
+    /// The `background_tasks` snapshot, or nil when the hook carried none.
     /// An absent snapshot cannot prove that the parent's background work ended.
-    var hasBackgroundTaskSnapshot: Bool = false
+    public var backgroundTasks: [BackgroundTask]?
     public var hookEventName: String?
     public var toolName: String?
     public var notificationType: String?
@@ -41,7 +71,7 @@ public struct HookPayload: Decodable, Equatable, Sendable {
         cwd: String? = nil,
         source: String? = nil,
         trigger: String? = nil,
-        hasBackgroundTasks: Bool = false,
+        backgroundTasks: [BackgroundTask]? = nil,
         hookEventName: String? = nil,
         toolName: String? = nil,
         notificationType: String? = nil,
@@ -52,7 +82,7 @@ public struct HookPayload: Decodable, Equatable, Sendable {
         self.cwd = cwd
         self.source = source
         self.trigger = trigger
-        self.hasBackgroundTasks = hasBackgroundTasks
+        self.backgroundTasks = backgroundTasks
         self.hookEventName = hookEventName
         self.toolName = toolName
         self.notificationType = notificationType
@@ -67,15 +97,48 @@ public struct HookPayload: Decodable, Equatable, Sendable {
         cwd = try values.decodeIfPresent(String.self, forKey: .cwd)
         source = try values.decodeIfPresent(String.self, forKey: .source)
         trigger = try values.decodeIfPresent(String.self, forKey: .trigger)
-        let backgroundTasks = try values.decodeIfPresent(
-            [BackgroundTask].self, forKey: .backgroundTasks
-        )
-        hasBackgroundTaskSnapshot = backgroundTasks != nil
-        hasBackgroundTasks = (backgroundTasks ?? []).contains(where: \.mayBeWorking)
+        backgroundTasks = try values.decodeIfPresent(
+            [WireBackgroundTask].self, forKey: .backgroundTasks
+        )?.map(\.summary)
         hookEventName = try values.decodeIfPresent(String.self, forKey: .hookEventName)
         toolName = try values.decodeIfPresent(String.self, forKey: .toolName)
         notificationType = try values.decodeIfPresent(String.self, forKey: .notificationType)
         errorRecoverable = try values.decodeIfPresent(Bool.self, forKey: .errorRecoverable)
+    }
+
+    /// Whether the hook carried a `background_tasks` array at all.
+    public var hasBackgroundTaskSnapshot: Bool { backgroundTasks != nil }
+
+    /// Whether any reported task may still be working.
+    public var hasBackgroundTasks: Bool { backgroundWork != .none }
+
+    /// The strongest kind of work the snapshot still reports.
+    public var backgroundWork: BackgroundWork { backgroundWork(excludingTaskID: nil) }
+
+    /// The snapshot's work with one task left out. A backgrounded subagent's
+    /// own `SubagentStop` snapshot still lists that subagent as running, so a
+    /// parent reconciliation must not count the child that just finished.
+    public func backgroundWork(excludingTaskID excluded: String?) -> BackgroundWork {
+        var work = BackgroundWork.none
+        for task in backgroundTasks ?? [] where task.mayBeWorking {
+            if let excluded, task.id == excluded { continue }
+            if !task.isShell { return .agent }
+            work = .shellOnly
+        }
+        return work
+    }
+
+    /// IDs of every task the snapshot reports as possibly working, or nil when
+    /// the snapshot is absent or any entry lacks an ID. Only a complete
+    /// inventory may prove that an unlisted child has finished.
+    public var runningBackgroundTaskIDs: Set<String>? {
+        guard let backgroundTasks else { return nil }
+        var ids: Set<String> = []
+        for task in backgroundTasks {
+            guard let id = task.id, !id.isEmpty else { return nil }
+            if task.mayBeWorking { ids.insert(id) }
+        }
+        return ids
     }
 
     public func recordID(agent: AgentID, event: String) -> String? {
@@ -92,23 +155,41 @@ public struct HookPayload: Decodable, Equatable, Sendable {
     }
 }
 
-/// Read only lifecycle status, never task descriptions, commands or output.
-/// Unknown or missing statuses remain conservative so a vendor schema change
-/// cannot silently release the keep-awake hold during background work.
-private struct BackgroundTask: Decodable {
+/// Read only lifecycle identity, type, and status: never task descriptions,
+/// commands, or output. Unknown or missing types and statuses remain
+/// conservative so a vendor schema change cannot silently release the
+/// keep-awake hold during background work.
+private struct WireBackgroundTask: Decodable {
+    let id: String?
+    let type: String?
     let status: String?
 
-    private enum CodingKeys: String, CodingKey { case status }
+    private enum CodingKeys: String, CodingKey { case id, type, status }
 
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try? values.decode(String.self, forKey: .id)
+        type = try? values.decode(String.self, forKey: .type)
         status = try? values.decode(String.self, forKey: .status)
     }
 
-    var mayBeWorking: Bool {
-        switch status {
-        case "completed", "failed", "killed", "cancelled", "canceled", "idle": false
-        default: true
-        }
+    /// Claude labels bounded, non-agent work `shell` and `monitor`.
+    private static let shellTypes: Set<String> = ["shell", "monitor"]
+
+    /// Statuses that mean a task can no longer be working.
+    private static let terminalStatuses: Set<String> = [
+        "idle", "done", "success", "succeeded", "complete", "completed", "finished",
+        "failed", "error", "terminated", "exited", "aborted", "expired", "skipped",
+        "crashed", "killed", "cancelled", "canceled", "timed_out",
+    ]
+
+    var summary: HookPayload.BackgroundTask {
+        let normalizedType = type?.trimmingCharacters(in: .whitespaces).lowercased() ?? ""
+        let normalizedStatus = status?.trimmingCharacters(in: .whitespaces).lowercased() ?? ""
+        return HookPayload.BackgroundTask(
+            id: id,
+            isShell: Self.shellTypes.contains(normalizedType),
+            mayBeWorking: !Self.terminalStatuses.contains(normalizedStatus)
+        )
     }
 }

@@ -66,12 +66,20 @@ The common lifecycle mapping is:
   Claude's `PostCompact` with `trigger: manual` sets **Idle**: a manual compact
   runs only at the idle prompt, so it also clears a turn an interrupt left
   Working. A parent Working only because its `Stop` reported background tasks
-  keeps that hold.
+  keeps that hold, including the bounded shell-only hold.
 - Codex's `Interrupt` sets **Idle**. It is the only hook an Esc-cancelled Codex
   turn fires.
 - `Stop` and an `idle_prompt` `Notification` set **Idle**. Idle rows are hidden
   and stop contributing to the hold on the next one-second app poll. `Stop`
-  with nonempty `background_tasks` remains **Working**; `StopFailure` is Idle.
+  whose `background_tasks` still reports work remains **Working**: agent-class
+  work (a subagent, teammate, workflow, or unrecognized type) with detail
+  `background-agent`, and shell-only work (`shell` or `monitor`) with detail
+  `background-shell`. `decide()` stops counting a `background-shell` session
+  once `Settings.backgroundShellHoldLimit` (one hour) has passed since the
+  record's latest edge, with the reason "background shell hold expired"; the
+  row stays listed until its next hook or eviction. A complete Stop inventory
+  also deletes child records it no longer lists as working. `StopFailure` is
+  Idle.
 - Question tools (`AskUserQuestion` for Claude, `request_user_input` for Codex,
   and Copilot's `ask_user` family) set **Waiting** at `PreToolUse`; the answer's
   `PostToolUse` sets Working again. OpenCode and Pi input requests and
@@ -95,8 +103,10 @@ The common lifecycle mapping is:
   later child hooks honor it, so an interrupted cleanup cannot leave those
   children Working. `SubagentStop` can make a
   parent still Working from `Stop` Idle when its explicit background-task
-  snapshot reports no remaining work. Missing snapshots and parents with newer
-  foreground activity retain their state.
+  snapshot, judged without the stopping child's own entry, reports no
+  remaining work, and can move it to the bounded shell-only hold when only
+  shells remain. Missing snapshots and parents with newer foreground activity
+  retain their state.
 
 Claude and Codex hook updates acquire a bounded family lock before any per-record lock.
 This serializes terminal cleanup with child writes. The parent's existing
@@ -116,9 +126,17 @@ known, because a wait and its answer move `stateChangedAt` inside the turn.
 The hook CLI records the agent's process ID by walking its parents past shell
 wrappers (`sh`, `bash`, `zsh`, `env`, and similar). The ID lets the menu
 bring the agent's app forward, and it names the app whose input can answer a
-Claude or Copilot approval. A Waiting session whose agent has exited neither
-shows nor holds, even if input latched it before the agent quit. The ID never
-affects eviction, and it affects the hold only through those two rules.
+Claude or Copilot approval. A Working or Waiting session whose agent has
+exited neither shows nor holds: a wait can no longer be answered, and an agent
+that quit without `SessionEnd` has no work left. The check asks the kernel
+about that one recorded ID (`SessionStore.excludingExitedAgents`, shared by
+the app, `letitbrew watch`, and `letitbrew status`); a process another user
+owns counts as alive, and a record without an ID keeps the hook-only behavior.
+A hook whose ancestry walk fails carries the record's previous ID only while
+that process is still alive, because the hook itself proves an agent is
+running: a resumed session must not inherit the dead ID of an earlier process.
+The ID never affects eviction, and it affects the hold only through those
+rules.
 
 Each adapter's exact source-event vocabulary is frozen in
 [AGENT-HOOK-CONTRACTS.md](AGENT-HOOK-CONTRACTS.md); unsupported source events do

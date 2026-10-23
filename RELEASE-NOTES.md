@@ -12,7 +12,7 @@ against the SHA-256 published with the release.
 
 ---
 
-## 1.0.0 (build 37)
+## 1.0.0 (build 38)
 
 Added:
 
@@ -73,6 +73,16 @@ Fixed:
 - Let It Brew finds the Codex CLI bundled in newer ChatGPT and Codex desktop
   apps, so it can verify Codex hook approval without a separate CLI install.
   Thanks to @deepblueeeee.
+- A Claude session whose turn ended with only a background shell or monitor
+  still running, such as a `sleep` or `tail` a subagent left behind, now holds
+  the Mac for at most one hour instead of twelve. Running subagents and other
+  agent work still hold until they finish.
+- Claude subagents that never report completion are cleared when the parent's
+  next turn ends without listing them, instead of staying Working for twelve
+  hours. A subagent's own completion no longer counts itself as still running
+  when it checks whether the parent has work left.
+- A Working session whose agent process has exited, such as a Codex that quit
+  without a session-end hook, no longer shows or keeps the Mac awake.
 
 Changed:
 

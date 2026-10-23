@@ -36,4 +36,20 @@ public enum SessionStore {
             }
             .sorted { $0.updatedAt > $1.updatedAt }
     }
+
+    /// Drops in-turn records whose recorded agent process has exited. A wait
+    /// can no longer be answered, and an agent that quit without `SessionEnd`
+    /// has no work left, so such a record neither shows nor holds. Records
+    /// without a PID keep the hook-only behavior, and a PID the caller may not
+    /// signal counts as alive. Shared by the app, `watch`, and `status` so
+    /// every hold decision sees the same set.
+    public static func excludingExitedAgents(
+        _ records: [SessionRecord],
+        isAlive: (Int32) -> Bool = { KillZeroLiveness().isAlive(pid: $0) }
+    ) -> [SessionRecord] {
+        records.filter { record in
+            guard record.state.isInTurn, let pid = record.pid else { return true }
+            return isAlive(pid)
+        }
+    }
 }
