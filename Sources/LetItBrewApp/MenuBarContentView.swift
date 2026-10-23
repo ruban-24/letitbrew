@@ -306,11 +306,12 @@ struct MenuBarContentView: View {
     }
 
     private var sessionBoard: some View {
-        ScrollView {
+        let items = boardItems
+        return ScrollView {
             // Plain VStack, not Lazy: this single outer scroll view is capped by
             // the presentation policy and preserves insertion/removal transitions.
             VStack(spacing: 0) {
-                ForEach(boardItems) { item in
+                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                     Group {
                         switch item {
                         case .section(let section):
@@ -346,13 +347,40 @@ struct MenuBarContentView: View {
                             )
                         }
                     }
+                    .background { folderGroupBackground(at: index, in: items) }
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
             .padding(.horizontal, 6)
         }
         .scrollBounceBehavior(.basedOnSize)
-        .frame(height: MenuActivityViewportMetrics.height(for: boardItems))
+        .frame(height: MenuActivityViewportMetrics.height(for: items))
+    }
+
+    /// An expanded folder and its sessions share one rounded, shaded block,
+    /// drawn row by row: rounded on top at the folder, at the bottom after its
+    /// last session. Its sessions keep the same left edge as every other row.
+    @ViewBuilder
+    private func folderGroupBackground(
+        at index: Int,
+        in items: [MenuRepositoryLayoutItem]
+    ) -> some View {
+        let item = items[index]
+        let isTop: Bool = if case .header(let group) = item {
+            expandedRepositoryID == group.id
+        } else {
+            false
+        }
+        if isTop || item.isGroupedSession {
+            let isBottom = index + 1 == items.count || !items[index + 1].isGroupedSession
+            UnevenRoundedRectangle(
+                topLeadingRadius: isTop ? 8 : 0,
+                bottomLeadingRadius: isBottom ? 8 : 0,
+                bottomTrailingRadius: isBottom ? 8 : 0,
+                topTrailingRadius: isTop ? 8 : 0
+            )
+            .fill(Color.primary.opacity(0.05))
+        }
     }
 
     private var boardItems: [MenuRepositoryLayoutItem] {
@@ -593,10 +621,7 @@ private struct SessionRowView: View {
                 .accessibilityHidden(true)
             }
         }
-        // A row under a folder starts one column in, so its logo sits under
-        // the folder name: 10 + a 20-point icon + 10 spacing.
-        .padding(.leading, isGrouped ? 40 : 10)
-        .padding(.trailing, 10)
+        .padding(.horizontal, 10)
         .frame(height: isGrouped ? RowMetrics.groupedSessionHeight : RowMetrics.sessionHeight)
         .background(
             isHovered && onOpen != nil ? Color.primary.opacity(0.08) : .clear,
@@ -617,50 +642,27 @@ private struct SessionRowView: View {
         .accessibilityAction(named: "Stop Watching", onStopTracking)
     }
 
-    @ViewBuilder
+    /// A session on its own row is titled by its project; under a folder,
+    /// which already names the project, by its agent.
     private var summary: some View {
-        if isGrouped {
-            HStack(spacing: 8) {
-                AgentLogo(toolID: session.toolID)
-                    .frame(width: 16, height: 16)
-                Text(session.toolName)
-                    .foregroundStyle(.secondary)
+        HStack(spacing: 10) {
+            AgentLogo(toolID: session.toolID)
+                .frame(width: 20, height: 20)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(isGrouped ? session.toolName : session.project)
                     .lineLimit(1)
-                stateLabel
-                Spacer(minLength: 0)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        } else {
-            HStack(spacing: 10) {
-                AgentLogo(toolID: session.toolID)
-                    .frame(width: 20, height: 20)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(session.project)
+                HStack(spacing: 5) {
+                    stateDot
+                    Text(isGrouped ? session.stateText : "\(session.toolName) · \(session.stateText)")
+                        .font(.subheadline)
+                        .foregroundStyle(stateTextStyle)
                         .lineLimit(1)
-                    HStack(spacing: 5) {
-                        stateDot
-                        Text("\(session.toolName) · \(session.stateText)")
-                            .font(.subheadline)
-                            .foregroundStyle(stateTextStyle)
-                            .lineLimit(1)
-                            .contentTransition(.opacity)
-                    }
+                        .contentTransition(.opacity)
                 }
-                Spacer(minLength: 0)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            Spacer(minLength: 0)
         }
-    }
-
-    private var stateLabel: some View {
-        HStack(spacing: 5) {
-            stateDot
-            Text(session.stateText)
-                .font(.subheadline)
-                .foregroundStyle(stateTextStyle)
-                .lineLimit(1)
-                .contentTransition(.opacity)
-        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var stateDot: some View {

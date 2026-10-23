@@ -534,7 +534,7 @@ import LetItBrewCore
 
     #expect(state.expandedRepositoryID == "/work/app")
     #expect(items.map(\.id) == [.header("/work/app"), .session("survivor")])
-    #expect(MenuActivityViewportMetrics.height(for: items) == 60)
+    #expect(MenuActivityViewportMetrics.height(for: items) == 72)
     #expect(MenuRepositoryExpansionPolicy.reconcile(current: single.id, groups: []) == nil)
 }
 
@@ -658,7 +658,7 @@ import LetItBrewCore
     #expect(MenuActivityViewportMetrics.height(for: MenuRepositoryLayoutPolicy.items(
         for: headerPlusFourRows,
         isExpanded: true
-    )) == 150)
+    )) == 198)
     #expect(MenuActivityViewportMetrics.height(for: MenuRepositoryLayoutPolicy.items(
         for: headerPlusTwelveRows,
         isExpanded: true
@@ -701,7 +701,7 @@ import LetItBrewCore
     #expect(items[6].shortSessionID == nil)
     #expect(groups.first?.sessionCountText == "2 working")
     // Two section headers, a folder header with two rows, and two sessions on their own.
-    #expect(MenuActivityViewportMetrics.height(for: items) == 226)
+    #expect(MenuActivityViewportMetrics.height(for: items) == 250)
 }
 
 @Test func aSessionOnItsOwnRowKeepsItsShortIDWhenItsFolderHasAWait() {

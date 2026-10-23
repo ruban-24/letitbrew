@@ -38,8 +38,8 @@ Added:
 Changed:
 
 - The menu is more compact and lists sessions waiting for you first, under
-  **Needs You**. Sessions in a folder sit one step in under a folder row that
-  lines up with the other sessions, without repeating its name, and the header
+  **Needs You**. An expanded folder and its sessions share a shaded block,
+  aligned with every other row and without repeating the folder name, and the header
   counts waiting sessions apart from working ones. Battery status moved into
   the header, and text is lighter so project names stand out.
 - A Claude session kept awake only by background shells reads **Running in

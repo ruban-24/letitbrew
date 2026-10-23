@@ -115,7 +115,8 @@ In light and dark mode, with the signed app:
    first, **Working** follows, folder rows do not repeat the folder name, and
    the header reads, for example, "2 agents are working · 1 waiting". The
    folder icon and name line up with the logos and names of sessions on their
-   own rows, and a folder's sessions start one step in, under its name. A
+   own rows, and an expanded folder's sessions keep that same left edge inside
+   one shaded, rounded block. A
    Claude session left with only background shells reads **Running in
    background**.
 2. Hover a session: it highlights only if it can be brought forward, and its

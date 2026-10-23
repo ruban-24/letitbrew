@@ -514,10 +514,10 @@ public enum MenuRepositoryExpansionPolicy {
 public enum MenuActivityViewportMetrics {
     public static let sectionHeaderHeight: CGFloat = 26
     public static let repositoryHeaderHeight: CGFloat = 30
-    /// A session on its own: project name over agent and state.
+    /// A session: project (or, under a folder, agent) over its state.
     public static let sessionHeight: CGFloat = 42
-    /// A session under its folder's header: one line.
-    public static let groupedSessionHeight: CGFloat = 30
+    /// A session under its folder's header: the same two lines.
+    public static let groupedSessionHeight: CGFloat = 42
     public static let maximumHeight: CGFloat = 320
 
     public static func height(of item: MenuRepositoryLayoutItem) -> CGFloat {
