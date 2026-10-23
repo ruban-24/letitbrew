@@ -467,65 +467,113 @@ private func answers(
     #expect(!latch.mayHaveBeenAnswered(session(.working)))
 }
 
-// MARK: - Bounded shell-only background holds
+// MARK: - The monitoring lease
 
-private func shellHold(ageSeconds: TimeInterval, detail: String? = SessionWorkDetail.backgroundShell)
-    -> SessionRecord {
-    SessionRecord(id: UUID().uuidString, tool: "claude", state: .working, detail: detail,
+private func familyID(_ parent: String, child: String? = nil) -> String {
+    HookRecordID(agent: .claude, parentID: parent, childID: child)!.encoded
+}
+
+private func monitoring(
+    ageSeconds: TimeInterval,
+    detail: String? = SessionWorkDetail.backgroundShell,
+    id: String = UUID().uuidString,
+    state: SessionState = .working,
+    lastEvent: String = "Stop"
+) -> SessionRecord {
+    SessionRecord(id: id, tool: "claude", state: state, detail: detail,
                   cwd: "/tmp/repo", pid: 1, updatedAt: now.addingTimeInterval(-ageSeconds),
-                  lastEvent: "Stop", stateChangedAt: now.addingTimeInterval(-7_200))
+                  lastEvent: lastEvent, stateChangedAt: now.addingTimeInterval(-9_000))
 }
 
-@Test func shellOnlyBackgroundHoldLastsForItsLimit() {
+@Test func monitoringHoldsUntilItsFamilyHasBeenSilentForTheLimit() {
     let settings = Settings()
-    #expect(settings.backgroundShellHoldLimit == 3_600)
-    for age in [0.0, 60, 3_599] {
-        let decision = decide(sessions: [shellHold(ageSeconds: age)], now: now,
-                              settings: settings, power: plugged)
-        #expect(decision.holdSystem, "age \(age)")
-        #expect(decision.reason == "1 working")
-    }
-    for age in [3_600.0, 3_601, 40_000] {
-        let decision = decide(sessions: [shellHold(ageSeconds: age)], now: now,
-                              settings: settings, power: plugged)
-        #expect(!decision.holdSystem, "age \(age)")
-        #expect(!decision.holdLidClosed)
-        #expect(decision.reason == "background shell hold expired")
+    #expect(settings.monitoringHoldLimit == 7_200)
+    for detail in [SessionWorkDetail.backgroundShell, SessionWorkDetail.backgroundAgent,
+                   SessionWorkDetail.scheduledTasks] {
+        for age in [0.0, 60, 7_199] {
+            let decision = decide(sessions: [monitoring(ageSeconds: age, detail: detail)],
+                                  now: now, settings: settings, power: plugged)
+            #expect(decision.holdSystem, "\(detail) age \(age)")
+            #expect(decision.reason == "1 working")
+        }
+        for age in [7_200.0, 7_201, 40_000] {
+            let decision = decide(sessions: [monitoring(ageSeconds: age, detail: detail)],
+                                  now: now, settings: settings, power: plugged)
+            #expect(!decision.holdSystem, "\(detail) age \(age)")
+            #expect(!decision.holdLidClosed)
+            #expect(decision.reason == "monitoring hold expired")
+        }
     }
 }
 
-@Test func shellHoldLimitMeasuresFromTheEdgeNotTheTurnStart() {
-    // stateChangedAt is two hours old in the fixture; only updatedAt counts.
-    let decision = decide(sessions: [shellHold(ageSeconds: 10)], now: now,
+@Test func monitoringMeasuresFromTheLatestEdgeNotTheTurnStart() {
+    // stateChangedAt is older than the limit in the fixture; only edges count.
+    let decision = decide(sessions: [monitoring(ageSeconds: 10)], now: now,
                           settings: Settings(), power: plugged)
     #expect(decision.holdSystem)
 }
 
-@Test func agentBackgroundWorkAndPlainWorkingAreNeverBounded() {
-    for detail in [SessionWorkDetail.backgroundAgent, nil, "running-command"] {
-        let decision = decide(sessions: [shellHold(ageSeconds: 50_000, detail: detail)], now: now,
-                              settings: Settings(), power: plugged)
+@Test func anyHookInTheFamilyRenewsTheLease() {
+    let parent = monitoring(ageSeconds: 9_000, detail: SessionWorkDetail.backgroundAgent,
+                            id: familyID("parent"))
+    // A subagent of the same session reported a moment ago.
+    let child = monitoring(ageSeconds: 10, detail: "running-command",
+                           id: familyID("parent", child: "helper"), lastEvent: "PostToolUse")
+    let decision = decide(sessions: [parent, child], now: now,
+                          settings: Settings(), power: plugged)
+    #expect(decision.holdSystem)
+    #expect(decision.reason == "2 working")
+
+    // Another session's activity does not renew it.
+    let stranger = monitoring(ageSeconds: 10, detail: nil, id: familyID("other"),
+                              state: .idle, lastEvent: "Stop")
+    let alone = decide(sessions: [parent, stranger], now: now,
+                       settings: Settings(), power: plugged)
+    #expect(!alone.holdSystem)
+    #expect(alone.reason == "monitoring hold expired")
+}
+
+@Test func aSilentSubagentRecordStopsHoldingAtTheLimit() {
+    let parent = monitoring(ageSeconds: 7_300, detail: nil, id: familyID("parent"),
+                            state: .idle, lastEvent: "Notification")
+    let child = monitoring(ageSeconds: 7_300, detail: "running-command",
+                           id: familyID("parent", child: "killed"), lastEvent: "PreToolUse")
+    let quiet = decide(sessions: [parent, child], now: now, settings: Settings(), power: plugged)
+    #expect(!quiet.holdSystem)
+    #expect(quiet.reason == "monitoring hold expired")
+
+    // The parent being heard from keeps its subagent's record holding.
+    let renewed = monitoring(ageSeconds: 5, detail: nil, id: familyID("parent"),
+                             state: .idle, lastEvent: "Notification")
+    #expect(decide(sessions: [renewed, child], now: now,
+                   settings: Settings(), power: plugged).holdSystem)
+}
+
+@Test func aForegroundTurnIsNeverLeased() {
+    for detail in [nil, "running-command"] {
+        let turn = monitoring(ageSeconds: 50_000, detail: detail, lastEvent: "PreToolUse")
+        let decision = decide(sessions: [turn], now: now, settings: Settings(), power: plugged)
         #expect(decision.holdSystem, "detail \(detail ?? "nil")")
     }
 }
 
-@Test func anExpiredShellHoldDoesNotMaskOtherWorkOrWaits() {
-    let working = decide(sessions: [shellHold(ageSeconds: 9_000), session(.working)], now: now,
+@Test func anExpiredLeaseDoesNotMaskOtherWorkOrWaits() {
+    let working = decide(sessions: [monitoring(ageSeconds: 9_000), session(.working)], now: now,
                          settings: Settings(), power: plugged)
     #expect(working.holdSystem)
     #expect(working.reason == "1 working")
 
-    let waiting = decide(sessions: [shellHold(ageSeconds: 9_000), session(.waiting)], now: now,
+    let waiting = decide(sessions: [monitoring(ageSeconds: 9_000), session(.waiting)], now: now,
                          settings: Settings(), power: plugged)
     #expect(!waiting.holdSystem)
     #expect(waiting.reason == "agents waiting for you")
 }
 
-@Test func aNonPositiveOrInfiniteLimitNeverExpiresAShellHold() {
+@Test func aNonPositiveOrInfiniteLimitNeverExpiresALease() {
     for limit in [0.0, -1, .infinity, .nan] {
         var settings = Settings()
-        settings.backgroundShellHoldLimit = limit
-        let decision = decide(sessions: [shellHold(ageSeconds: 90_000)], now: now,
+        settings.monitoringHoldLimit = limit
+        let decision = decide(sessions: [monitoring(ageSeconds: 90_000)], now: now,
                               settings: settings, power: plugged)
         #expect(decision.holdSystem, "limit \(limit)")
     }

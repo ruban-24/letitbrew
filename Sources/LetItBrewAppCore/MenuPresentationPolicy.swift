@@ -3,30 +3,34 @@ import LetItBrewCore
 
 public enum MenuSessionState: Equatable, Sendable {
     case working
-    /// Working only because background shells outlived the turn.
-    case workingInBackground
-    /// As above, past `Settings.backgroundShellHoldLimit`: listed, not holding.
-    case backgroundHoldEnded
+    /// The turn ended, but background work or scheduled crons it left keep
+    /// the session Working, bounded by `MonitoringLease`.
+    case monitoring
+    /// Held only under `MonitoringLease`, and past its limit: listed, not holding.
+    case leaseEnded
     case waitingForAnswer
     case waitingForApproval
     case idle
 
     /// Maps a record's state for presentation. A wait that local input may
     /// have answered holds as Working, so it is shown as Working too. Without
-    /// `now`, a background hold is never treated as ended.
+    /// `now`, a lease is never treated as ended. `decide()` judges the lease
+    /// with the same family edges and limit.
     public static func resolve(
         _ record: SessionRecord,
         waitAnswers: WaitAnswerLatch,
         now: Date? = nil,
-        backgroundShellHoldLimit: TimeInterval = LetItBrewCore.Settings().backgroundShellHoldLimit
+        familyEdges: [String: Date] = [:],
+        monitoringHoldLimit: TimeInterval = LetItBrewCore.Settings().monitoringHoldLimit
     ) -> MenuSessionState {
         switch record.state {
         case .working:
-            guard record.detail == SessionWorkDetail.backgroundShell else { return .working }
-            if let now, backgroundShellHoldExpired(record, now: now, limit: backgroundShellHoldLimit) {
-                return .backgroundHoldEnded
+            if let now, MonitoringLease.expired(
+                record, familyEdges: familyEdges, now: now, limit: monitoringHoldLimit
+            ) {
+                return .leaseEnded
             }
-            return .workingInBackground
+            return HookSessionUpdater.isWaitingOnBackgroundWork(record) ? .monitoring : .working
         case .idle:
             return .idle
         case .waiting:
@@ -47,16 +51,20 @@ public enum MenuSessionState: Equatable, Sendable {
         self == .waitingForAnswer || self == .waitingForApproval
     }
 
-    /// Counted as working: it keeps the Mac awake unless a power limit applies.
+    /// Keeps the Mac awake unless a power limit applies.
     public var isWorking: Bool {
-        self == .working || self == .workingInBackground
+        self == .working || self == .monitoring
     }
+
+    private static let leaseHours = Int(
+        (LetItBrewCore.Settings().monitoringHoldLimit / 3_600).rounded()
+    )
 
     var text: String {
         switch self {
         case .working: "Working"
-        case .workingInBackground: "Running in background"
-        case .backgroundHoldEnded: "In background · Mac can sleep"
+        case .monitoring: "Monitoring background tasks"
+        case .leaseEnded: "No update in \(Self.leaseHours) h · Mac can sleep"
         case .waitingForAnswer: "Waiting for your answer"
         case .waitingForApproval: "Needs your approval"
         case .idle: "Idle"
@@ -140,6 +148,8 @@ public struct MenuSessionPresentation: Identifiable, Equatable, Sendable {
     public let isWaiting: Bool
     /// See `MenuSessionState.isWorking`.
     public let isWorking: Bool
+    /// Working only in the monitoring sub-state; also counted in `isWorking`.
+    public let isMonitoring: Bool
     /// The agent process, for bringing its app forward. Nil when unknown.
     public let agentPID: Int32?
 
@@ -246,6 +256,7 @@ public enum MenuSessionPresentationPolicy {
                 updatedAt: input.updatedAt,
                 isWaiting: input.state.isWaiting,
                 isWorking: input.state.isWorking,
+                isMonitoring: input.state == .monitoring,
                 agentPID: input.agentPID
             )
             }
@@ -331,12 +342,14 @@ public enum MenuRepositoryPresentationPolicy {
 
     private static func sessionCount(for sessions: [MenuSessionPresentation]) -> String {
         let waiting = sessions.count(where: \.isWaiting)
-        let working = sessions.count(where: \.isWorking)
-        let background = sessions.count - waiting - working
+        let monitoring = sessions.count(where: \.isMonitoring)
+        let working = sessions.count(where: \.isWorking) - monitoring
+        let quiet = sessions.count - waiting - working - monitoring
         return [
             working > 0 ? "\(working) working" : nil,
+            monitoring > 0 ? "\(monitoring) monitoring" : nil,
             waiting > 0 ? "\(waiting) waiting" : nil,
-            background > 0 ? "\(background) in background" : nil,
+            quiet > 0 ? "\(quiet) not reporting" : nil,
         ].compactMap { $0 }.joined(separator: " · ")
     }
 
@@ -670,13 +683,19 @@ public enum MenuHeaderDetailCopy {
         switch context {
         case .awake:
             let waitingCount = rows.count(where: \.isWaiting)
-            let workingCount = rows.count(where: \.isWorking)
-            let working = switch workingCount {
-            case 0: "No agents are working"
-            case 1: "1 agent is working"
-            default: "\(workingCount) agents are working"
+            let monitoringCount = rows.count(where: \.isMonitoring)
+            let workingCount = rows.count(where: \.isWorking) - monitoringCount
+            var parts: [String]
+            switch (workingCount, monitoringCount) {
+            case (0, 0): parts = ["No agents are working"]
+            case (0, 1): parts = ["1 agent is monitoring background tasks"]
+            case (0, let monitoring): parts = ["\(monitoring) agents are monitoring background tasks"]
+            case (1, _): parts = ["1 agent is working"]
+            case (let working, _): parts = ["\(working) agents are working"]
             }
-            return waitingCount == 0 ? working : "\(working) · \(waitingCount) waiting"
+            if workingCount > 0, monitoringCount > 0 { parts.append("\(monitoringCount) monitoring") }
+            if waitingCount > 0 { parts.append("\(waitingCount) waiting") }
+            return parts.joined(separator: " · ")
         case .idle:
             return "Your Mac can sleep normally"
         case .paused:

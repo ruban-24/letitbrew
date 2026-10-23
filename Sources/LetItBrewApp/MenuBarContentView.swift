@@ -687,7 +687,7 @@ private struct SessionRowView: View {
                     .lineLimit(1)
                 HStack(spacing: 5) {
                     stateDot
-                    Text(isGrouped ? session.stateText : "\(session.toolName) · \(session.stateText)")
+                    Text(subtitle)
                         .font(.subheadline)
                         .foregroundStyle(stateTextStyle)
                         .lineLimit(1)
@@ -697,6 +697,15 @@ private struct SessionRowView: View {
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The agent's name joins the state on a row of its own, except for the
+    /// long monitoring states, where the logo already names the agent.
+    private var subtitle: String {
+        let isMonitoringState = session.isMonitoring || (!session.isWorking && !session.isWaiting)
+        return isGrouped || isMonitoringState
+            ? session.stateText
+            : "\(session.toolName) · \(session.stateText)"
     }
 
     private var stateDot: some View {

@@ -44,16 +44,23 @@ rule.
   `complete`, `completed`, `finished`, `failed`, `error`, `terminated`,
   `exited`, `aborted`, `expired`, `skipped`, `crashed`, `killed`, `cancelled`,
   `canceled`, or `timed_out` are finished. Any other, missing, or unrecognized
-  status may still be working. A working entry of type `shell` or `monitor`
-  is shell-only work: Stop stays Working with detail `background-shell`, and
-  the app bounds that hold to `Settings.backgroundShellHoldLimit` (one hour)
-  measured from the record's latest edge, because a shell the agent forgot
-  cannot be told from a long build by status alone. A working entry of any
-  other type, including `subagent`, `teammate`, `workflow`, and a missing or
-  future type, is agent work: Stop stays Working with detail
-  `background-agent` and is not bounded. An empty array, or only finished
-  entries, makes Stop Idle. An absent array keeps Stop Idle without proving
-  anything about children. `session_crons` are not treated as current work.
+  status may still be working. Work a Stop still reports keeps the session
+  Working in the monitoring sub-state ("Monitoring background tasks"). A
+  working entry of type `shell`, `monitor`, `local_bash`, or
+  `background_shell` is shell-only work, with detail `background-shell`. A
+  working entry of any other type, including `subagent`, `teammate`,
+  `workflow`, and a missing or future type, is agent work, with detail
+  `background-agent`. With no working entry, a non-empty `session_crons`
+  array keeps it monitoring with detail `scheduled-tasks`, because those crons
+  start more turns; only the array's length is read, never a cron's prompt or
+  schedule. Claude may omit an empty `session_crons`, so an absent array means
+  none. Otherwise an empty array, or only finished entries, makes Stop Idle,
+  and an absent array keeps Stop Idle without proving anything about
+  children. Monitoring, and every subagent's own record, hold until the
+  session family (the parent and all its subagents) has sent no hook for
+  `Settings.monitoringHoldLimit` (two hours); any hook in the family renews
+  it, because a forgotten shell or a killed subagent cannot be told from long
+  work by its status alone.
   A shell a subagent started belongs to the session and survives that
   subagent's `SubagentStop`; observed on Claude Code 2.1.x.
 - A Claude `Stop` whose `background_tasks` array identifies every entry is a
@@ -67,9 +74,10 @@ rule.
   parent and, for a backgrounded subagent, still lists the stopping child as
   running; the child's own entry is ignored before judging the parent. With
   no remaining work it makes a parent still Working only on background work
-  Idle; with shell-only work left it moves that parent to the bounded
-  `background-shell` hold, keeping an earlier shell-only start; with agent
-  work left it changes nothing. An absent/null snapshot cannot prove
+  Idle, or keeps it monitoring with `scheduled-tasks` when the snapshot
+  reports session crons; with shell-only work left it moves that parent to
+  `background-shell`; with agent work left it keeps the detail. Each of these
+  renews the family's monitoring lease. An absent/null snapshot cannot prove
   completion. A newer foreground event prevents this parent reconciliation.
 - Parent `SessionEnd` removes the parent's children as well. A bounded family
   lock serializes child updates with termination; terminal markers prevent late
@@ -89,11 +97,10 @@ rule.
   seconds in; while a session is Waiting (question) that notification keeps
   the question, because the answer arrives as a hook and an approval wait
   would be latched as answered by any local input. `idle_prompt` is Idle,
-  except for a parent Working with detail `background-shell`: observed on
-  Claude Code 2.1.x, it arrives about 60 seconds after every `Stop`, including
-  while that shell still runs, so it keeps the record and the start of the
-  shell-only hold's bounded time. A `background-agent` parent still goes Idle,
-  because a running subagent holds through its own record. Other
+  except for a session in the monitoring sub-state: observed on Claude Code
+  2.1.x, it arrives about 60 seconds after every `Stop`, including while that
+  work still runs, so it keeps the record and does not renew the family's
+  monitoring lease. Other
   notification types, including `elicitation_dialog`, preserve prior state.
   API-error turns use `StopFailure`;
   user-interrupted turns have no immediate documented terminal hook. Observed
@@ -109,9 +116,9 @@ rule.
   the lid open has no local input and can still sleep mid-tool.
   Without a later authoritative event, interrupted turns and stopped parents
   with unreported agent-class background completion can remain Working until
-  the existing 12-hour expiry. Silence alone does not prove work ended. A
-  shell or monitor still reported as running holds for the bounded limit
-  above. A Working or Waiting session whose recorded agent process has exited
+  the existing 12-hour expiry, but stop holding once their session family has
+  been silent for the monitoring limit above. Silence alone does not prove
+  work ended. A Working or Waiting session whose recorded agent process has exited
   neither shows nor holds; records without a process ID keep the hook-only
   behavior.
 - Interactive settings-file hooks, including user hooks, are held until the

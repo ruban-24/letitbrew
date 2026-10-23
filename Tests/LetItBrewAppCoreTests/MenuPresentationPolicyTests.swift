@@ -749,40 +749,73 @@ import LetItBrewCore
     ).map(\.id) == [.section(.needsYou), .session("w")])
 }
 
-@Test func backgroundShellSessionsReadAsBackgroundAndStopCountingWhenTheirHoldEnds() throws {
+@Test func monitoringSessionsReadAsMonitoringAndStopCountingWhenTheirLeaseEnds() throws {
     let now = Date(timeIntervalSince1970: 100_000)
-    func record(id: String, detail: String?, updatedAt: Date) -> SessionRecord {
+    func record(
+        id: String, detail: String?, updatedAt: Date, lastEvent: String = "Stop"
+    ) -> SessionRecord {
         SessionRecord(
             id: id, tool: "claude", state: .working, detail: detail,
-            cwd: "/work/app", pid: nil, updatedAt: updatedAt, lastEvent: "Stop",
+            cwd: "/work/app", pid: nil, updatedAt: updatedAt, lastEvent: lastEvent,
             startedAt: updatedAt, accumulatedWorkingTime: 60
         )
     }
     let latch = WaitAnswerLatch()
-    let limit: TimeInterval = 3_600
+    let limit: TimeInterval = 7_200
     let fresh = record(id: "fresh", detail: SessionWorkDetail.backgroundShell, updatedAt: now.addingTimeInterval(-60))
-    let ended = record(id: "ended", detail: SessionWorkDetail.backgroundShell, updatedAt: now.addingTimeInterval(-limit))
-    let plain = record(id: "plain", detail: "running-command", updatedAt: now.addingTimeInterval(-limit))
+    let crons = record(id: "crons", detail: SessionWorkDetail.scheduledTasks, updatedAt: now.addingTimeInterval(-60))
+    let ended = record(id: "ended", detail: SessionWorkDetail.backgroundAgent, updatedAt: now.addingTimeInterval(-limit))
+    let plain = record(
+        id: "plain", detail: "running-command", updatedAt: now.addingTimeInterval(-limit),
+        lastEvent: "PreToolUse"
+    )
 
-    #expect(MenuSessionState.resolve(fresh, waitAnswers: latch, now: now, backgroundShellHoldLimit: limit)
-        == .workingInBackground)
-    #expect(MenuSessionState.resolve(ended, waitAnswers: latch, now: now, backgroundShellHoldLimit: limit)
-        == .backgroundHoldEnded)
-    #expect(MenuSessionState.resolve(plain, waitAnswers: latch, now: now, backgroundShellHoldLimit: limit)
+    #expect(MenuSessionState.resolve(fresh, waitAnswers: latch, now: now, monitoringHoldLimit: limit)
+        == .monitoring)
+    #expect(MenuSessionState.resolve(crons, waitAnswers: latch, now: now, monitoringHoldLimit: limit)
+        == .monitoring)
+    #expect(MenuSessionState.resolve(ended, waitAnswers: latch, now: now, monitoringHoldLimit: limit)
+        == .leaseEnded)
+    #expect(MenuSessionState.resolve(plain, waitAnswers: latch, now: now, monitoringHoldLimit: limit)
         == .working)
-    // Without a clock the hold is never treated as ended.
-    #expect(MenuSessionState.resolve(ended, waitAnswers: latch) == .workingInBackground)
+    // A newer edge in the same family renews the lease, as in decide().
+    let edges = MonitoringLease.latestEdges([ended]).mapValues { _ in now }
+    #expect(MenuSessionState.resolve(
+        ended, waitAnswers: latch, now: now, familyEdges: edges, monitoringHoldLimit: limit
+    ) == .monitoring)
+    // Without a clock the lease is never treated as ended.
+    #expect(MenuSessionState.resolve(ended, waitAnswers: latch) == .monitoring)
 
     let rows = MenuSessionPresentationPolicy.rows(from: [
-        input(id: "fresh", state: .workingInBackground, updatedAt: now),
-        input(id: "ended", state: .backgroundHoldEnded, updatedAt: now.addingTimeInterval(-1)),
+        input(id: "fresh", state: .monitoring, updatedAt: now),
+        input(id: "ended", state: .leaseEnded, updatedAt: now.addingTimeInterval(-1)),
         input(id: "plain", updatedAt: now.addingTimeInterval(-2)),
     ], now: now)
-    #expect(rows.map(\.stateText) == ["Running in background", "In background · Mac can sleep", "Working"])
+    #expect(rows.map(\.stateText) == [
+        "Monitoring background tasks", "No update in 2 h · Mac can sleep", "Working",
+    ])
     #expect(rows.map(\.isWorking) == [true, false, true])
-    #expect(MenuHeaderDetailCopy.resolve(context: .awake, rows: rows) == "2 agents are working")
+    #expect(rows.map(\.isMonitoring) == [true, false, false])
+    #expect(MenuHeaderDetailCopy.resolve(context: .awake, rows: rows)
+        == "1 agent is working · 1 monitoring")
     let group = try #require(MenuRepositoryPresentationPolicy.groups(from: rows).first)
-    #expect(group.sessionCountText == "2 working · 1 in background")
+    #expect(group.sessionCountText == "1 working · 1 monitoring · 1 not reporting")
+}
+
+@Test func headerDetailNamesMonitoringWhenNothingElseWorks() {
+    let now = Date(timeIntervalSince1970: 10_000)
+    let one = MenuSessionPresentationPolicy.rows(from: [
+        input(id: "a", state: .monitoring, updatedAt: now),
+    ], now: now)
+    #expect(MenuHeaderDetailCopy.resolve(context: .awake, rows: one)
+        == "1 agent is monitoring background tasks")
+    let two = MenuSessionPresentationPolicy.rows(from: [
+        input(id: "a", state: .monitoring, updatedAt: now),
+        input(id: "b", state: .monitoring, updatedAt: now.addingTimeInterval(-1)),
+        input(id: "c", state: .waitingForAnswer, updatedAt: now.addingTimeInterval(-2)),
+    ], now: now)
+    #expect(MenuHeaderDetailCopy.resolve(context: .awake, rows: two)
+        == "2 agents are monitoring background tasks · 1 waiting")
 }
 
 @Test func headerDetailCountsWaitingSessionsApart() {

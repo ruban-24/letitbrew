@@ -18,6 +18,7 @@ public enum HookSessionUpdater {
             source: payload.source,
             trigger: payload.trigger,
             backgroundWork: payload.backgroundWork,
+            hasSessionCrons: payload.hasSessionCrons,
             errorRecoverable: payload.errorRecoverable
         ) else { return }
 
@@ -139,13 +140,29 @@ public enum HookSessionUpdater {
                             return .delete
                         }
                     }
-                } else if event == "SubagentStop", payload.hasBackgroundTaskSnapshot {
+                }
+
+                // The stopping child's record is gone, so the parent keeps its
+                // edge for the family's monitoring lease, with or without a
+                // background-task snapshot.
+                if event == "SubagentStop", identity.childID != nil {
+                    let edge = observedAt.timeIntervalSince1970
+                    try storage.mutate(id: parent.encoded, observedAt: edge) { previous in
+                        guard var record = previous, (record.familyEdgeAt ?? -.infinity) < edge
+                        else { return .keep }
+                        record.familyEdgeAt = edge
+                        return .replace(record)
+                    }
+                }
+
+                if event == "SubagentStop", payload.hasBackgroundTaskSnapshot {
                     // The snapshot is scoped to the parent and, for a
                     // backgrounded child, still lists the child that is
                     // stopping right now. Judge the parent without it.
                     try reconcileStoppedParent(
                         id: parent.encoded,
                         remainingWork: payload.backgroundWork(excludingTaskID: identity.childID),
+                        hasSessionCrons: payload.hasSessionCrons,
                         observedAt: observedAt, storage: storage
                     )
                 }
@@ -161,16 +178,14 @@ public enum HookSessionUpdater {
     /// Whether a Working record holds only for background work its `Stop`
     /// reported. Records written before detail tokens existed carry `Stop`
     /// as their latest edge instead.
-    static func isWaitingOnBackgroundWork(_ record: SessionRecord) -> Bool {
+    public static func isWaitingOnBackgroundWork(_ record: SessionRecord) -> Bool {
         record.state == .working && (
-            record.lastEvent == "Stop"
-                || record.detail == SessionWorkDetail.backgroundShell
-                || record.detail == SessionWorkDetail.backgroundAgent
+            record.lastEvent == "Stop" || SessionWorkDetail.isMonitoring(record.detail)
         )
     }
 
     private static func reconcileStoppedParent(
-        id: String, remainingWork: HookPayload.BackgroundWork,
+        id: String, remainingWork: HookPayload.BackgroundWork, hasSessionCrons: Bool,
         observedAt: Date, storage: SessionStorage
     ) throws {
         try storage.mutate(id: id, observedAt: observedAt.timeIntervalSince1970) { previous in
@@ -179,12 +194,22 @@ public enum HookSessionUpdater {
             guard var record = previous, isWaitingOnBackgroundWork(record) else { return .keep }
             switch remainingWork {
             case .agent:
-                return .keep
+                // Other agent work remains. This child's record is gone, so
+                // the parent keeps its edge for the family's monitoring lease.
+                record.updatedAt = observedAt
+                record.eventObservedAt = observedAt.timeIntervalSince1970
+                return .replace(record)
             case .shellOnly:
-                // Bound the hold from this edge. An existing shell-only hold
-                // keeps its earlier start.
-                guard record.detail != SessionWorkDetail.backgroundShell else { return .keep }
+                // Only shells remain. Like any family edge, this renews the
+                // monitoring lease.
                 record.detail = SessionWorkDetail.backgroundShell
+                record.lastEvent = "SubagentStop"
+                record.updatedAt = observedAt
+                record.eventObservedAt = observedAt.timeIntervalSince1970
+                return .replace(record)
+            case .none where hasSessionCrons:
+                // Scheduled crons will still start more turns.
+                record.detail = SessionWorkDetail.scheduledTasks
                 record.lastEvent = "SubagentStop"
                 record.updatedAt = observedAt
                 record.eventObservedAt = observedAt.timeIntervalSince1970
@@ -232,25 +257,14 @@ public enum HookSessionUpdater {
             }
 
             // Stop stays Working only while it reports background work. A
-            // manual compact at that prompt does not end the work; only the
-            // work's own completion edge may release the hold.
+            // manual compact at that prompt, or the idle_prompt Notification
+            // Claude sends about a minute after every turn ends, does not end
+            // the work; only the work's own completion edge may release the
+            // hold, and `Settings.monitoringHoldLimit` bounds it.
             if agent == .claude,
-               event == "PostCompact",
+               event == "PostCompact"
+                || (event == "Notification" && payload.notificationType == "idle_prompt"),
                let previous, isWaitingOnBackgroundWork(previous) {
-                return .keep
-            }
-
-            // Claude sends idle_prompt about a minute after every turn ends,
-            // so it does not end a shell-only hold either; keeping the record
-            // keeps the Stop as the start of that hold's bounded time. A
-            // parent held for background agents still goes Idle: each running
-            // subagent holds through its own record from SubagentStart, and
-            // the parent's agent hold has no bound.
-            if agent == .claude,
-               event == "Notification",
-               payload.notificationType == "idle_prompt",
-               previous?.state == .working,
-               previous?.detail == SessionWorkDetail.backgroundShell {
                 return .keep
             }
 
@@ -301,7 +315,8 @@ public enum HookSessionUpdater {
                     reopenedAt: reopenedAt ?? previous?.reopenedAt,
                     promptObservedAt: event == "UserPromptSubmit"
                         ? observedAt.timeIntervalSince1970 : previous?.promptObservedAt,
-                    staleChildCutoff: staleChildCutoff ?? previous?.staleChildCutoff
+                    staleChildCutoff: staleChildCutoff ?? previous?.staleChildCutoff,
+                    familyEdgeAt: previous?.familyEdgeAt
                 ))
             }
         }

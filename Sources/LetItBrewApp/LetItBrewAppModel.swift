@@ -2172,13 +2172,15 @@ final class LetItBrewAppModel: ObservableObject {
             return inputAttribution.observation(forApp: host, global: input)
         }
 
+        let familyEdges = MonitoringLease.latestEdges(liveSessions)
         let nextSessions = MenuSessionPresentationPolicy.rows(
             from: liveSessions.map {
                 Self.menuInput(
                     $0,
                     waitAnswers: waitAnswers,
                     now: snapshot.now,
-                    backgroundShellHoldLimit: settings.backgroundShellHoldLimit
+                    familyEdges: familyEdges,
+                    monitoringHoldLimit: settings.monitoringHoldLimit
                 )
             },
             now: snapshot.now,
@@ -2570,13 +2572,15 @@ final class LetItBrewAppModel: ObservableObject {
         _ record: SessionRecord,
         waitAnswers: WaitAnswerLatch,
         now: Date,
-        backgroundShellHoldLimit: TimeInterval
+        familyEdges: [String: Date],
+        monitoringHoldLimit: TimeInterval
     ) -> SessionMenuInput {
         let state = MenuSessionState.resolve(
             record,
             waitAnswers: waitAnswers,
             now: now,
-            backgroundShellHoldLimit: backgroundShellHoldLimit
+            familyEdges: familyEdges,
+            monitoringHoldLimit: monitoringHoldLimit
         )
         return SessionMenuInput(
             id: record.id,

@@ -65,25 +65,30 @@ The common lifecycle mapping is:
   either. A compaction inside a turn stays Working until that turn's `Stop`.
   Claude's `PostCompact` with `trigger: manual` sets **Idle**: a manual compact
   runs only at the idle prompt, so it also clears a turn an interrupt left
-  Working. A parent Working only because its `Stop` reported background tasks
-  keeps that hold, including the bounded shell-only hold.
+  Working. A parent in the monitoring sub-state keeps it.
 - Codex's `Interrupt` sets **Idle**. It is the only hook an Esc-cancelled Codex
   turn fires.
 - `Stop` and an `idle_prompt` `Notification` set **Idle**. Idle rows are hidden
-  and stop contributing to the hold on the next one-second app poll. `Stop`
-  whose `background_tasks` still reports work remains **Working**: agent-class
-  work (a subagent, teammate, workflow, or unrecognized type) with detail
-  `background-agent`, and shell-only work (`shell` or `monitor`) with detail
-  `background-shell`. `decide()` stops counting a `background-shell` session
-  once `Settings.backgroundShellHoldLimit` (one hour) has passed since the
-  record's latest edge, with the reason "background shell hold expired"; the
-  row stays listed until its next hook or eviction. A complete Stop inventory
-  also deletes child records it no longer lists as working. Claude sends
-  `idle_prompt` about a minute after every turn ends, so it does not end a
-  `background-shell` hold and leaves that record, and the start of its bounded
-  time, unchanged. A `background-agent` parent still goes Idle on it, because
-  its hold has no bound and each running subagent holds through its own
-  record from `SubagentStart`. `StopFailure` is Idle.
+  and stop contributing to the hold on the next one-second app poll. A `Stop`
+  that still reports work enters the **monitoring** sub-state of Working,
+  shown as "Monitoring background tasks": agent-class work (a subagent,
+  teammate, workflow, or unrecognized type) with detail `background-agent`,
+  shell-only work (`shell`, `monitor`, `local_bash`, `background_shell`) with
+  detail `background-shell`, and, with neither, a non-empty `session_crons`
+  with detail `scheduled-tasks`. Monitoring ends at the work's own edge: a
+  later Stop or `SubagentStop` inventory that lists nothing, a new prompt,
+  `SessionEnd`, or the agent process exiting. `MonitoringLease` bounds it and
+  every subagent's own record: `decide()` stops counting them once the
+  session family, the parent and all its subagents, has sent no hook for
+  `Settings.monitoringHoldLimit` (two hours), with the reason "monitoring
+  hold expired". Any hook in the family renews the lease, a `SubagentStop`
+  that leaves other agents running included. The row then reads "No update in
+  2 h · Mac can sleep" until its next hook or eviction. A complete Stop
+  inventory also deletes child records it no longer lists as working.
+  Claude's `idle_prompt`, sent about a minute after every turn ends, and a
+  manual `/compact` keep a monitoring record unchanged. A Stop or edge that
+  only enters or renews monitoring does not bring back a session the person
+  stopped watching. `StopFailure` is Idle.
 - Question tools (`AskUserQuestion` for Claude, `request_user_input` for Codex,
   and Copilot's `ask_user` family) set **Waiting** at `PreToolUse`; the answer's
   `PostToolUse` sets Working again. OpenCode and Pi input requests and
@@ -111,8 +116,8 @@ The common lifecycle mapping is:
   children Working. `SubagentStop` can make a
   parent still Working from `Stop` Idle when its explicit background-task
   snapshot, judged without the stopping child's own entry, reports no
-  remaining work, and can move it to the bounded shell-only hold when only
-  shells remain. Missing snapshots and parents with newer foreground activity
+  remaining work, and keeps it monitoring when shells, other agents, or
+  session crons remain; each such edge renews the family's monitoring lease. Missing snapshots and parents with newer foreground activity
   retain their state.
 
 Claude and Codex hook updates acquire a bounded family lock before any per-record lock.

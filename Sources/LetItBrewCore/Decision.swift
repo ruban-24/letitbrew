@@ -13,11 +13,12 @@ public struct Settings: Equatable, Sendable {
     /// A working session with no newer hook event is presented as silent
     /// after this interval. Presentation only: it still holds the Mac awake.
     public var workingSilenceThreshold: TimeInterval = 120
-    /// How long a Claude session whose turn ended with only shells or monitors
-    /// still running keeps holding. A shell the agent forgot cannot be told
-    /// from a long build by its status alone, so the hold is bounded instead
-    /// of released. Agent-class background work is never bounded here.
-    public var backgroundShellHoldLimit: TimeInterval = 3_600
+    /// How long a session family may stay silent while it holds only under
+    /// `MonitoringLease`: a turn that ended with background work or scheduled
+    /// crons, or a subagent's own record. Any hook in the family renews it. A
+    /// forgotten shell or a killed subagent cannot be told from long work by
+    /// its status alone, so the hold is bounded instead of released.
+    public var monitoringHoldLimit: TimeInterval = 7_200
 
     public init() {}
 }
@@ -235,12 +236,16 @@ public func decide(
     }
 
     // 5. Working sessions hold, as do waits that local input may have answered.
-    // A shell-only background hold ends after its limit; see `Settings`.
-    let expiredShellHolds = sessions.filter {
-        backgroundShellHoldExpired($0, now: now, limit: settings.backgroundShellHoldLimit)
+    // Monitoring, and a subagent's own record, end once the session family
+    // has been silent for its limit; see `MonitoringLease`.
+    let familyEdges = MonitoringLease.latestEdges(sessions)
+    let expiredLeases = sessions.filter {
+        MonitoringLease.expired(
+            $0, familyEdges: familyEdges, now: now, limit: settings.monitoringHoldLimit
+        )
     }
     let working = sessions.count {
-        waitAnswers.holdsAwake($0) && !expiredShellHolds.contains($0)
+        waitAnswers.holdsAwake($0) && !expiredLeases.contains($0)
     }
     if working > 0 {
         return Decision(
@@ -259,22 +264,54 @@ public func decide(
     if sessions.contains(where: { $0.state == .waiting }) {
         return Decision(holdSystem: false, holdLidClosed: false, reason: "agents waiting for you")
     }
-    if !expiredShellHolds.isEmpty {
+    if !expiredLeases.isEmpty {
         return Decision(holdSystem: false, holdLidClosed: false,
-                        reason: "background shell hold expired")
+                        reason: "monitoring hold expired")
     }
     return Decision(holdSystem: false, holdLidClosed: false, reason: "all agents idle")
 }
 
-/// Whether a Working session holds only for a shell-only `Stop` snapshot
-/// whose bounded time is up. The record's `updatedAt` is the edge that set
-/// the detail: every later hook rewrites it.
-public func backgroundShellHoldExpired(
-    _ session: SessionRecord, now: Date, limit: TimeInterval
-) -> Bool {
-    guard session.state == .working,
-          session.detail == SessionWorkDetail.backgroundShell,
-          limit.isFinite, limit > 0
-    else { return false }
-    return now.timeIntervalSince(session.updatedAt) >= limit
+/// The bound on the monitoring sub-state. A session whose turn ended with
+/// background work or scheduled crons, and a subagent's own record, hold only
+/// while their session family is heard from: every hook from the parent or any
+/// of its subagents renews the lease. Foreground turns are never leased.
+public enum MonitoringLease {
+    /// Whether a record holds only under the lease.
+    public static func applies(to record: SessionRecord) -> Bool {
+        guard record.state == .working else { return false }
+        return HookSessionUpdater.isWaitingOnBackgroundWork(record)
+            || HookRecordID(encoded: record.id)?.childID != nil
+    }
+
+    /// The family a record belongs to: its parent session's record ID.
+    public static func familyID(of record: SessionRecord) -> String {
+        guard let id = HookRecordID(encoded: record.id),
+              let parent = HookRecordID(agent: id.agent, parentID: id.parentID)
+        else { return record.id }
+        return parent.encoded
+    }
+
+    /// The latest hook edge each family has written, over all its records.
+    public static func latestEdges(_ records: [SessionRecord]) -> [String: Date] {
+        records.reduce(into: [:]) { edges, record in
+            let family = familyID(of: record)
+            var edge = record.updatedAt
+            if let familyEdge = record.familyEdgeAt {
+                edge = max(edge, Date(timeIntervalSince1970: familyEdge))
+            }
+            edges[family] = max(edges[family] ?? edge, edge)
+        }
+    }
+
+    /// Whether a leased record's family has been silent for `limit`.
+    public static func expired(
+        _ record: SessionRecord,
+        familyEdges: [String: Date],
+        now: Date,
+        limit: TimeInterval
+    ) -> Bool {
+        guard applies(to: record), limit.isFinite, limit > 0 else { return false }
+        let edge = max(familyEdges[familyID(of: record)] ?? record.updatedAt, record.updatedAt)
+        return now.timeIntervalSince(edge) >= limit
+    }
 }
