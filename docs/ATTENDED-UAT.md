@@ -20,7 +20,7 @@ This release adds three things: closed-lid Low Power Mode in the daemon, a
 Waiting state with an input check, and app-level session activation. It also
 redesigns the menu and Settings and carries the unpublished v0.8.4 fixes, so
 run the v0.8.4 release scope below with this build too.
-Record version 1.0.0, build 39, the full commit, and artifact hashes. Before
+Record version 1.0.0, build 40, the full commit, and artifact hashes. Before
 starting, record `pmset -g custom | grep -E 'Power:|powermode'` and
 `pmset -g | grep SleepDisabled`. Both must read back identically after every
 case below.
@@ -57,6 +57,8 @@ case below.
 
 ### Waiting and the input check
 
+   Claude refuses a foreground `sleep 240`; use a long command it accepts, for
+   example `ping -c 240 127.0.0.1 >/dev/null && echo done`.
 1. Claude: trigger a permission prompt for a long command and leave it. After
    about six seconds the row shows orange "Needs your approval" and the header
    reads "Agents are waiting for you". Close the lid and confirm the Mac sleeps.
@@ -65,7 +67,11 @@ case below.
    shows Working and the Mac stays awake until the command finishes.
 3. Claude: approve within six seconds. Confirm the session never shows Waiting.
 4. Claude and Codex: ask a question (`AskUserQuestion`, `request_user_input`).
-   Confirm Waiting with no input, then Working after answering.
+   Confirm Waiting with no input, then Working after answering. Claude: leave
+   the question unanswered for at least ten seconds, then type one key in that
+   app without answering. The row must still read "Waiting for your answer"
+   and the Mac must still be allowed to sleep; the session record keeps
+   `detail: waiting-question` and `last_event: PreToolUse`.
 5. Codex: trigger an approval with and without `approvals_reviewer =
    auto_review`. Confirm the session stays Working and holds in both.
 6. Copilot, OpenCode, and Pi: confirm their questions and approvals show

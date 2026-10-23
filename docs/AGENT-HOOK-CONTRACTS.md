@@ -84,7 +84,11 @@ rule.
   is shown. A `permission_prompt` `Notification` is Waiting (approval): Claude
   sends it only after its prompt has waited on screen for about six seconds,
   and not when a hook answers sooner. `PreToolUse` for `AskUserQuestion` is
-  Waiting (question); its `PostToolUse` returns the session to Working. Other
+  Waiting (question); its `PostToolUse` returns the session to Working. Claude
+  also sends `permission_prompt` for the question dialog itself, about six
+  seconds in; while a session is Waiting (question) that notification keeps
+  the question, because the answer arrives as a hook and an approval wait
+  would be latched as answered by any local input. Other
   notification types, including `elicitation_dialog`, preserve prior state.
   API-error turns use `StopFailure`;
   user-interrupted turns have no immediate documented terminal hook. Observed
@@ -177,7 +181,9 @@ rule.
   and `AskUserQuestion`; other tools become Working. PostToolUse and
   PostToolUseFailure return a completed, failed, or cancelled question to
   Working. Notification becomes Waiting (approval) for `permission_prompt` and
-  `elicitation_dialog`. Copilot fires no hook when an approval is granted, so
+  `elicitation_dialog`, except while the session is already Waiting (question),
+  which those notifications keep: Copilot announces its question dialog the
+  same way. Copilot fires no hook when an approval is granted, so
   a local key press or click in the session's own app after the wait holds it
   as Working until the next
   hook.

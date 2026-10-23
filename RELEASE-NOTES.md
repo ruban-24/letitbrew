@@ -12,7 +12,7 @@ against the SHA-256 published with the release.
 
 ---
 
-## 1.0.0 (build 39)
+## 1.0.0 (build 40)
 
 Added:
 
@@ -86,6 +86,11 @@ Fixed:
   when it checks whether the parent has work left.
 - A Working session whose agent process has exited, such as a Codex that quit
   without a session-end hook, no longer shows or keeps the Mac awake.
+- An unanswered Claude or Copilot question stays "Waiting for your answer".
+  Both agents also announce their question dialog with the permission
+  notification about six seconds in, which used to relabel the row "Needs your
+  approval" and let any key press in that app keep the Mac awake for a
+  question nobody had answered.
 
 Changed:
 
