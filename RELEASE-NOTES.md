@@ -12,7 +12,7 @@ against the SHA-256 published with the release.
 
 ---
 
-## 1.0.0 (build 38)
+## 1.0.0 (build 39)
 
 Added:
 
@@ -38,9 +38,12 @@ Added:
 Changed:
 
 - The menu is more compact and lists sessions waiting for you first, under
-  **Needs You**. Sessions in a folder sit under a slim folder header without
-  repeating its name, and the header counts waiting sessions apart from working
-  ones. Battery status moved into the header.
+  **Needs You**. Sessions in a folder sit one step in under a folder row that
+  lines up with the other sessions, without repeating its name, and the header
+  counts waiting sessions apart from working ones. Battery status moved into
+  the header, and text is lighter so project names stand out.
+- A Claude session kept awake only by background shells reads **Running in
+  background**, and **In background · Mac can sleep** once that hold ends.
 - Hovering a session highlights it and swaps its active time for **Stop
   Watching**; right-click a session for the same actions.
 - Settings uses the standard macOS toolbar tabs: General, Agents, Power, Closed

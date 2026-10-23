@@ -180,7 +180,7 @@ struct MenuBarContentView: View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 12) {
                 Text(model.reason)
-                    .font(.headline)
+                    .font(.body.weight(.semibold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
                     .accessibilityAddTraits(.isHeader)
@@ -193,7 +193,7 @@ struct MenuBarContentView: View {
                 ))
                 .labelsHidden()
                 .toggleStyle(.switch)
-                .controlSize(.small)
+                .controlSize(.mini)
                 .accessibilityHint("Controls whether working agents may keep this Mac awake")
             }
             Text(headerDetail)
@@ -497,15 +497,16 @@ private struct RepositoryGroupRowView: View {
 
     var body: some View {
         Button(action: onToggle) {
-            HStack(spacing: 6) {
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
+            // The folder sits in the same icon and text columns as a session
+            // on its own row; the disclosure chevron trails, as in system menus.
+            HStack(spacing: 10) {
+                Image(systemName: "folder")
                     .foregroundStyle(.secondary)
-                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                    .frame(width: 14)
+                    .frame(width: 20)
+                    .accessibilityHidden(true)
 
                 Text(group.project)
-                    .fontWeight(.semibold)
+                    .fontWeight(.medium)
                     .lineLimit(1)
 
                 Spacer(minLength: 8)
@@ -522,6 +523,13 @@ private struct RepositoryGroupRowView: View {
                 Text(group.sessionCountText)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                    .frame(width: 12)
+                    .accessibilityHidden(true)
             }
             .padding(.horizontal, 10)
             .frame(height: RowMetrics.repositoryHeaderHeight)
@@ -585,7 +593,9 @@ private struct SessionRowView: View {
                 .accessibilityHidden(true)
             }
         }
-        .padding(.leading, isGrouped ? 30 : 10)
+        // A row under a folder starts one column in, so its logo sits under
+        // the folder name: 10 + a 20-point icon + 10 spacing.
+        .padding(.leading, isGrouped ? 40 : 10)
         .padding(.trailing, 10)
         .frame(height: isGrouped ? RowMetrics.groupedSessionHeight : RowMetrics.sessionHeight)
         .background(
@@ -614,6 +624,7 @@ private struct SessionRowView: View {
                 AgentLogo(toolID: session.toolID)
                     .frame(width: 16, height: 16)
                 Text(session.toolName)
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
                 stateLabel
                 Spacer(minLength: 0)
@@ -625,7 +636,6 @@ private struct SessionRowView: View {
                     .frame(width: 20, height: 20)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(session.project)
-                        .fontWeight(.medium)
                         .lineLimit(1)
                     HStack(spacing: 5) {
                         stateDot
@@ -655,15 +665,18 @@ private struct SessionRowView: View {
 
     private var stateDot: some View {
         Circle()
-            .fill(session.isWaiting ? Color.orange : Color.green)
+            .fill(session.isWaiting
+                  ? Color.orange
+                  : session.isWorking ? Color.green.opacity(0.75) : Color.secondary)
             .frame(width: 6, height: 6)
     }
 
     private var activeTime: some View {
         Text(session.activeTimeText)
             .font(.subheadline.monospacedDigit())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.tertiary)
             .lineLimit(1)
+            .help("Active for \(session.activeTimeText)")
     }
 
     private var stateTextStyle: AnyShapeStyle {

@@ -20,7 +20,7 @@ This release adds three things: closed-lid Low Power Mode in the daemon, a
 Waiting state with an input check, and app-level session activation. It also
 redesigns the menu and Settings and carries the unpublished v0.8.4 fixes, so
 run the v0.8.4 release scope below with this build too.
-Record version 1.0.0, build 38, the full commit, and artifact hashes. Before
+Record version 1.0.0, build 39, the full commit, and artifact hashes. Before
 starting, record `pmset -g custom | grep -E 'Power:|powermode'` and
 `pmset -g | grep SleepDisabled`. Both must read back identically after every
 case below.
@@ -113,7 +113,11 @@ In light and dark mode, with the signed app:
 1. With one Waiting session and Working sessions in a shared folder and on
    their own, open the menu. Confirm **Needs You** lists the waiting session
    first, **Working** follows, folder rows do not repeat the folder name, and
-   the header reads, for example, "2 agents are working · 1 waiting".
+   the header reads, for example, "2 agents are working · 1 waiting". The
+   folder icon and name line up with the logos and names of sessions on their
+   own rows, and a folder's sessions start one step in, under its name. A
+   Claude session left with only background shells reads **Running in
+   background**.
 2. Hover a session: it highlights only if it can be brought forward, and its
    active time gives way to the eye button. Stop watching one session from
    the eye button and another from the right-click menu. With a Claude
@@ -140,12 +144,13 @@ to confirm the hold, and the menu to confirm the row.
 
 1. Ask Claude to run `sleep 900` with `run_in_background` and reply without
    waiting. After it replies, the record is Working with `last_event: Stop`
-   and `detail: background-shell`, the menu lists it as Working, and the Mac
-   is held. Kill the sleep and send any prompt: the next Stop makes it Idle.
+   and `detail: background-shell`, the menu lists it as **Running in
+   background**, and the Mac is held. Kill the sleep and send any prompt: the next Stop makes it Idle.
 2. Repeat case 1 but leave the sleep running for over an hour (or, for a
    faster check, confirm from the status output that the reason becomes
    "background shell hold expired" once `updated_at` is an hour old). The
-   hold releases while the row stays listed until the next hook.
+   hold releases while the row stays listed as **In background · Mac can
+   sleep** until the next hook.
 3. Ask Claude to use the Agent tool with model haiku to start `sleep 800` in
    the background and return. After the parent replies, the child record is
    gone, the parent is Working with `detail: background-shell`, and killing

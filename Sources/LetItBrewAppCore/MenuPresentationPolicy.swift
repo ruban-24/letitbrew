@@ -3,19 +3,30 @@ import LetItBrewCore
 
 public enum MenuSessionState: Equatable, Sendable {
     case working
+    /// Working only because background shells outlived the turn.
+    case workingInBackground
+    /// As above, past `Settings.backgroundShellHoldLimit`: listed, not holding.
+    case backgroundHoldEnded
     case waitingForAnswer
     case waitingForApproval
     case idle
 
     /// Maps a record's state for presentation. A wait that local input may
-    /// have answered holds as Working, so it is shown as Working too.
+    /// have answered holds as Working, so it is shown as Working too. Without
+    /// `now`, a background hold is never treated as ended.
     public static func resolve(
         _ record: SessionRecord,
-        waitAnswers: WaitAnswerLatch
+        waitAnswers: WaitAnswerLatch,
+        now: Date? = nil,
+        backgroundShellHoldLimit: TimeInterval = LetItBrewCore.Settings().backgroundShellHoldLimit
     ) -> MenuSessionState {
         switch record.state {
         case .working:
-            return .working
+            guard record.detail == SessionWorkDetail.backgroundShell else { return .working }
+            if let now, backgroundShellHoldExpired(record, now: now, limit: backgroundShellHoldLimit) {
+                return .backgroundHoldEnded
+            }
+            return .workingInBackground
         case .idle:
             return .idle
         case .waiting:
@@ -36,9 +47,16 @@ public enum MenuSessionState: Equatable, Sendable {
         self == .waitingForAnswer || self == .waitingForApproval
     }
 
+    /// Counted as working: it keeps the Mac awake unless a power limit applies.
+    public var isWorking: Bool {
+        self == .working || self == .workingInBackground
+    }
+
     var text: String {
         switch self {
         case .working: "Working"
+        case .workingInBackground: "Running in background"
+        case .backgroundHoldEnded: "In background · Mac can sleep"
         case .waitingForAnswer: "Waiting for your answer"
         case .waitingForApproval: "Needs your approval"
         case .idle: "Idle"
@@ -120,6 +138,8 @@ public struct MenuSessionPresentation: Identifiable, Equatable, Sendable {
     public let activeTimeText: String
     public let updatedAt: Date
     public let isWaiting: Bool
+    /// See `MenuSessionState.isWorking`.
+    public let isWorking: Bool
     /// The agent process, for bringing its app forward. Nil when unknown.
     public let agentPID: Int32?
 
@@ -222,9 +242,10 @@ public enum MenuSessionPresentationPolicy {
                 project: input.project.isEmpty ? "Unknown project" : input.project,
                 repositoryID: input.repositoryPath,
                 stateText: input.state.text,
-                activeTimeText: duration(input.activeWorkingTime) + " active",
+                activeTimeText: duration(input.activeWorkingTime),
                 updatedAt: input.updatedAt,
                 isWaiting: input.state.isWaiting,
+                isWorking: input.state.isWorking,
                 agentPID: input.agentPID
             )
             }
@@ -310,10 +331,12 @@ public enum MenuRepositoryPresentationPolicy {
 
     private static func sessionCount(for sessions: [MenuSessionPresentation]) -> String {
         let waiting = sessions.count(where: \.isWaiting)
-        let working = sessions.count - waiting
+        let working = sessions.count(where: \.isWorking)
+        let background = sessions.count - waiting - working
         return [
             working > 0 ? "\(working) working" : nil,
             waiting > 0 ? "\(waiting) waiting" : nil,
+            background > 0 ? "\(background) in background" : nil,
         ].compactMap { $0 }.joined(separator: " · ")
     }
 
@@ -647,7 +670,7 @@ public enum MenuHeaderDetailCopy {
         switch context {
         case .awake:
             let waitingCount = rows.count(where: \.isWaiting)
-            let workingCount = rows.count - waitingCount
+            let workingCount = rows.count(where: \.isWorking)
             let working = switch workingCount {
             case 0: "No agents are working"
             case 1: "1 agent is working"
