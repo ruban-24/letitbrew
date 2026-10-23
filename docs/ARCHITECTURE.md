@@ -89,7 +89,10 @@ The common lifecycle mapping is:
   notifications set Waiting.
 - Claude's `permission_prompt` `Notification` sets **Waiting**. Claude sends it
   only after its prompt has waited on screen for about six seconds, so a
-  request another hook or auto mode settles never sends it. `PermissionRequest`
+  request another hook or auto mode settles never sends it. Claude and Copilot
+  send the same notification for their question dialogs, so a session already
+  Waiting on a question keeps that question: its answer is a hook, whereas an
+  approval wait is latched as answered by local input. `PermissionRequest`
   for Claude and Codex returns no effect: both run it before another hook, auto
   mode, or Codex's auto-reviewer decides, so it does not prove a person is
   being asked.

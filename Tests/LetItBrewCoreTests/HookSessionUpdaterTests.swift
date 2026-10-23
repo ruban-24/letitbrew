@@ -1574,6 +1574,72 @@ import Testing
     #expect(parent.updatedAt == Date(timeIntervalSince1970: 300))
 }
 
+
+// MARK: - A question is not an approval
+
+@Test func aPermissionNotificationCannotTurnAClaudeQuestionIntoAnApproval() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+    let id = hookUpdaterID("ask", agent: .claude)
+
+    try applyHooks([("UserPromptSubmit", ""),
+                    ("PreToolUse", #","tool_name":"AskUserQuestion""#)],
+                   sessionID: "ask", from: 100, storage: storage)
+    var record = try #require(storage.load(id: id))
+    #expect(record.state == .waiting)
+    #expect(record.detail == SessionWaitDetail.question)
+
+    // Observed on Claude Code 2.1.x: the question dialog also sends this.
+    try applyHooks([("Notification", #","notification_type":"permission_prompt""#)],
+                   sessionID: "ask", from: 106, storage: storage)
+    record = try #require(storage.load(id: id))
+    #expect(record.state == .waiting)
+    #expect(record.detail == SessionWaitDetail.question)
+    #expect(record.lastEvent == "PreToolUse")
+    #expect(!WaitAnswerLatch.answerIsSilent(record))
+
+    // The answer still arrives as a hook and resumes the turn.
+    try applyHooks([("PostToolUse", #","tool_name":"AskUserQuestion""#), ("Stop", "")],
+                   sessionID: "ask", from: 200, storage: storage)
+    #expect(storage.load(id: id)?.state == .idle)
+}
+
+@Test func aNotificationCannotTurnACopilotQuestionIntoAnApproval() throws {
+    for notification in ["permission_prompt", "elicitation_dialog"] {
+        let directory = hookUpdaterTempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = SessionStorage(directory: directory)
+        let id = hookUpdaterID("ask", agent: .copilot)
+
+        try applyHooks([("UserPromptSubmit", ""), ("PreToolUse", #","tool_name":"ask_user""#),
+                        ("Notification", ",\"notification_type\":\"\(notification)\"")],
+                       agent: .copilot, sessionID: "ask", from: 100, storage: storage)
+        let record = try #require(storage.load(id: id))
+        #expect(record.state == .waiting, "\(notification)")
+        #expect(record.detail == SessionWaitDetail.question, "\(notification)")
+    }
+}
+
+@Test func aPermissionNotificationWithoutAQuestionStillBecomesAnApproval() throws {
+    for (agent, priorState) in [(AgentID.claude, "working"), (.claude, "idle"),
+                                (.copilot, "working")] {
+        let directory = hookUpdaterTempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = SessionStorage(directory: directory)
+        let id = hookUpdaterID("cmd", agent: agent)
+
+        let prior: [(String, String)] = priorState == "idle"
+            ? [("UserPromptSubmit", ""), ("Stop", "")]
+            : [("UserPromptSubmit", ""), ("PreToolUse", #","tool_name":"Bash""#)]
+        try applyHooks(prior + [("Notification", #","notification_type":"permission_prompt""#)],
+                       agent: agent, sessionID: "cmd", from: 100, storage: storage)
+        let record = try #require(storage.load(id: id))
+        #expect(record.state == .waiting, "\(agent) from \(priorState)")
+        #expect(record.detail == SessionWaitDetail.approval, "\(agent) from \(priorState)")
+    }
+}
+
 /// Applies `(event, extra payload fields)` pairs one second apart.
 private func applyHooks(
     _ events: [(String, String)],
