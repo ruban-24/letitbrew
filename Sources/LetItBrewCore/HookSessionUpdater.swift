@@ -140,7 +140,22 @@ public enum HookSessionUpdater {
                             return .delete
                         }
                     }
-                } else if event == "SubagentStop", payload.hasBackgroundTaskSnapshot {
+                }
+
+                // The stopping child's record is gone, so the parent keeps its
+                // edge for the family's monitoring lease, with or without a
+                // background-task snapshot.
+                if event == "SubagentStop", identity.childID != nil {
+                    let edge = observedAt.timeIntervalSince1970
+                    try storage.mutate(id: parent.encoded, observedAt: edge) { previous in
+                        guard var record = previous, (record.familyEdgeAt ?? -.infinity) < edge
+                        else { return .keep }
+                        record.familyEdgeAt = edge
+                        return .replace(record)
+                    }
+                }
+
+                if event == "SubagentStop", payload.hasBackgroundTaskSnapshot {
                     // The snapshot is scoped to the parent and, for a
                     // backgrounded child, still lists the child that is
                     // stopping right now. Judge the parent without it.
@@ -300,7 +315,8 @@ public enum HookSessionUpdater {
                     reopenedAt: reopenedAt ?? previous?.reopenedAt,
                     promptObservedAt: event == "UserPromptSubmit"
                         ? observedAt.timeIntervalSince1970 : previous?.promptObservedAt,
-                    staleChildCutoff: staleChildCutoff ?? previous?.staleChildCutoff
+                    staleChildCutoff: staleChildCutoff ?? previous?.staleChildCutoff,
+                    familyEdgeAt: previous?.familyEdgeAt
                 ))
             }
         }

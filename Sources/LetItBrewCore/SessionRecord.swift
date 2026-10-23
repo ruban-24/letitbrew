@@ -136,6 +136,10 @@ public struct SessionRecord: Codable, Equatable, Sendable {
     /// last heard before this sent nothing for a whole turn and are finished.
     /// Reads honor it, so an interrupted cleanup cannot leave them Working.
     public var staleChildCutoff: TimeInterval?
+    /// Precise Unix seconds of the latest `SubagentStop` from one of this
+    /// parent's subagents. That child's record is deleted, so the parent keeps
+    /// its edge for the family's `MonitoringLease`. Nil when none was heard.
+    public var familyEdgeAt: TimeInterval?
     /// When this agent session began. Optional so records written by older
     /// Let It Brew versions continue to decode. Consumers should use
     /// `effectiveStartedAt` when presenting elapsed session time.
@@ -162,6 +166,7 @@ public struct SessionRecord: Codable, Equatable, Sendable {
         case reopenedAt = "reopened_at"
         case promptObservedAt = "prompt_observed_at"
         case staleChildCutoff = "stale_child_cutoff"
+        case familyEdgeAt = "family_edge_at"
         case startedAt = "started_at"
         case accumulatedWorkingTime = "accumulated_working_time"
         case lastEvent = "last_event"
@@ -175,7 +180,8 @@ public struct SessionRecord: Codable, Equatable, Sendable {
                 accumulatedWorkingTime: TimeInterval? = nil,
                 stateChangedAt: Date? = nil, stateTransitionID: String? = nil,
                 eventObservedAt: TimeInterval? = nil, reopenedAt: TimeInterval? = nil,
-                promptObservedAt: TimeInterval? = nil, staleChildCutoff: TimeInterval? = nil) {
+                promptObservedAt: TimeInterval? = nil, staleChildCutoff: TimeInterval? = nil,
+                familyEdgeAt: TimeInterval? = nil) {
         self.id = id
         self.tool = tool
         self.state = state
@@ -187,6 +193,7 @@ public struct SessionRecord: Codable, Equatable, Sendable {
         self.reopenedAt = reopenedAt
         self.promptObservedAt = promptObservedAt
         self.staleChildCutoff = staleChildCutoff
+        self.familyEdgeAt = familyEdgeAt
         self.startedAt = startedAt
         self.accumulatedWorkingTime = accumulatedWorkingTime
         self.lastEvent = lastEvent
@@ -215,6 +222,7 @@ public struct SessionRecord: Codable, Equatable, Sendable {
         staleChildCutoff = try container.decodeIfPresent(
             TimeInterval.self, forKey: .staleChildCutoff
         )
+        familyEdgeAt = try container.decodeIfPresent(TimeInterval.self, forKey: .familyEdgeAt)
         startedAt = try container.decodeIfPresent(Date.self, forKey: .startedAt)
         accumulatedWorkingTime = try container.decodeIfPresent(
             TimeInterval.self, forKey: .accumulatedWorkingTime
@@ -237,6 +245,7 @@ public struct SessionRecord: Codable, Equatable, Sendable {
         try container.encodeIfPresent(reopenedAt, forKey: .reopenedAt)
         try container.encodeIfPresent(promptObservedAt, forKey: .promptObservedAt)
         try container.encodeIfPresent(staleChildCutoff, forKey: .staleChildCutoff)
+        try container.encodeIfPresent(familyEdgeAt, forKey: .familyEdgeAt)
         try container.encodeIfPresent(startedAt, forKey: .startedAt)
         try container.encodeIfPresent(accumulatedWorkingTime, forKey: .accumulatedWorkingTime)
         try container.encodeIfPresent(lastEvent, forKey: .lastEvent)

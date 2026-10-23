@@ -295,7 +295,11 @@ public enum MonitoringLease {
     public static func latestEdges(_ records: [SessionRecord]) -> [String: Date] {
         records.reduce(into: [:]) { edges, record in
             let family = familyID(of: record)
-            edges[family] = max(edges[family] ?? record.updatedAt, record.updatedAt)
+            var edge = record.updatedAt
+            if let familyEdge = record.familyEdgeAt {
+                edge = max(edge, Date(timeIntervalSince1970: familyEdge))
+            }
+            edges[family] = max(edges[family] ?? edge, edge)
         }
     }
 
