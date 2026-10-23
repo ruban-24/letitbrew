@@ -255,8 +255,13 @@ public enum HookSessionUpdater {
                     state: state,
                     detail: detail,
                     cwd: payload.cwd ?? FileManager.default.currentDirectoryPath,
-                    // A hook whose ancestry walk failed keeps the known agent.
-                    pid: agentPID ?? previous?.pid,
+                    // A hook whose ancestry walk failed keeps the known agent,
+                    // but this hook proves the agent is alive right now, so a
+                    // carried PID that has exited belonged to an earlier
+                    // process of a resumed session and must not be trusted.
+                    pid: agentPID ?? previous?.pid.flatMap {
+                        KillZeroLiveness().isAlive(pid: $0) ? $0 : nil
+                    },
                     updatedAt: observedAt,
                     lastEvent: event,
                     startedAt: SessionTimeline.startedAt(previous: previous, now: observedAt),

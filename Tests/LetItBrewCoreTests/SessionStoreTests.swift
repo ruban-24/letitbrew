@@ -129,3 +129,44 @@ private func record(
     // reaped-child test above is what proves the ESRCH branch on its own.
     #expect(KillZeroLiveness().isAlive(pid: 1) == true)
 }
+
+// MARK: - Exited-agent exclusion shared by the app, watch, and status
+
+private func exitedAgentRecord(_ state: SessionState, pid: Int32?) -> SessionRecord {
+    SessionRecord(id: "v1|6:claude|\(UUID().uuidString.utf8.count):\(UUID().uuidString)|0:",
+                  tool: "claude", state: state, detail: nil, cwd: "/tmp/repo", pid: pid,
+                  updatedAt: Date())
+}
+
+@Test func exitedAgentsAreDroppedOnlyWhenInTurnWithAKnownDeadPID() throws {
+    let task = Process()
+    task.executableURL = URL(fileURLWithPath: "/usr/bin/true")
+    try task.run()
+    let dead = task.processIdentifier
+    task.waitUntilExit()
+
+    let deadWorking = exitedAgentRecord(.working, pid: dead)
+    let deadWaiting = exitedAgentRecord(.waiting, pid: dead)
+    let deadIdle = exitedAgentRecord(.idle, pid: dead)
+    let noPID = exitedAgentRecord(.working, pid: nil)
+    let alive = exitedAgentRecord(.working, pid: getpid())
+    let otherUser = exitedAgentRecord(.working, pid: 1)
+
+    let kept = SessionStore.excludingExitedAgents(
+        [deadWorking, deadWaiting, deadIdle, noPID, alive, otherUser]
+    )
+    #expect(kept.map(\.id) == [deadIdle, noPID, alive, otherUser].map(\.id))
+}
+
+@Test func exitedAgentExclusionUsesTheInjectedLivenessOnlyForInTurnRecords() {
+    var asked: [Int32] = []
+    let kept = SessionStore.excludingExitedAgents(
+        [exitedAgentRecord(.working, pid: 7), exitedAgentRecord(.idle, pid: 8),
+         exitedAgentRecord(.waiting, pid: nil)]
+    ) { pid in
+        asked.append(pid)
+        return false
+    }
+    #expect(asked == [7])
+    #expect(kept.count == 2)
+}

@@ -129,9 +129,14 @@ bring the agent's app forward, and it names the app whose input can answer a
 Claude or Copilot approval. A Working or Waiting session whose agent has
 exited neither shows nor holds: a wait can no longer be answered, and an agent
 that quit without `SessionEnd` has no work left. The check asks the kernel
-about that one recorded ID; a process another user owns counts as alive, and a
-record without an ID keeps the hook-only behavior. The ID never affects
-eviction, and it affects the hold only through those rules.
+about that one recorded ID (`SessionStore.excludingExitedAgents`, shared by
+the app, `letitbrew watch`, and `letitbrew status`); a process another user
+owns counts as alive, and a record without an ID keeps the hook-only behavior.
+A hook whose ancestry walk fails carries the record's previous ID only while
+that process is still alive, because the hook itself proves an agent is
+running: a resumed session must not inherit the dead ID of an earlier process.
+The ID never affects eviction, and it affects the hold only through those
+rules.
 
 Each adapter's exact source-event vocabulary is frozen in
 [AGENT-HOOK-CONTRACTS.md](AGENT-HOOK-CONTRACTS.md); unsupported source events do

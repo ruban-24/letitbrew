@@ -1751,21 +1751,53 @@ private final class LockedErrors: @unchecked Sendable {
     let payload = HookPayload(sessionId: "pid-keep", cwd: "/work/app")
     let id = hookUpdaterID("pid-keep", agent: .claude)
 
+    let alive = getpid()
     try HookSessionUpdater.apply(
-        event: "UserPromptSubmit", payload: payload, agent: .claude, agentPID: 4_321,
+        event: "UserPromptSubmit", payload: payload, agent: .claude, agentPID: alive,
         observedAt: Date(timeIntervalSince1970: 100), storage: storage
     )
     try HookSessionUpdater.apply(
         event: "PreToolUse", payload: payload, agent: .claude, agentPID: nil,
         observedAt: Date(timeIntervalSince1970: 101), storage: storage
     )
-    #expect(storage.load(id: id)?.pid == 4_321)
+    #expect(storage.load(id: id)?.pid == alive)
 
     try HookSessionUpdater.apply(
-        event: "PostToolUse", payload: payload, agent: .claude, agentPID: 9_876,
+        event: "PostToolUse", payload: payload, agent: .claude, agentPID: 1,
         observedAt: Date(timeIntervalSince1970: 102), storage: storage
     )
-    #expect(storage.load(id: id)?.pid == 9_876)
+    #expect(storage.load(id: id)?.pid == 1)
+}
+
+@Test func aHookWithoutAnAgentPIDDropsACarriedPIDThatHasExited() throws {
+    // A session resumed after its agent died without SessionEnd: the old
+    // record still names the dead process. The new hook proves an agent is
+    // alive, so the dead PID must not follow the record and later drop it.
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+    let payload = HookPayload(sessionId: "pid-dead", cwd: "/work/app")
+    let id = hookUpdaterID("pid-dead", agent: .claude)
+
+    let task = Process()
+    task.executableURL = URL(fileURLWithPath: "/usr/bin/true")
+    try task.run()
+    let dead = task.processIdentifier
+    task.waitUntilExit()
+
+    try HookSessionUpdater.apply(
+        event: "UserPromptSubmit", payload: payload, agent: .claude, agentPID: dead,
+        observedAt: Date(timeIntervalSince1970: 100), storage: storage
+    )
+    #expect(storage.load(id: id)?.pid == dead)
+    try HookSessionUpdater.apply(
+        event: "UserPromptSubmit", payload: payload, agent: .claude, agentPID: nil,
+        observedAt: Date(timeIntervalSince1970: 200), storage: storage
+    )
+    let record = try #require(storage.load(id: id))
+    #expect(record.state == .working)
+    #expect(record.pid == nil)
+    #expect(SessionStore.excludingExitedAgents([record]).count == 1)
 }
 
 @Test func claudeWaitsFollowTheShownPromptAndTheAnswer() throws {

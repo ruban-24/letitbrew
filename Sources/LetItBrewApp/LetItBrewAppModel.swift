@@ -2163,15 +2163,8 @@ final class LetItBrewAppModel: ObservableObject {
             creditInput(snapshot.answerInput, now: snapshot.now)
         }
         // A session whose recorded agent process has exited neither shows nor
-        // holds: a wait can no longer be answered, and a turn the agent died
-        // inside, or a Codex that quit without SessionEnd, has no work left.
-        // Records without a PID keep today's hook-only behavior, and a PID
-        // another user owns counts as alive.
-        let liveness = KillZeroLiveness()
-        let liveSessions = snapshot.sessions.filter { record in
-            guard record.state.isInTurn, let pid = record.pid else { return true }
-            return liveness.isAlive(pid: pid)
-        }
+        // holds. The same rule feeds `letitbrew watch` and `status`.
+        let liveSessions = SessionStore.excludingExitedAgents(snapshot.sessions)
         let hosts = hostApps(forSilentWaitsIn: liveSessions)
         waitAnswers.observe(liveSessions) { wait in
             // An agent with no known app falls back to input anywhere.

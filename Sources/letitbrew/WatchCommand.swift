@@ -4,7 +4,9 @@ import LetItBrewCore
 
 private func recentSessions(storage: SessionStorage, settings: Settings,
                             now: Date) -> [SessionRecord] {
-    SessionStore.recent(records: storage.loadAll(), now: now, ttl: settings.staleTTL)
+    SessionStore.excludingExitedAgents(
+        SessionStore.recent(records: storage.loadAll(), now: now, ttl: settings.staleTTL)
+    )
 }
 
 private func compactDuration(_ seconds: Int) -> String {
