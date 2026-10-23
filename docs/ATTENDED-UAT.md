@@ -20,7 +20,7 @@ This release adds three things: closed-lid Low Power Mode in the daemon, a
 Waiting state with an input check, and app-level session activation. It also
 redesigns the menu and Settings and carries the unpublished v0.8.4 fixes, so
 run the v0.8.4 release scope below with this build too.
-Record version 1.0.0, build 40, the full commit, and artifact hashes. Before
+Record version 1.0.0, build 41, the full commit, and artifact hashes. Before
 starting, record `pmset -g custom | grep -E 'Power:|powermode'` and
 `pmset -g | grep SleepDisabled`. Both must read back identically after every
 case below.
@@ -152,7 +152,11 @@ to confirm the hold, and the menu to confirm the row.
 1. Ask Claude to run `sleep 900` with `run_in_background` and reply without
    waiting. After it replies, the record is Working with `last_event: Stop`
    and `detail: background-shell`, the menu lists it as **Running in
-   background**, and the Mac is held. Kill the sleep and send any prompt: the next Stop makes it Idle.
+   background**, and the Mac is held. Wait at least two minutes: Claude's
+   `idle_prompt` Notification arrives about a minute after the Stop, and the
+   record must still be Working with `detail: background-shell` and an
+   unchanged `updated_at`, with the Mac still held. Kill the sleep and send
+   any prompt: the next Stop makes it Idle.
 2. Repeat case 1 but leave the sleep running for over an hour (or, for a
    faster check, confirm from the status output that the reason becomes
    "background shell hold expired" once `updated_at` is an hour old). The

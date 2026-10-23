@@ -240,6 +240,20 @@ public enum HookSessionUpdater {
                 return .keep
             }
 
+            // Claude sends idle_prompt about a minute after every turn ends,
+            // so it does not end a shell-only hold either; keeping the record
+            // keeps the Stop as the start of that hold's bounded time. A
+            // parent held for background agents still goes Idle: each running
+            // subagent holds through its own record from SubagentStart, and
+            // the parent's agent hold has no bound.
+            if agent == .claude,
+               event == "Notification",
+               payload.notificationType == "idle_prompt",
+               previous?.state == .working,
+               previous?.detail == SessionWorkDetail.backgroundShell {
+                return .keep
+            }
+
             // Claude and Copilot also announce their question dialog with a
             // permission-style Notification about six seconds in. The question
             // is already Waiting and its answer arrives as a hook, so it must

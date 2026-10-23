@@ -78,8 +78,12 @@ The common lifecycle mapping is:
   once `Settings.backgroundShellHoldLimit` (one hour) has passed since the
   record's latest edge, with the reason "background shell hold expired"; the
   row stays listed until its next hook or eviction. A complete Stop inventory
-  also deletes child records it no longer lists as working. `StopFailure` is
-  Idle.
+  also deletes child records it no longer lists as working. Claude sends
+  `idle_prompt` about a minute after every turn ends, so it does not end a
+  `background-shell` hold and leaves that record, and the start of its bounded
+  time, unchanged. A `background-agent` parent still goes Idle on it, because
+  its hold has no bound and each running subagent holds through its own
+  record from `SubagentStart`. `StopFailure` is Idle.
 - Question tools (`AskUserQuestion` for Claude, `request_user_input` for Codex,
   and Copilot's `ask_user` family) set **Waiting** at `PreToolUse`; the answer's
   `PostToolUse` sets Working again. OpenCode and Pi input requests and
