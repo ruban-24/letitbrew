@@ -12,7 +12,7 @@ against the SHA-256 published with the release.
 
 ---
 
-## 1.0.0 (build 40)
+## 1.0.0 (build 41)
 
 Added:
 
@@ -80,6 +80,9 @@ Fixed:
   still running, such as a `sleep` or `tail` a subagent left behind, now holds
   the Mac for at most one hour instead of twelve. Running subagents and other
   agent work still hold until they finish.
+- Background work a Claude turn leaves running is no longer released about a
+  minute after the turn ends. Claude sends an idle notification then, which
+  used to mark the session Idle while its shell or subagent was still working.
 - Claude subagents that never report completion are cleared when the parent's
   next turn ends without listing them, instead of staying Working for twelve
   hours. A subagent's own completion no longer counts itself as still running

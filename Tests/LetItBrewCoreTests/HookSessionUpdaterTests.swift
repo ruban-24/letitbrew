@@ -848,6 +848,68 @@ import Testing
     #expect(record.lastEvent == "Stop")
 }
 
+@Test func claudeIdlePromptKeepsAStoppedTurnsBackgroundShellAndItsBoundedStart() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+
+    // Observed: Claude sends idle_prompt about 60 s after Stop while a
+    // background shell still runs.
+    try applyHooks(
+        [("UserPromptSubmit", ""),
+         ("Stop", #","background_tasks":[{"type":"shell","status":"running"}]"#),
+         ("Notification", #","notification_type":"idle_prompt""#)],
+        sessionID: "background-shell", from: 100, storage: storage
+    )
+
+    let record = try #require(storage.load(id: hookUpdaterID("background-shell", agent: .claude)))
+    #expect(record.state == .working)
+    #expect(record.detail == SessionWorkDetail.backgroundShell)
+    #expect(record.lastEvent == "Stop")
+    // The one-hour bound still runs from the Stop, not from the Notification.
+    #expect(record.updatedAt == Date(timeIntervalSince1970: 101))
+}
+
+@Test func claudeIdlePromptKeepsAStoppedTurnsBackgroundAgent() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+
+    try applyHooks(
+        [("UserPromptSubmit", ""),
+         ("Stop", #","background_tasks":[{"type":"subagent","status":"running"}]"#),
+         ("Notification", #","notification_type":"idle_prompt""#)],
+        sessionID: "background-agent", from: 100, storage: storage
+    )
+
+    let record = try #require(storage.load(id: hookUpdaterID("background-agent", agent: .claude)))
+    #expect(record.state == .working)
+    #expect(record.detail == SessionWorkDetail.backgroundAgent)
+}
+
+@Test func claudeIdlePromptStillEndsATurnWithoutBackgroundWork() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+
+    try applyHooks(
+        [("UserPromptSubmit", ""), ("PreToolUse", #","tool_name":"Bash""#),
+         ("Notification", #","notification_type":"idle_prompt""#)],
+        sessionID: "foreground", from: 100, storage: storage
+    )
+    try applyHooks(
+        [("UserPromptSubmit", ""), ("Stop", #","background_tasks":[]"#),
+         ("Notification", #","notification_type":"idle_prompt""#)],
+        sessionID: "finished", from: 100, storage: storage
+    )
+
+    let foreground = try #require(storage.load(id: hookUpdaterID("foreground", agent: .claude)))
+    #expect(foreground.state == .idle)
+    #expect(foreground.lastEvent == "Notification")
+    let finished = try #require(storage.load(id: hookUpdaterID("finished", agent: .claude)))
+    #expect(finished.state == .idle)
+}
+
 @Test func claudeSessionStartFromAnUnknownSourceKeepsTheTurnWorking() throws {
     let directory = hookUpdaterTempDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }

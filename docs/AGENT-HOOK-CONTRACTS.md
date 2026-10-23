@@ -88,7 +88,11 @@ rule.
   also sends `permission_prompt` for the question dialog itself, about six
   seconds in; while a session is Waiting (question) that notification keeps
   the question, because the answer arrives as a hook and an approval wait
-  would be latched as answered by any local input. Other
+  would be latched as answered by any local input. `idle_prompt` is Idle,
+  except for a parent Working only because its `Stop` reported background
+  tasks: observed on Claude Code 2.1.x, it arrives about 60 seconds after
+  every `Stop`, including while that work still runs, so it keeps the record
+  and the start of a shell-only hold's bounded time. Other
   notification types, including `elicitation_dialog`, preserve prior state.
   API-error turns use `StopFailure`;
   user-interrupted turns have no immediate documented terminal hook. Observed
