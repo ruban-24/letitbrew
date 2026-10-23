@@ -232,15 +232,25 @@ public enum HookSessionUpdater {
             }
 
             // Stop stays Working only while it reports background work. A
-            // manual compact at that prompt, or the idle_prompt Notification
-            // Claude sends about a minute after any turn ends, does not end
-            // the work; only the work's own completion edge may release the
-            // hold. Keeping the record also keeps the Stop as the start of a
-            // shell-only hold's bounded time.
+            // manual compact at that prompt does not end the work; only the
+            // work's own completion edge may release the hold.
             if agent == .claude,
-               event == "PostCompact"
-                || (event == "Notification" && payload.notificationType == "idle_prompt"),
+               event == "PostCompact",
                let previous, isWaitingOnBackgroundWork(previous) {
+                return .keep
+            }
+
+            // Claude sends idle_prompt about a minute after every turn ends,
+            // so it does not end a shell-only hold either; keeping the record
+            // keeps the Stop as the start of that hold's bounded time. A
+            // parent held for background agents still goes Idle: each running
+            // subagent holds through its own record from SubagentStart, and
+            // the parent's agent hold has no bound.
+            if agent == .claude,
+               event == "Notification",
+               payload.notificationType == "idle_prompt",
+               previous?.state == .working,
+               previous?.detail == SessionWorkDetail.backgroundShell {
                 return .keep
             }
 

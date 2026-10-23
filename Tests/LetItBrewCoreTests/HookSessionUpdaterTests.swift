@@ -870,21 +870,30 @@ import Testing
     #expect(record.updatedAt == Date(timeIntervalSince1970: 101))
 }
 
-@Test func claudeIdlePromptKeepsAStoppedTurnsBackgroundAgent() throws {
+@Test func claudeIdlePromptLeavesABackgroundSubagentHeldByItsOwnRecord() throws {
     let directory = hookUpdaterTempDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let storage = SessionStorage(directory: directory)
 
+    try applyHooks([("UserPromptSubmit", "")], sessionID: "parent", from: 100, storage: storage)
     try applyHooks(
-        [("UserPromptSubmit", ""),
-         ("Stop", #","background_tasks":[{"type":"subagent","status":"running"}]"#),
+        [("SubagentStart", #","agent_id":"helper""#)],
+        sessionID: "parent", from: 101, storage: storage
+    )
+    try applyHooks(
+        [("Stop", #","background_tasks":[{"id":"helper","type":"subagent","status":"running"}]"#),
          ("Notification", #","notification_type":"idle_prompt""#)],
-        sessionID: "background-agent", from: 100, storage: storage
+        sessionID: "parent", from: 102, storage: storage
     )
 
-    let record = try #require(storage.load(id: hookUpdaterID("background-agent", agent: .claude)))
-    #expect(record.state == .working)
-    #expect(record.detail == SessionWorkDetail.backgroundAgent)
+    // The parent's agent hold has no bound, so idle_prompt still ends it;
+    // the running subagent keeps the Mac awake through its own record.
+    let parent = try #require(storage.load(id: hookUpdaterID("parent", agent: .claude)))
+    #expect(parent.state == .idle)
+    let child = try #require(storage.load(
+        id: hookUpdaterID("parent", agent: .claude, childID: "helper", event: "SubagentStart")
+    ))
+    #expect(child.state == .working)
 }
 
 @Test func claudeIdlePromptStillEndsATurnWithoutBackgroundWork() throws {
