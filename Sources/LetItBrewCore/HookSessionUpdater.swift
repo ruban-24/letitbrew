@@ -17,7 +17,7 @@ public enum HookSessionUpdater {
             notificationType: payload.notificationType,
             source: payload.source,
             trigger: payload.trigger,
-            hasBackgroundTasks: payload.hasBackgroundTasks,
+            backgroundWork: payload.backgroundWork,
             errorRecoverable: payload.errorRecoverable
         ) else { return }
 
@@ -47,6 +47,7 @@ public enum HookSessionUpdater {
 
                 let children: [SessionRecord]
                 var staleChildCutoff: TimeInterval?
+                var prunesUnlistedChildren = false
                 if event == "SessionEnd", identity.childID == nil {
                     children = familyChildren()
                     // A newer child edge also makes this a stale family end.
@@ -80,6 +81,19 @@ public enum HookSessionUpdater {
                     children = familyChildren().filter {
                         ($0.eventObservedAt ?? $0.updatedAt.timeIntervalSince1970) < turnStartedAt
                     }
+                } else if agent == .claude, event == "Stop", identity.childID == nil,
+                          let listed = payload.runningBackgroundTaskIDs {
+                    // Claude's Stop snapshot inventories every task still in
+                    // flight for the session, and a running subagent is listed
+                    // under its own agent_id. A child the complete inventory
+                    // omits has finished even if its SubagentStop never came.
+                    // A snapshot with an unidentified entry proves nothing.
+                    prunesUnlistedChildren = true
+                    children = familyChildren().filter { child in
+                        guard let childID = HookRecordID(encoded: child.id)?.childID
+                        else { return false }
+                        return !listed.contains(childID)
+                    }
                 } else {
                     children = []
                 }
@@ -111,10 +125,28 @@ public enum HookSessionUpdater {
                             return .delete
                         }
                     }
-                } else if event == "SubagentStop", payload.hasBackgroundTaskSnapshot,
-                          !payload.hasBackgroundTasks {
+                } else if prunesUnlistedChildren,
+                          storage.load(id: parent.encoded)?.eventObservedAt
+                              == observedAt.timeIntervalSince1970 {
+                    // Only the Stop that became the parent's latest edge may
+                    // prune, and a child heard after it is still running.
+                    for record in children {
+                        try storage.mutate(id: record.id, observedAt: observedAt.timeIntervalSince1970) { previous in
+                            guard let previous,
+                                  (previous.eventObservedAt ?? previous.updatedAt.timeIntervalSince1970)
+                                      < observedAt.timeIntervalSince1970
+                            else { return .keep }
+                            return .delete
+                        }
+                    }
+                } else if event == "SubagentStop", payload.hasBackgroundTaskSnapshot {
+                    // The snapshot is scoped to the parent and, for a
+                    // backgrounded child, still lists the child that is
+                    // stopping right now. Judge the parent without it.
                     try reconcileStoppedParent(
-                        id: parent.encoded, observedAt: observedAt, storage: storage
+                        id: parent.encoded,
+                        remainingWork: payload.backgroundWork(excludingTaskID: identity.childID),
+                        observedAt: observedAt, storage: storage
                     )
                 }
             }
@@ -126,28 +158,53 @@ public enum HookSessionUpdater {
         }
     }
 
+    /// Whether a Working record holds only for background work its `Stop`
+    /// reported. Records written before detail tokens existed carry `Stop`
+    /// as their latest edge instead.
+    static func isWaitingOnBackgroundWork(_ record: SessionRecord) -> Bool {
+        record.state == .working && (
+            record.lastEvent == "Stop"
+                || record.detail == SessionWorkDetail.backgroundShell
+                || record.detail == SessionWorkDetail.backgroundAgent
+        )
+    }
+
     private static func reconcileStoppedParent(
-        id: String, observedAt: Date, storage: SessionStorage
+        id: String, remainingWork: HookPayload.BackgroundWork,
+        observedAt: Date, storage: SessionStorage
     ) throws {
         try storage.mutate(id: id, observedAt: observedAt.timeIntervalSince1970) { previous in
             // A foreground turn may have continued since Stop. Only the parent
             // whose latest edge was Stop can be waiting solely on background work.
-            guard var record = previous, record.state == .working,
-                  record.lastEvent == "Stop" else { return .keep }
-            let transition = SessionStateTransition.resolve(
-                previous: record, newState: .idle, now: observedAt
-            )
-            record.accumulatedWorkingTime = SessionTimeline.accumulatedWorkingTime(
-                previous: record, now: observedAt
-            )
-            record.state = .idle
-            record.detail = nil
-            record.lastEvent = "SubagentStop"
-            record.updatedAt = observedAt
-            record.eventObservedAt = observedAt.timeIntervalSince1970
-            record.stateChangedAt = transition.changedAt
-            record.stateTransitionID = transition.id
-            return .replace(record)
+            guard var record = previous, isWaitingOnBackgroundWork(record) else { return .keep }
+            switch remainingWork {
+            case .agent:
+                return .keep
+            case .shellOnly:
+                // Bound the hold from this edge. An existing shell-only hold
+                // keeps its earlier start.
+                guard record.detail != SessionWorkDetail.backgroundShell else { return .keep }
+                record.detail = SessionWorkDetail.backgroundShell
+                record.lastEvent = "SubagentStop"
+                record.updatedAt = observedAt
+                record.eventObservedAt = observedAt.timeIntervalSince1970
+                return .replace(record)
+            case .none:
+                let transition = SessionStateTransition.resolve(
+                    previous: record, newState: .idle, now: observedAt
+                )
+                record.accumulatedWorkingTime = SessionTimeline.accumulatedWorkingTime(
+                    previous: record, now: observedAt
+                )
+                record.state = .idle
+                record.detail = nil
+                record.lastEvent = "SubagentStop"
+                record.updatedAt = observedAt
+                record.eventObservedAt = observedAt.timeIntervalSince1970
+                record.stateChangedAt = transition.changedAt
+                record.stateTransitionID = transition.id
+                return .replace(record)
+            }
         }
     }
 
@@ -179,8 +236,7 @@ public enum HookSessionUpdater {
             // work's own completion edge may release the hold.
             if agent == .claude,
                event == "PostCompact",
-               previous?.state == .working,
-               previous?.lastEvent == "Stop" {
+               let previous, isWaitingOnBackgroundWork(previous) {
                 return .keep
             }
 

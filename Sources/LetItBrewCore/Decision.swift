@@ -13,6 +13,11 @@ public struct Settings: Equatable, Sendable {
     /// A working session with no newer hook event is presented as silent
     /// after this interval. Presentation only: it still holds the Mac awake.
     public var workingSilenceThreshold: TimeInterval = 120
+    /// How long a Claude session whose turn ended with only shells or monitors
+    /// still running keeps holding. A shell the agent forgot cannot be told
+    /// from a long build by its status alone, so the hold is bounded instead
+    /// of released. Agent-class background work is never bounded here.
+    public var backgroundShellHoldLimit: TimeInterval = 3_600
 
     public init() {}
 }
@@ -230,7 +235,13 @@ public func decide(
     }
 
     // 5. Working sessions hold, as do waits that local input may have answered.
-    let working = sessions.count { waitAnswers.holdsAwake($0) }
+    // A shell-only background hold ends after its limit; see `Settings`.
+    let expiredShellHolds = sessions.filter {
+        backgroundShellHoldExpired($0, now: now, limit: settings.backgroundShellHoldLimit)
+    }
+    let working = sessions.count {
+        waitAnswers.holdsAwake($0) && !expiredShellHolds.contains($0)
+    }
     if working > 0 {
         return Decision(
             holdSystem: true,
@@ -248,5 +259,22 @@ public func decide(
     if sessions.contains(where: { $0.state == .waiting }) {
         return Decision(holdSystem: false, holdLidClosed: false, reason: "agents waiting for you")
     }
+    if !expiredShellHolds.isEmpty {
+        return Decision(holdSystem: false, holdLidClosed: false,
+                        reason: "background shell hold expired")
+    }
     return Decision(holdSystem: false, holdLidClosed: false, reason: "all agents idle")
+}
+
+/// Whether a Working session holds only for a shell-only `Stop` snapshot
+/// whose bounded time is up. The record's `updatedAt` is the edge that set
+/// the detail: every later hook rewrites it.
+public func backgroundShellHoldExpired(
+    _ session: SessionRecord, now: Date, limit: TimeInterval
+) -> Bool {
+    guard session.state == .working,
+          session.detail == SessionWorkDetail.backgroundShell,
+          limit.isFinite, limit > 0
+    else { return false }
+    return now.timeIntervalSince(session.updatedAt) >= limit
 }

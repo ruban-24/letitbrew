@@ -38,15 +38,38 @@ rule.
   not distinguish idle from in-turn compaction. `PostCompact` with
   `trigger: manual` is Idle, because a manual compact completes only at the
   idle prompt, unless the parent is Working only because its `Stop` reported
-  background tasks. On Stop, background tasks with `completed`,
-  `failed`, `killed`, `cancelled`, `canceled`, or `idle` status do not
-  preserve Working. Any other, missing, or unrecognized status conservatively
-  preserves Working. An empty or absent array makes Stop Idle. Only status is
-  read; task prose and commands are discarded. `session_crons` are not treated
-  as current work.
-- `SubagentStop` removes its child record. If it explicitly reports a
-  `background_tasks` snapshot with no potentially working tasks, it also makes
-  a parent still Working from `Stop` Idle. An absent/null snapshot cannot prove
+  background tasks. On Stop, each `background_tasks` entry contributes only
+  its `id`, `type`, and `status`; task prose, commands, and output are
+  discarded. Entries whose status is `idle`, `done`, `success`, `succeeded`,
+  `complete`, `completed`, `finished`, `failed`, `error`, `terminated`,
+  `exited`, `aborted`, `expired`, `skipped`, `crashed`, `killed`, `cancelled`,
+  `canceled`, or `timed_out` are finished. Any other, missing, or unrecognized
+  status may still be working. A working entry of type `shell` or `monitor`
+  is shell-only work: Stop stays Working with detail `background-shell`, and
+  the app bounds that hold to `Settings.backgroundShellHoldLimit` (one hour)
+  measured from the record's latest edge, because a shell the agent forgot
+  cannot be told from a long build by status alone. A working entry of any
+  other type, including `subagent`, `teammate`, `workflow`, and a missing or
+  future type, is agent work: Stop stays Working with detail
+  `background-agent` and is not bounded. An empty array, or only finished
+  entries, makes Stop Idle. An absent array keeps Stop Idle without proving
+  anything about children. `session_crons` are not treated as current work.
+  A shell a subagent started belongs to the session and survives that
+  subagent's `SubagentStop`; observed on Claude Code 2.1.x.
+- A Claude `Stop` whose `background_tasks` array identifies every entry is a
+  complete inventory of the session's in-flight tasks, and a running subagent
+  is listed under its own `agent_id`. Such a Stop deletes child records the
+  inventory does not list as working, because their `SubagentStop` will never
+  come (observed for handed-back and killed agents). An absent array, or any
+  entry without an `id`, prunes nothing. Only the Stop that became the
+  parent's latest edge prunes, and a child heard after it is kept.
+- `SubagentStop` removes its child record. Its snapshot is scoped to the
+  parent and, for a backgrounded subagent, still lists the stopping child as
+  running; the child's own entry is ignored before judging the parent. With
+  no remaining work it makes a parent still Working only on background work
+  Idle; with shell-only work left it moves that parent to the bounded
+  `background-shell` hold, keeping an earlier shell-only start; with agent
+  work left it changes nothing. An absent/null snapshot cannot prove
   completion. A newer foreground event prevents this parent reconciliation.
 - Parent `SessionEnd` removes the parent's children as well. A bounded family
   lock serializes child updates with termination; terminal markers prevent late
@@ -76,9 +99,12 @@ rule.
   after that it holds as Working until the next hook. An approval from another device with
   the lid open has no local input and can still sleep mid-tool.
   Without a later authoritative event, interrupted turns and stopped parents
-  with unreported background completion can remain Working until the existing
-  12-hour expiry. Silence alone does not prove work ended. A background task
-  still reported as running (including a monitor) continues to preserve Working.
+  with unreported agent-class background completion can remain Working until
+  the existing 12-hour expiry. Silence alone does not prove work ended. A
+  shell or monitor still reported as running holds for the bounded limit
+  above. A Working or Waiting session whose recorded agent process has exited
+  neither shows nor holds; records without a process ID keep the hook-only
+  behavior.
 - Interactive settings-file hooks, including user hooks, are held until the
   workspace is trusted. The connection UI can prove owned configuration,
   not trust for every future workspace.

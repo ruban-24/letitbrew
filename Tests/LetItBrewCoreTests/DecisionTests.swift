@@ -466,3 +466,67 @@ private func answers(
     #expect(!latch.holdsAwake(session(.idle)))
     #expect(!latch.mayHaveBeenAnswered(session(.working)))
 }
+
+// MARK: - Bounded shell-only background holds
+
+private func shellHold(ageSeconds: TimeInterval, detail: String? = SessionWorkDetail.backgroundShell)
+    -> SessionRecord {
+    SessionRecord(id: UUID().uuidString, tool: "claude", state: .working, detail: detail,
+                  cwd: "/tmp/repo", pid: 1, updatedAt: now.addingTimeInterval(-ageSeconds),
+                  lastEvent: "Stop", stateChangedAt: now.addingTimeInterval(-7_200))
+}
+
+@Test func shellOnlyBackgroundHoldLastsForItsLimit() {
+    let settings = Settings()
+    #expect(settings.backgroundShellHoldLimit == 3_600)
+    for age in [0.0, 60, 3_599] {
+        let decision = decide(sessions: [shellHold(ageSeconds: age)], now: now,
+                              settings: settings, power: plugged)
+        #expect(decision.holdSystem, "age \(age)")
+        #expect(decision.reason == "1 working")
+    }
+    for age in [3_600.0, 3_601, 40_000] {
+        let decision = decide(sessions: [shellHold(ageSeconds: age)], now: now,
+                              settings: settings, power: plugged)
+        #expect(!decision.holdSystem, "age \(age)")
+        #expect(!decision.holdLidClosed)
+        #expect(decision.reason == "background shell hold expired")
+    }
+}
+
+@Test func shellHoldLimitMeasuresFromTheEdgeNotTheTurnStart() {
+    // stateChangedAt is two hours old in the fixture; only updatedAt counts.
+    let decision = decide(sessions: [shellHold(ageSeconds: 10)], now: now,
+                          settings: Settings(), power: plugged)
+    #expect(decision.holdSystem)
+}
+
+@Test func agentBackgroundWorkAndPlainWorkingAreNeverBounded() {
+    for detail in [SessionWorkDetail.backgroundAgent, nil, "running-command"] {
+        let decision = decide(sessions: [shellHold(ageSeconds: 50_000, detail: detail)], now: now,
+                              settings: Settings(), power: plugged)
+        #expect(decision.holdSystem, "detail \(detail ?? "nil")")
+    }
+}
+
+@Test func anExpiredShellHoldDoesNotMaskOtherWorkOrWaits() {
+    let working = decide(sessions: [shellHold(ageSeconds: 9_000), session(.working)], now: now,
+                         settings: Settings(), power: plugged)
+    #expect(working.holdSystem)
+    #expect(working.reason == "1 working")
+
+    let waiting = decide(sessions: [shellHold(ageSeconds: 9_000), session(.waiting)], now: now,
+                         settings: Settings(), power: plugged)
+    #expect(!waiting.holdSystem)
+    #expect(waiting.reason == "agents waiting for you")
+}
+
+@Test func aNonPositiveOrInfiniteLimitNeverExpiresAShellHold() {
+    for limit in [0.0, -1, .infinity, .nan] {
+        var settings = Settings()
+        settings.backgroundShellHoldLimit = limit
+        let decision = decide(sessions: [shellHold(ageSeconds: 90_000)], now: now,
+                              settings: settings, power: plugged)
+        #expect(decision.holdSystem, "limit \(limit)")
+    }
+}

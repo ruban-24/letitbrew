@@ -2162,11 +2162,14 @@ final class LetItBrewAppModel: ObservableObject {
         if readsLiveState {
             creditInput(snapshot.answerInput, now: snapshot.now)
         }
-        // A wait whose agent process has exited can no longer be answered: it
-        // neither shows nor holds, even if input latched it before the agent quit.
+        // A session whose recorded agent process has exited neither shows nor
+        // holds: a wait can no longer be answered, and a turn the agent died
+        // inside, or a Codex that quit without SessionEnd, has no work left.
+        // Records without a PID keep today's hook-only behavior, and a PID
+        // another user owns counts as alive.
         let liveness = KillZeroLiveness()
         let liveSessions = snapshot.sessions.filter { record in
-            guard record.state == .waiting, let pid = record.pid else { return true }
+            guard record.state.isInTurn, let pid = record.pid else { return true }
             return liveness.isAlive(pid: pid)
         }
         let hosts = hostApps(forSilentWaitsIn: liveSessions)

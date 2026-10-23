@@ -1313,6 +1313,267 @@ import Testing
     }
 }
 
+
+// MARK: - Claude background work: shell-only holds, inventories, and child pruning
+
+@Test func claudeStopWithOnlyShellsHoldsAsABoundedBackgroundShell() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+    let id = hookUpdaterID("parent", agent: .claude)
+
+    try applyDecodedHook(
+        event: "UserPromptSubmit", json: #"{"session_id":"parent","cwd":"/work/app"}"#,
+        agent: .claude, observedAt: Date(timeIntervalSince1970: 100), storage: storage
+    )
+    // Captured shape: a shell a subagent started outlives that subagent.
+    try applyDecodedHook(
+        event: "Stop",
+        json: #"{"session_id":"parent","cwd":"/work/app","background_tasks":[{"id":"beyuypx27","type":"shell","status":"running","command":"private"}]}"#,
+        agent: .claude, observedAt: Date(timeIntervalSince1970: 200), storage: storage
+    )
+    var record = try #require(storage.load(id: id))
+    #expect(record.state == .working)
+    #expect(record.detail == SessionWorkDetail.backgroundShell)
+    #expect(record.updatedAt == Date(timeIntervalSince1970: 200))
+
+    try applyDecodedHook(
+        event: "Stop",
+        json: #"{"session_id":"parent","cwd":"/work/app","background_tasks":[{"id":"a1","type":"subagent","status":"running"},{"id":"beyuypx27","type":"shell","status":"running"}]}"#,
+        agent: .claude, observedAt: Date(timeIntervalSince1970: 201), storage: storage
+    )
+    record = try #require(storage.load(id: id))
+    #expect(record.state == .working)
+    #expect(record.detail == SessionWorkDetail.backgroundAgent)
+
+    try applyDecodedHook(
+        event: "Stop",
+        json: #"{"session_id":"parent","cwd":"/work/app","background_tasks":[{"id":"beyuypx27","type":"shell","status":"killed"}]}"#,
+        agent: .claude, observedAt: Date(timeIntervalSince1970: 202), storage: storage
+    )
+    #expect(storage.load(id: id)?.state == .idle)
+}
+
+@Test func claudeStopInventoryPrunesChildrenItNoLongerLists() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+    let parentID = hookUpdaterID("parent", agent: .claude)
+    let keptID = hookUpdaterID("parent", agent: .claude, childID: "child-a", event: "SubagentStart")
+    let orphanID = hookUpdaterID("parent", agent: .claude, childID: "child-b", event: "SubagentStart")
+
+    try applyDecodedHook(
+        event: "UserPromptSubmit", json: #"{"session_id":"parent","cwd":"/work/app"}"#,
+        agent: .claude, observedAt: Date(timeIntervalSince1970: 100), storage: storage
+    )
+    for (index, child) in ["child-a", "child-b"].enumerated() {
+        try applyDecodedHook(
+            event: "SubagentStart",
+            json: #"{"session_id":"parent","agent_id":"\#(child)","cwd":"/work/app"}"#,
+            agent: .claude, observedAt: Date(timeIntervalSince1970: TimeInterval(101 + index)),
+            storage: storage
+        )
+    }
+    // child-b never sends SubagentStop, as observed for killed or handed-back agents.
+    try applyDecodedHook(
+        event: "Stop",
+        json: #"{"session_id":"parent","cwd":"/work/app","background_tasks":[{"id":"child-a","type":"subagent","status":"running","agent_type":"general-purpose"},{"id":"sh","type":"shell","status":"running"}]}"#,
+        agent: .claude, observedAt: Date(timeIntervalSince1970: 200), storage: storage
+    )
+    #expect(storage.load(id: keptID)?.state == .working)
+    #expect(storage.load(id: orphanID) == nil)
+    #expect(storage.load(id: parentID)?.detail == SessionWorkDetail.backgroundAgent)
+
+    // An empty inventory at Stop means every child has finished.
+    try applyDecodedHook(
+        event: "Stop", json: #"{"session_id":"parent","cwd":"/work/app","background_tasks":[]}"#,
+        agent: .claude, observedAt: Date(timeIntervalSince1970: 300), storage: storage
+    )
+    #expect(storage.load(id: keptID) == nil)
+    #expect(storage.load(id: parentID)?.state == .idle)
+    #expect(Set(storage.loadAll().map(\.id)) == [parentID])
+}
+
+@Test func claudeStopWithAnUnidentifiedEntryOrNoSnapshotKeepsChildren() throws {
+    for stop in [#"{"session_id":"parent","cwd":"/work/app"}"#,
+                 #"{"session_id":"parent","cwd":"/work/app","background_tasks":[{"type":"subagent","status":"running"}]}"#,
+                 #"{"session_id":"parent","cwd":"/work/app","background_tasks":[{"id":"","type":"shell","status":"running"}]}"#] {
+        let directory = hookUpdaterTempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = SessionStorage(directory: directory)
+        let childID = hookUpdaterID("parent", agent: .claude, childID: "child", event: "SubagentStart")
+
+        try applyDecodedHook(
+            event: "UserPromptSubmit", json: #"{"session_id":"parent","cwd":"/work/app"}"#,
+            agent: .claude, observedAt: Date(timeIntervalSince1970: 100), storage: storage
+        )
+        try applyDecodedHook(
+            event: "SubagentStart", json: #"{"session_id":"parent","agent_id":"child","cwd":"/work/app"}"#,
+            agent: .claude, observedAt: Date(timeIntervalSince1970: 101), storage: storage
+        )
+        try applyDecodedHook(
+            event: "Stop", json: stop,
+            agent: .claude, observedAt: Date(timeIntervalSince1970: 200), storage: storage
+        )
+        #expect(storage.load(id: childID)?.state == .working, "stop: \(stop)")
+    }
+}
+
+@Test func aStaleClaudeStopCannotPruneAChildHeardAfterIt() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+    let childID = hookUpdaterID("parent", agent: .claude, childID: "child", event: "SubagentStart")
+
+    try applyDecodedHook(
+        event: "UserPromptSubmit", json: #"{"session_id":"parent","cwd":"/work/app"}"#,
+        agent: .claude, observedAt: Date(timeIntervalSince1970: 100), storage: storage
+    )
+    try applyDecodedHook(
+        event: "SubagentStart", json: #"{"session_id":"parent","agent_id":"child","cwd":"/work/app"}"#,
+        agent: .claude, observedAt: Date(timeIntervalSince1970: 101), storage: storage
+    )
+    try applyDecodedHook(
+        event: "PreToolUse",
+        json: #"{"session_id":"parent","agent_id":"child","cwd":"/work/app","tool_name":"Read"}"#,
+        agent: .claude, observedAt: Date(timeIntervalSince1970: 300), storage: storage
+    )
+    // The Stop was observed before the child's tool call but applied after it.
+    try applyDecodedHook(
+        event: "Stop", json: #"{"session_id":"parent","cwd":"/work/app","background_tasks":[]}"#,
+        agent: .claude, observedAt: Date(timeIntervalSince1970: 250), storage: storage
+    )
+    #expect(storage.load(id: childID)?.state == .working)
+}
+
+@Test func subagentStopJudgesTheParentWithoutTheChildThatIsStopping() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+    let parentID = hookUpdaterID("parent", agent: .claude)
+    let childID = hookUpdaterID("parent", agent: .claude, childID: "a1ae869a95e1a9a18", event: "SubagentStart")
+
+    try applyDecodedHook(
+        event: "UserPromptSubmit", json: #"{"session_id":"parent","cwd":"/work/app"}"#,
+        agent: .claude, observedAt: Date(timeIntervalSince1970: 100), storage: storage
+    )
+    try applyDecodedHook(
+        event: "SubagentStart",
+        json: #"{"session_id":"parent","agent_id":"a1ae869a95e1a9a18","cwd":"/work/app"}"#,
+        agent: .claude, observedAt: Date(timeIntervalSince1970: 101), storage: storage
+    )
+    // Captured sequence: the parent stops while its backgrounded subagent and
+    // that subagent's shell run, then the subagent stops and still lists itself.
+    try applyDecodedHook(
+        event: "Stop",
+        json: #"{"session_id":"parent","cwd":"/work/app","background_tasks":[{"id":"a1ae869a95e1a9a18","type":"subagent","status":"running"},{"id":"beyuypx27","type":"shell","status":"running"}]}"#,
+        agent: .claude, observedAt: Date(timeIntervalSince1970: 200), storage: storage
+    )
+    #expect(storage.load(id: parentID)?.detail == SessionWorkDetail.backgroundAgent)
+
+    try applyDecodedHook(
+        event: "SubagentStop",
+        json: #"{"session_id":"parent","agent_id":"a1ae869a95e1a9a18","cwd":"/work/app","background_tasks":[{"id":"a1ae869a95e1a9a18","type":"subagent","status":"running"},{"id":"beyuypx27","type":"shell","status":"running"}]}"#,
+        agent: .claude, observedAt: Date(timeIntervalSince1970: 260), storage: storage
+    )
+    #expect(storage.load(id: childID) == nil)
+    let downgraded = try #require(storage.load(id: parentID))
+    #expect(downgraded.state == .working)
+    #expect(downgraded.detail == SessionWorkDetail.backgroundShell)
+    #expect(downgraded.lastEvent == "SubagentStop")
+    #expect(downgraded.updatedAt == Date(timeIntervalSince1970: 260))
+
+    // A manual compact at that prompt keeps the bounded hold, as it does for Stop.
+    try applyDecodedHook(
+        event: "PostCompact", json: #"{"session_id":"parent","cwd":"/work/app","trigger":"manual"}"#,
+        agent: .claude, observedAt: Date(timeIntervalSince1970: 270), storage: storage
+    )
+    #expect(storage.load(id: parentID)?.detail == SessionWorkDetail.backgroundShell)
+}
+
+@Test func subagentStopWithOnlyItselfListedMakesTheParentIdle() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+    let parentID = hookUpdaterID("parent", agent: .claude)
+
+    try applyDecodedHook(
+        event: "UserPromptSubmit", json: #"{"session_id":"parent","cwd":"/work/app"}"#,
+        agent: .claude, observedAt: Date(timeIntervalSince1970: 100), storage: storage
+    )
+    try applyDecodedHook(
+        event: "SubagentStart", json: #"{"session_id":"parent","agent_id":"child","cwd":"/work/app"}"#,
+        agent: .claude, observedAt: Date(timeIntervalSince1970: 101), storage: storage
+    )
+    try applyDecodedHook(
+        event: "Stop",
+        json: #"{"session_id":"parent","cwd":"/work/app","background_tasks":[{"id":"child","type":"subagent","status":"running"}]}"#,
+        agent: .claude, observedAt: Date(timeIntervalSince1970: 200), storage: storage
+    )
+    try applyDecodedHook(
+        event: "SubagentStop",
+        json: #"{"session_id":"parent","agent_id":"child","cwd":"/work/app","background_tasks":[{"id":"child","type":"subagent","status":"running"}]}"#,
+        agent: .claude, observedAt: Date(timeIntervalSince1970: 260), storage: storage
+    )
+    let parent = try #require(storage.load(id: parentID))
+    #expect(parent.state == .idle)
+    #expect(parent.lastEvent == "SubagentStop")
+    #expect(Set(storage.loadAll().map(\.id)) == [parentID])
+}
+
+@Test func subagentStopKeepsAParentWithOtherAgentWorkOrAnExistingShellHold() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+    let parentID = hookUpdaterID("parent", agent: .claude)
+
+    try applyDecodedHook(
+        event: "UserPromptSubmit", json: #"{"session_id":"parent","cwd":"/work/app"}"#,
+        agent: .claude, observedAt: Date(timeIntervalSince1970: 100), storage: storage
+    )
+    for child in ["child-a", "child-b"] {
+        try applyDecodedHook(
+            event: "SubagentStart", json: #"{"session_id":"parent","agent_id":"\#(child)","cwd":"/work/app"}"#,
+            agent: .claude, observedAt: Date(timeIntervalSince1970: 101), storage: storage
+        )
+    }
+    try applyDecodedHook(
+        event: "Stop",
+        json: #"{"session_id":"parent","cwd":"/work/app","background_tasks":[{"id":"child-a","type":"subagent","status":"running"},{"id":"child-b","type":"subagent","status":"running"}]}"#,
+        agent: .claude, observedAt: Date(timeIntervalSince1970: 200), storage: storage
+    )
+    try applyDecodedHook(
+        event: "SubagentStop",
+        json: #"{"session_id":"parent","agent_id":"child-a","cwd":"/work/app","background_tasks":[{"id":"child-a","type":"subagent","status":"running"},{"id":"child-b","type":"subagent","status":"running"}]}"#,
+        agent: .claude, observedAt: Date(timeIntervalSince1970: 260), storage: storage
+    )
+    #expect(storage.load(id: parentID)?.detail == SessionWorkDetail.backgroundAgent)
+
+    // The second child leaves a shell behind: a bounded hold starts at 300.
+    try applyDecodedHook(
+        event: "SubagentStop",
+        json: #"{"session_id":"parent","agent_id":"child-b","cwd":"/work/app","background_tasks":[{"id":"sh","type":"shell","status":"running"}]}"#,
+        agent: .claude, observedAt: Date(timeIntervalSince1970: 300), storage: storage
+    )
+    var parent = try #require(storage.load(id: parentID))
+    #expect(parent.detail == SessionWorkDetail.backgroundShell)
+    #expect(parent.updatedAt == Date(timeIntervalSince1970: 300))
+
+    // A later shell-only snapshot does not restart that hold.
+    try applyDecodedHook(
+        event: "SubagentStart", json: #"{"session_id":"parent","agent_id":"child-c","cwd":"/work/app"}"#,
+        agent: .claude, observedAt: Date(timeIntervalSince1970: 350), storage: storage
+    )
+    try applyDecodedHook(
+        event: "SubagentStop",
+        json: #"{"session_id":"parent","agent_id":"child-c","cwd":"/work/app","background_tasks":[{"id":"sh","type":"shell","status":"running"}]}"#,
+        agent: .claude, observedAt: Date(timeIntervalSince1970: 400), storage: storage
+    )
+    parent = try #require(storage.load(id: parentID))
+    #expect(parent.detail == SessionWorkDetail.backgroundShell)
+    #expect(parent.updatedAt == Date(timeIntervalSince1970: 300))
+}
+
 /// Applies `(event, extra payload fields)` pairs one second apart.
 private func applyHooks(
     _ events: [(String, String)],

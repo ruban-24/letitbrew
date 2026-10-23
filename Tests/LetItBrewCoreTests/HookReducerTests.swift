@@ -8,7 +8,7 @@ private func reduce(
     notificationType: String? = nil,
     source: String? = nil,
     trigger: String? = nil,
-    hasBackgroundTasks: Bool = false,
+    backgroundWork: HookPayload.BackgroundWork = .none,
     errorRecoverable: Bool? = nil
 ) -> HookEffect? {
     HookReducer.reduce(
@@ -18,7 +18,7 @@ private func reduce(
         notificationType: notificationType,
         source: source,
         trigger: trigger,
-        hasBackgroundTasks: hasBackgroundTasks,
+        backgroundWork: backgroundWork,
         errorRecoverable: errorRecoverable
     )
 }
@@ -175,8 +175,11 @@ private func reduce(
     #expect(reduce("SubagentStart") == .set(.working, detail: nil))
     #expect(reduce("SubagentStop") == .end)
     #expect(reduce("StopFailure") == .set(.idle, detail: nil))
-    #expect(reduce("Stop", hasBackgroundTasks: true) == .set(.working, detail: nil))
-    #expect(reduce("Stop", hasBackgroundTasks: false) == .set(.idle, detail: nil))
+    #expect(reduce("Stop", backgroundWork: .agent)
+            == .set(.working, detail: SessionWorkDetail.backgroundAgent))
+    #expect(reduce("Stop", backgroundWork: .shellOnly)
+            == .set(.working, detail: SessionWorkDetail.backgroundShell))
+    #expect(reduce("Stop", backgroundWork: .none) == .set(.idle, detail: nil))
 }
 
 @Test func copilotToolFailureReturnsToWork() {
