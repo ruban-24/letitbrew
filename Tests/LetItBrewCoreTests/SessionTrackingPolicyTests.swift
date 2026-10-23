@@ -128,3 +128,30 @@ private func trackedSession(
 
     #expect(decoded == [suppression])
 }
+
+@Test func aTurnEndingInMonitoringDoesNotBringBackAStoppedSession() {
+    let original = trackedSession(tool: "claude")
+    let monitoring = trackedSession(
+        tool: "claude",
+        detail: SessionWorkDetail.backgroundShell,
+        event: "Stop",
+        updatedAt: trackingNow.addingTimeInterval(5)
+    )
+
+    let hidden = SessionTrackingPolicy.applying(
+        [SessionTrackingSuppression(session: original)],
+        to: [monitoring]
+    )
+    #expect(hidden.sessions.isEmpty)
+    #expect(hidden.suppressions.count == 1)
+
+    // A new prompt is genuine work again.
+    let prompt = trackedSession(
+        tool: "claude",
+        event: "UserPromptSubmit",
+        updatedAt: trackingNow.addingTimeInterval(10)
+    )
+    let shown = SessionTrackingPolicy.applying(hidden.suppressions, to: [prompt])
+    #expect(shown.sessions == [prompt])
+    #expect(shown.suppressions.isEmpty)
+}

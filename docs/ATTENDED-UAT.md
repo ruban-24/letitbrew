@@ -123,8 +123,8 @@ In light and dark mode, with the signed app:
    folder icon and name line up with the logos and names of sessions on their
    own rows, and an expanded folder's sessions keep that same left edge inside
    one shaded, rounded block. A
-   Claude session left with only background shells reads **Running in
-   background**.
+   Claude session left with only background work reads **Monitoring
+   background tasks**.
 2. Hover an expanded folder: its whole shaded block, folder and sessions,
    highlights; moving onto one of its sessions also highlights that session,
    and moving off the folder clears both. Hover a session: it highlights only
@@ -154,25 +154,37 @@ to confirm the hold, and the menu to confirm the row.
 
 1. Ask Claude to run `sleep 900` with `run_in_background` and reply without
    waiting. After it replies, the record is Working with `last_event: Stop`
-   and `detail: background-shell`, the menu lists it as **Running in
-   background**, and the Mac is held. Wait at least two minutes: Claude's
-   `idle_prompt` Notification arrives about a minute after the Stop, and the
-   record must still be Working with `detail: background-shell` and an
-   unchanged `updated_at`, with the Mac still held. Kill the sleep and send
-   any prompt: the next Stop makes it Idle.
-2. Repeat case 1 but leave the sleep running for over an hour (or, for a
-   faster check, confirm from the status output that the reason becomes
-   "background shell hold expired" once `updated_at` is an hour old). The
-   hold releases while the row stays listed as **In background · Mac can
-   sleep** until the next hook.
+   and `detail: background-shell`, the menu row reads **Monitoring background
+   tasks**, the header counts it as monitoring, and the Mac is held, also with
+   the lid closed. Wait at least two minutes: Claude's `idle_prompt`
+   Notification arrives about a minute after the Stop, and the record must
+   still be Working with `detail: background-shell` and an unchanged
+   `updated_at`, with the Mac still held. Kill the sleep and send any prompt:
+   the next Stop makes it Idle.
+2. Repeat case 1 but leave the sleep running for over two hours without
+   another hook (or, for a faster check, confirm from the status output that
+   the reason becomes "monitoring hold expired" once the session's newest
+   `updated_at` is two hours old). The hold releases while the row stays
+   listed as **No update in 2 h · Mac can sleep** until the next hook.
 3. Ask Claude to use the Agent tool with model haiku to start `sleep 800` in
    the background and return. After the parent replies, the child record is
-   gone, the parent is Working with `detail: background-shell`, and killing
-   the sleep plus one more prompt makes it Idle.
-4. Ask Claude to start a background Agent, then stop that agent with
-   TaskStop before it finishes, and let the turn end. The child record is
+   gone, the parent is Working with `detail: background-shell` and reads
+   **Monitoring background tasks**, and killing the sleep plus one more
+   prompt makes it Idle.
+4. Ask Claude to start a background Agent that runs a few tool calls, and let
+   the turn end. The parent reads **Monitoring background tasks** with
+   `detail: background-agent` and the subagent's own row reads Working; both
+   survive the `idle_prompt` a minute later. Then stop that agent with
+   TaskStop before it finishes and let a turn end: the child record is
    deleted by the parent's Stop and the parent is Idle.
-5. Start a Codex session, let it work, and `kill -9` the Codex process. On
+5. Ask Claude to schedule a recurring session task (for example `/loop 5m`
+   with a harmless prompt) and let the turn end. The record is Working with
+   `detail: scheduled-tasks`, reads **Monitoring background tasks**, and holds
+   between firings. Cancel the loop and let a turn end: the session is Idle.
+   Start the loop again, then Stop Watching the monitoring row: it disappears
+   and the hold releases, and only the loop's next firing, a real new turn,
+   brings it back.
+6. Start a Codex session, let it work, and `kill -9` the Codex process. On
    the next poll the row disappears and the hold releases. Repeat with a
    Claude session: same result.
 

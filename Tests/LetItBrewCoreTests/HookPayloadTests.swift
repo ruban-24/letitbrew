@@ -70,10 +70,32 @@ import Foundation
     #expect(payload.hasBackgroundTasks)
 }
 
-@Test func sessionCronsDoNotCountAsBackgroundTasks() throws {
-    let data = Data(#"{"session_id":"parent","session_crons":[{"id":"cron-1"}]}"#.utf8)
+@Test func sessionCronsAreCountedApartFromBackgroundTasks() throws {
+    let data = Data(#"{"session_id":"parent","session_crons":[{"id":"cron-1","prompt":"private"},{"id":"cron-2"}]}"#.utf8)
     let payload = try JSONDecoder().decode(HookPayload.self, from: data)
     #expect(!payload.hasBackgroundTasks)
+    #expect(payload.sessionCronCount == 2)
+    #expect(payload.hasSessionCrons)
+
+    let empty = try JSONDecoder().decode(
+        HookPayload.self, from: Data(#"{"session_id":"parent","session_crons":[]}"#.utf8)
+    )
+    #expect(empty.sessionCronCount == 0)
+    #expect(!empty.hasSessionCrons)
+    let absent = try JSONDecoder().decode(HookPayload.self, from: Data(#"{"session_id":"parent"}"#.utf8))
+    #expect(absent.sessionCronCount == nil)
+    let malformed = try JSONDecoder().decode(
+        HookPayload.self, from: Data(#"{"session_id":"parent","session_crons":"oops"}"#.utf8)
+    )
+    #expect(malformed.sessionCronCount == nil)
+}
+
+@Test func localBashAndBackgroundShellTasksAreShellWork() throws {
+    for type in ["local_bash", "background_shell", "shell", "monitor"] {
+        let data = Data(#"{"session_id":"p","background_tasks":[{"type":"\#(type)","status":"running"}]}"#.utf8)
+        let payload = try JSONDecoder().decode(HookPayload.self, from: data)
+        #expect(payload.backgroundWork == .shellOnly, "type \(type)")
+    }
 }
 
 @Test func subagentEdgesRequireANonemptyChildIdentity() {

@@ -14,7 +14,7 @@ public struct HookPayload: Decodable, Equatable, Sendable {
         /// No task may still be working.
         case none
         /// Only shells and monitors remain. The turn itself has ended, so
-        /// this hold is bounded; see `Settings.backgroundShellHoldLimit`.
+        /// this hold is bounded; see `Settings.monitoringHoldLimit`.
         case shellOnly
         /// A subagent, teammate, workflow, or task of an unrecognized type
         /// may still be working. Holds like a running turn.
@@ -50,6 +50,10 @@ public struct HookPayload: Decodable, Equatable, Sendable {
     public var toolName: String?
     public var notificationType: String?
     public var errorRecoverable: Bool?
+    /// How many scheduled session crons Claude's `Stop` reports, or nil when
+    /// the hook carried no `session_crons` array. Only the count is read,
+    /// never a cron's prompt or schedule.
+    public var sessionCronCount: Int?
 
     private enum CodingKeys: String, CodingKey {
         case sessionID = "session_id"
@@ -63,6 +67,7 @@ public struct HookPayload: Decodable, Equatable, Sendable {
         case toolName = "tool_name"
         case notificationType = "notification_type"
         case errorRecoverable = "recoverable"
+        case sessionCrons = "session_crons"
     }
 
     public init(
@@ -75,7 +80,8 @@ public struct HookPayload: Decodable, Equatable, Sendable {
         hookEventName: String? = nil,
         toolName: String? = nil,
         notificationType: String? = nil,
-        errorRecoverable: Bool? = nil
+        errorRecoverable: Bool? = nil,
+        sessionCronCount: Int? = nil
     ) {
         self.sessionId = sessionId
         self.agentId = agentId
@@ -87,6 +93,7 @@ public struct HookPayload: Decodable, Equatable, Sendable {
         self.toolName = toolName
         self.notificationType = notificationType
         self.errorRecoverable = errorRecoverable
+        self.sessionCronCount = sessionCronCount
     }
 
     public init(from decoder: Decoder) throws {
@@ -104,7 +111,15 @@ public struct HookPayload: Decodable, Equatable, Sendable {
         toolName = try values.decodeIfPresent(String.self, forKey: .toolName)
         notificationType = try values.decodeIfPresent(String.self, forKey: .notificationType)
         errorRecoverable = try values.decodeIfPresent(Bool.self, forKey: .errorRecoverable)
+        sessionCronCount = (try? values.decodeIfPresent(
+            [OpaqueJSONValue].self, forKey: .sessionCrons
+        ))?.map(\.count)
     }
+
+    /// Whether the session has scheduled crons that will start more turns.
+    /// Claude may omit an empty `session_crons` array, so only a non-empty
+    /// one counts.
+    public var hasSessionCrons: Bool { (sessionCronCount ?? 0) > 0 }
 
     /// Whether the hook carried a `background_tasks` array at all.
     public var hasBackgroundTaskSnapshot: Bool { backgroundTasks != nil }
@@ -173,8 +188,11 @@ private struct WireBackgroundTask: Decodable {
         status = try? values.decode(String.self, forKey: .status)
     }
 
-    /// Claude labels bounded, non-agent work `shell` and `monitor`.
-    private static let shellTypes: Set<String> = ["shell", "monitor"]
+    /// Claude labels bounded, non-agent work `shell` and `monitor`; some
+    /// builds report commands as `local_bash` or `background_shell`.
+    private static let shellTypes: Set<String> = [
+        "shell", "monitor", "local_bash", "background_shell",
+    ]
 
     /// Statuses that mean a task can no longer be working.
     private static let terminalStatuses: Set<String> = [
@@ -192,4 +210,10 @@ private struct WireBackgroundTask: Decodable {
             mayBeWorking: !Self.terminalStatuses.contains(normalizedStatus)
         )
     }
+}
+
+/// Any JSON value, decoded without reading it, so an array can be counted
+/// without keeping its contents.
+private struct OpaqueJSONValue: Decodable {
+    init(from decoder: Decoder) throws {}
 }

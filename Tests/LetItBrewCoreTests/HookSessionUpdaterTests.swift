@@ -870,7 +870,7 @@ import Testing
     #expect(record.updatedAt == Date(timeIntervalSince1970: 101))
 }
 
-@Test func claudeIdlePromptLeavesABackgroundSubagentHeldByItsOwnRecord() throws {
+@Test func claudeIdlePromptKeepsAParentMonitoringItsBackgroundSubagent() throws {
     let directory = hookUpdaterTempDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let storage = SessionStorage(directory: directory)
@@ -886,14 +886,74 @@ import Testing
         sessionID: "parent", from: 102, storage: storage
     )
 
-    // The parent's agent hold has no bound, so idle_prompt still ends it;
-    // the running subagent keeps the Mac awake through its own record.
+    // The parent's monitoring is bounded by the family lease, so idle_prompt
+    // no longer ends it; the subagent's own record still reports Working.
     let parent = try #require(storage.load(id: hookUpdaterID("parent", agent: .claude)))
-    #expect(parent.state == .idle)
+    #expect(parent.state == .working)
+    #expect(parent.detail == SessionWorkDetail.backgroundAgent)
+    #expect(parent.updatedAt == Date(timeIntervalSince1970: 102))
     let child = try #require(storage.load(
         id: hookUpdaterID("parent", agent: .claude, childID: "helper", event: "SubagentStart")
     ))
     #expect(child.state == .working)
+}
+
+@Test func claudeIdlePromptKeepsScheduledCronMonitoring() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+
+    try applyHooks(
+        [("UserPromptSubmit", ""),
+         ("Stop", #","background_tasks":[],"session_crons":[{"id":"loop"}]"#),
+         ("Notification", #","notification_type":"idle_prompt""#)],
+        sessionID: "crons", from: 100, storage: storage
+    )
+
+    let record = try #require(storage.load(id: hookUpdaterID("crons", agent: .claude)))
+    #expect(record.state == .working)
+    #expect(record.detail == SessionWorkDetail.scheduledTasks)
+}
+
+@Test func aSubagentStopRenewsAParentStillWaitingOnOtherAgents() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+
+    try applyHooks([("UserPromptSubmit", "")], sessionID: "parent", from: 100, storage: storage)
+    try applyHooks(
+        [("Stop", #","background_tasks":[{"id":"a","type":"subagent","status":"running"},{"id":"b","type":"subagent","status":"running"}]"#)],
+        sessionID: "parent", from: 101, storage: storage
+    )
+    try applyHooks(
+        [("SubagentStop", #","agent_id":"a","background_tasks":[{"id":"a","type":"subagent","status":"running"},{"id":"b","type":"subagent","status":"running"}]"#)],
+        sessionID: "parent", from: 500, storage: storage
+    )
+
+    let parent = try #require(storage.load(id: hookUpdaterID("parent", agent: .claude)))
+    #expect(parent.state == .working)
+    #expect(parent.detail == SessionWorkDetail.backgroundAgent)
+    #expect(parent.updatedAt == Date(timeIntervalSince1970: 500))
+}
+
+@Test func aSubagentStopLeavesAParentMonitoringItsCrons() throws {
+    let directory = hookUpdaterTempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = SessionStorage(directory: directory)
+
+    try applyHooks([("UserPromptSubmit", "")], sessionID: "parent", from: 100, storage: storage)
+    try applyHooks(
+        [("Stop", #","background_tasks":[{"id":"a","type":"subagent","status":"running"}],"session_crons":[{"id":"loop"}]"#)],
+        sessionID: "parent", from: 101, storage: storage
+    )
+    try applyHooks(
+        [("SubagentStop", #","agent_id":"a","background_tasks":[{"id":"a","type":"subagent","status":"running"}],"session_crons":[{"id":"loop"}]"#)],
+        sessionID: "parent", from: 200, storage: storage
+    )
+
+    let parent = try #require(storage.load(id: hookUpdaterID("parent", agent: .claude)))
+    #expect(parent.state == .working)
+    #expect(parent.detail == SessionWorkDetail.scheduledTasks)
 }
 
 @Test func claudeIdlePromptStillEndsATurnWithoutBackgroundWork() throws {
@@ -1233,7 +1293,27 @@ import Testing
         observedAt: Date(timeIntervalSince1970: 103),
         storage: storage
     )
-    #expect(storage.load(id: id)?.state == .idle)
+    // Scheduled crons will start more turns: the session is monitoring.
+    var record = try #require(storage.load(id: id))
+    #expect(record.state == .working)
+    #expect(record.detail == SessionWorkDetail.scheduledTasks)
+
+    try applyDecodedHook(
+        event: "UserPromptSubmit",
+        json: #"{"session_id":"claude-parent"}"#,
+        agent: .claude,
+        observedAt: Date(timeIntervalSince1970: 104),
+        storage: storage
+    )
+    try applyDecodedHook(
+        event: "Stop",
+        json: #"{"session_id":"claude-parent","session_crons":[]}"#,
+        agent: .claude,
+        observedAt: Date(timeIntervalSince1970: 105),
+        storage: storage
+    )
+    record = try #require(storage.load(id: id))
+    #expect(record.state == .idle)
 }
 
 @Test func subagentStopRemovesOnlyTheAddressedChildRecord() throws {
@@ -1620,7 +1700,7 @@ import Testing
     )
     #expect(storage.load(id: parentID)?.detail == SessionWorkDetail.backgroundAgent)
 
-    // The second child leaves a shell behind: a bounded hold starts at 300.
+    // The second child leaves a shell behind: the parent monitors it from 300.
     try applyDecodedHook(
         event: "SubagentStop",
         json: #"{"session_id":"parent","agent_id":"child-b","cwd":"/work/app","background_tasks":[{"id":"sh","type":"shell","status":"running"}]}"#,
@@ -1630,7 +1710,7 @@ import Testing
     #expect(parent.detail == SessionWorkDetail.backgroundShell)
     #expect(parent.updatedAt == Date(timeIntervalSince1970: 300))
 
-    // A later shell-only snapshot does not restart that hold.
+    // A later subagent edge in the family renews the monitoring lease.
     try applyDecodedHook(
         event: "SubagentStart", json: #"{"session_id":"parent","agent_id":"child-c","cwd":"/work/app"}"#,
         agent: .claude, observedAt: Date(timeIntervalSince1970: 350), storage: storage
@@ -1642,7 +1722,7 @@ import Testing
     )
     parent = try #require(storage.load(id: parentID))
     #expect(parent.detail == SessionWorkDetail.backgroundShell)
-    #expect(parent.updatedAt == Date(timeIntervalSince1970: 300))
+    #expect(parent.updatedAt == Date(timeIntervalSince1970: 400))
 }
 
 

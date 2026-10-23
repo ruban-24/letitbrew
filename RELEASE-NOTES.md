@@ -34,6 +34,15 @@ Added:
 - Click a session in the menu to bring its terminal, editor, or agent app
   forward. No Accessibility or Automation permission is used, so the app is
   activated rather than a specific window or tab.
+- **Monitoring background tasks.** When a Claude turn ends but leaves
+  background shells, Monitor tasks, or subagents running, or scheduled session
+  crons such as `/loop` that will start more turns, the session keeps the Mac
+  awake, with the lid closed too, and reads "Monitoring background tasks".
+  It ends when Claude reports the work finished, a new prompt starts, or the
+  session or its agent exits. If the session and its subagents send nothing
+  for two hours, it stops holding and reads "No update in 2 h · Mac can
+  sleep", so a forgotten server or a killed subagent cannot keep the Mac awake
+  indefinitely. The menu header counts monitoring sessions separately.
 
 Changed:
 
@@ -42,8 +51,6 @@ Changed:
   aligned with every other row and without repeating the folder name, and the header
   counts waiting sessions apart from working ones. Battery status moved into
   the header, and text is lighter so project names stand out.
-- A Claude session kept awake only by background shells reads **Running in
-  background**, and **In background · Mac can sleep** once that hold ends.
 - Hovering a session highlights it and swaps its active time for **Stop
   Watching**; right-click a session for the same actions. Hovering an expanded
   folder highlights the folder and all of its sessions together.
@@ -77,14 +84,10 @@ Fixed:
 - Let It Brew finds the Codex CLI bundled in newer ChatGPT and Codex desktop
   apps, so it can verify Codex hook approval without a separate CLI install.
   Thanks to @deepblueeeee.
-- A Claude session whose turn ended with only a background shell or monitor
-  still running, such as a `sleep` or `tail` a subagent left behind, now holds
-  the Mac for at most one hour instead of twelve. Running subagents and other
-  agent work still hold until they finish.
-- A background shell a Claude turn leaves running is no longer released about
-  a minute after the turn ends, when Claude sends an idle notification. It
-  still holds for at most one hour. Running subagents keep holding through
-  their own sessions.
+- Background work a Claude turn leaves running, such as a `sleep` or `tail` a
+  subagent left behind, no longer holds the Mac for twelve hours when nothing
+  reports it finished; see Monitoring above. It is also no longer released a
+  minute after the turn ends, when Claude sends an idle notification.
 - Claude subagents that never report completion are cleared when the parent's
   next turn ends without listing them, instead of staying Working for twelve
   hours. A subagent's own completion no longer counts itself as still running

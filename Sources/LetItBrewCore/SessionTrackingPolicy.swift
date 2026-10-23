@@ -107,7 +107,9 @@ public enum SessionTrackingPolicy {
         )
     }
 
+    /// A turn that ended in monitoring, or an edge that only renews it, is
+    /// not new work, so it does not bring back a row the person stopped watching.
     private static func isGenuineWorkEdge(_ session: SessionRecord) -> Bool {
-        session.state == .working
+        session.state == .working && !HookSessionUpdater.isWaitingOnBackgroundWork(session)
     }
 }

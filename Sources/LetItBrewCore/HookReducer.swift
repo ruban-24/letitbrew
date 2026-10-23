@@ -24,12 +24,19 @@ public enum SessionWaitDetail {
 }
 
 /// Semantic detail tokens for a Working session whose turn has ended but
-/// whose `Stop` still reported background work. Never English prose.
+/// whose `Stop` still reported background work: the monitoring sub-state.
+/// Monitoring is bounded by `Settings.monitoringHoldLimit`. Never English prose.
 public enum SessionWorkDetail {
-    /// Only shells or monitors remain. Bounded by `Settings.backgroundShellHoldLimit`.
+    /// Only shells or monitors remain.
     public static let backgroundShell = "background-shell"
     /// A subagent or other agent-class task may still be working.
     public static let backgroundAgent = "background-agent"
+    /// No task remains, but scheduled session crons will start more turns.
+    public static let scheduledTasks = "scheduled-tasks"
+
+    public static func isMonitoring(_ detail: String?) -> Bool {
+        detail == backgroundShell || detail == backgroundAgent || detail == scheduledTasks
+    }
 }
 
 /// The effect one hook event has on a session's record.
@@ -51,6 +58,7 @@ public enum HookReducer {
         source: String? = nil,
         trigger: String? = nil,
         backgroundWork: HookPayload.BackgroundWork = .none,
+        hasSessionCrons: Bool = false,
         errorRecoverable: Bool? = nil
     ) -> HookEffect? {
         switch event {
@@ -130,10 +138,14 @@ public enum HookReducer {
         case "UserInputResolved":
             return agent == .opencode || agent == .pi ? .set(.working, detail: nil) : nil
         case "Stop":
-            // The turn ended. Agent-class background work holds like a turn;
-            // shell-only work holds for a bounded time; nothing running is Idle.
+            // The turn ended. Background work it left running, or scheduled
+            // crons that will start more turns, keep it Working in the
+            // bounded monitoring sub-state; nothing left is Idle.
             switch backgroundWork {
-            case .none: return .set(.idle, detail: nil)
+            case .none:
+                return hasSessionCrons
+                    ? .set(.working, detail: SessionWorkDetail.scheduledTasks)
+                    : .set(.idle, detail: nil)
             case .shellOnly: return .set(.working, detail: SessionWorkDetail.backgroundShell)
             case .agent: return .set(.working, detail: SessionWorkDetail.backgroundAgent)
             }
