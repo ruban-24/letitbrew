@@ -125,8 +125,11 @@ In light and dark mode, with the signed app:
    one shaded, rounded block. A
    Claude session left with only background shells reads **Running in
    background**.
-2. Hover a session: it highlights only if it can be brought forward, and its
-   active time gives way to the eye button. Stop watching one session from
+2. Hover an expanded folder: its whole shaded block, folder and sessions,
+   highlights; moving onto one of its sessions also highlights that session,
+   and moving off the folder clears both. Hover a session: it highlights only
+   if it can be brought forward, and its active time gives way to the eye
+   button. Stop watching one session from
    the eye button and another from the right-click menu. With a Claude
    approval Waiting, click its row, then right-click it and choose **Show
    Session’s App**: both bring the app forward, and the row must stay

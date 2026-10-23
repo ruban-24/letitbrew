@@ -83,6 +83,10 @@ struct MenuBarContentView: View {
     @Environment(\.openSettings) private var openSettings
     @State private var expandedRepositoryID: String?
     @State private var initializedExpansion = false
+    /// Rows under the pointer that belong to an expanded folder, by the folder
+    /// they belong to. Moving between rows of one folder can report the new
+    /// row's entry before the old row's exit, so each row is tracked.
+    @State private var hoveredFolderRows: [MenuRepositoryLayoutItem.ID: String] = [:]
 
     var body: some View {
         Group {
@@ -135,6 +139,7 @@ struct MenuBarContentView: View {
             model.menuDidClose()
             expandedRepositoryID = nil
             initializedExpansion = false
+            hoveredFolderRows = [:]
             model.cancelUpdate(from: .menuBar)
         }
         .onChange(of: model.hasLoadedSessionSnapshot) {
@@ -332,6 +337,8 @@ struct MenuBarContentView: View {
                             RepositoryGroupRowView(
                                 group: group,
                                 isExpanded: expandedRepositoryID == group.id,
+                                // Expanded, the whole folder block highlights instead.
+                                highlightsOnHover: expandedRepositoryID != group.id,
                                 onToggle: { toggle(group.id) }
                             )
 
@@ -348,6 +355,13 @@ struct MenuBarContentView: View {
                         }
                     }
                     .background { folderGroupBackground(at: index, in: items) }
+                    .onHover { hovering in
+                        if hovering, let folder = expandedFolderID(of: item) {
+                            hoveredFolderRows[item.id] = folder
+                        } else {
+                            hoveredFolderRows[item.id] = nil
+                        }
+                    }
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
@@ -355,31 +369,50 @@ struct MenuBarContentView: View {
         }
         .scrollBounceBehavior(.basedOnSize)
         .frame(height: MenuActivityViewportMetrics.height(for: items))
+        // A row can vanish under the pointer, for example after Stop Watching,
+        // without reporting a hover exit, and collapsing moves a row out of its
+        // folder. Keep only rows still shown in the folder they were hovered in.
+        .onChange(of: items) { _, current in
+            hoveredFolderRows = hoveredFolderRows.filter { id, folder in
+                current.contains { $0.id == id && expandedFolderID(of: $0) == folder }
+            }
+        }
+    }
+
+    /// The expanded folder a row belongs to: its header or one of its sessions.
+    private func expandedFolderID(of item: MenuRepositoryLayoutItem) -> String? {
+        switch item {
+        case .header(let group):
+            expandedRepositoryID == group.id ? group.id : nil
+        case .session(let session, _, _):
+            item.isGroupedSession ? session.session.repositoryID : nil
+        case .section:
+            nil
+        }
     }
 
     /// An expanded folder and its sessions share one rounded, shaded block,
     /// drawn row by row: rounded on top at the folder, at the bottom after its
     /// last session. Its sessions keep the same left edge as every other row.
+    /// The pointer anywhere in the folder deepens the whole block, and a
+    /// session under it adds its own highlight on top.
     @ViewBuilder
     private func folderGroupBackground(
         at index: Int,
         in items: [MenuRepositoryLayoutItem]
     ) -> some View {
         let item = items[index]
-        let isTop: Bool = if case .header(let group) = item {
-            expandedRepositoryID == group.id
-        } else {
-            false
-        }
-        if isTop || item.isGroupedSession {
+        if let folder = expandedFolderID(of: item) {
+            let isTop = if case .header = item { true } else { false }
             let isBottom = index + 1 == items.count || !items[index + 1].isGroupedSession
+            let isHovered = hoveredFolderRows.values.contains(folder)
             UnevenRoundedRectangle(
                 topLeadingRadius: isTop ? 8 : 0,
                 bottomLeadingRadius: isBottom ? 8 : 0,
                 bottomTrailingRadius: isBottom ? 8 : 0,
                 topTrailingRadius: isTop ? 8 : 0
             )
-            .fill(Color.primary.opacity(0.05))
+            .fill(Color.primary.opacity(isHovered ? 0.1 : 0.05))
         }
     }
 
@@ -521,6 +554,7 @@ struct MenuBarContentView: View {
 private struct RepositoryGroupRowView: View {
     let group: MenuRepositoryPresentation
     let isExpanded: Bool
+    let highlightsOnHover: Bool
     let onToggle: () -> Void
 
     var body: some View {
@@ -564,7 +598,7 @@ private struct RepositoryGroupRowView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .popoverHoverHighlight()
+        .popoverHoverHighlight(highlightsOnHover)
         .accessibilityLabel(
             "\(group.project) folder at \(group.id), \(group.sessionCountText), \(group.summaryText), \(isExpanded ? "expanded" : "collapsed")"
         )

@@ -45,7 +45,8 @@ Changed:
 - A Claude session kept awake only by background shells reads **Running in
   background**, and **In background · Mac can sleep** once that hold ends.
 - Hovering a session highlights it and swaps its active time for **Stop
-  Watching**; right-click a session for the same actions.
+  Watching**; right-click a session for the same actions. Hovering an expanded
+  folder highlights the folder and all of its sessions together.
 - Settings uses the standard macOS toolbar tabs: General, Agents, Power, Closed
   Lid, and About. Every closed-lid setting, including the background helper, is
   now under **Closed Lid**, and **Check for Updates…** moved to General. Each
