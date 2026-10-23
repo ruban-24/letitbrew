@@ -2174,7 +2174,12 @@ final class LetItBrewAppModel: ObservableObject {
 
         let nextSessions = MenuSessionPresentationPolicy.rows(
             from: liveSessions.map {
-                Self.menuInput($0, waitAnswers: waitAnswers, now: snapshot.now)
+                Self.menuInput(
+                    $0,
+                    waitAnswers: waitAnswers,
+                    now: snapshot.now,
+                    backgroundShellHoldLimit: settings.backgroundShellHoldLimit
+                )
             },
             now: snapshot.now,
             previousIDs: sessions.map(\.id)
@@ -2248,7 +2253,7 @@ final class LetItBrewAppModel: ObservableObject {
         let isKeepingAwake = intent.system
             || (requestedLidHold && daemonHoldRequestState.confirmedHold == true)
         // A constraint explains a release only for sessions that would hold.
-        releaseConstraint = if sessions.contains(where: { !$0.isWaiting }) {
+        releaseConstraint = if sessions.contains(where: \.isWorking) {
             if !snapshot.power.trusted {
                 .powerUnavailable
             } else if settings.onlyWhileConnectedToPower,
@@ -2564,9 +2569,15 @@ final class LetItBrewAppModel: ObservableObject {
     private static func menuInput(
         _ record: SessionRecord,
         waitAnswers: WaitAnswerLatch,
-        now: Date
+        now: Date,
+        backgroundShellHoldLimit: TimeInterval
     ) -> SessionMenuInput {
-        let state = MenuSessionState.resolve(record, waitAnswers: waitAnswers)
+        let state = MenuSessionState.resolve(
+            record,
+            waitAnswers: waitAnswers,
+            now: now,
+            backgroundShellHoldLimit: backgroundShellHoldLimit
+        )
         return SessionMenuInput(
             id: record.id,
             tool: record.tool,

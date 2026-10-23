@@ -293,8 +293,9 @@ final class LetItBrewBootstrap: NSObject, NSApplicationDelegate, @unchecked Send
 
 #if DEBUG
 extension LetItBrewAppModel {
-    /// Sample sessions for the design previews: a folder with two agents, a
-    /// session on its own, and one waiting for approval, on battery.
+    /// Sample sessions for the design previews: a folder with two agents,
+    /// sessions on their own, one running only background shells, and one
+    /// waiting for approval, on battery.
     @MainActor
     static func designPreview() -> LetItBrewAppModel {
         let now = Date()
@@ -322,6 +323,12 @@ extension LetItBrewAppModel {
                 detail: "running-command", cwd: "/Archive/api", pid: nil,
                 updatedAt: now.addingTimeInterval(-30), lastEvent: "PreToolUse",
                 startedAt: now.addingTimeInterval(-1_800), accumulatedWorkingTime: 1_770
+            ),
+            SessionRecord(
+                id: "background-claude", tool: "claude", state: .working,
+                detail: SessionWorkDetail.backgroundShell, cwd: "/Projects/docs", pid: nil,
+                updatedAt: now.addingTimeInterval(-120), lastEvent: "Stop",
+                startedAt: now.addingTimeInterval(-700), accumulatedWorkingTime: 580
             ),
         ], power: PowerState(onBattery: true, batteryPercent: 64, thermal: .nominal), now: now)
     }

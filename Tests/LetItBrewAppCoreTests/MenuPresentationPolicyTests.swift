@@ -293,7 +293,7 @@ import LetItBrewCore
     ], now: now)
 
     #expect(rows.map(\.id) == ["a-first", "b-second", "z-last"])
-    #expect(rows.map(\.activeTimeText) == ["1m active", "1m active", "1h 2m active"])
+    #expect(rows.map(\.activeTimeText) == ["1m", "1m", "1h 2m"])
     #expect(rows.map(\.stateText) == ["Working", "Working", "Working"])
 }
 
@@ -303,7 +303,7 @@ import LetItBrewCore
         input(id: "session", activeWorkingTime: 7_320, updatedAt: now)
     ], now: now).first
 
-    #expect(row?.activeTimeText == "2h 2m active")
+    #expect(row?.activeTimeText == "2h 2m")
 }
 
 @Test func olderRefreshCannotReplaceANewerPresentedSnapshot() {
@@ -499,7 +499,7 @@ import LetItBrewCore
     #expect(refreshed.map(\.id) == ["a", "b", "c"])
     #expect(groups.map(\.id) == ["/work/first", "/work/second"])
     #expect(groups[0].sessions.map(\.id) == ["a", "b"])
-    #expect(refreshed.first { $0.id == "b" }?.activeTimeText == "2m active")
+    #expect(refreshed.first { $0.id == "b" }?.activeTimeText == "2m")
 }
 
 @Test func membershipChangesKeepSurvivorsInPlaceAndAppendNewSessionsAndRepositories() {
@@ -534,7 +534,7 @@ import LetItBrewCore
 
     #expect(state.expandedRepositoryID == "/work/app")
     #expect(items.map(\.id) == [.header("/work/app"), .session("survivor")])
-    #expect(MenuActivityViewportMetrics.height(for: items) == 60)
+    #expect(MenuActivityViewportMetrics.height(for: items) == 72)
     #expect(MenuRepositoryExpansionPolicy.reconcile(current: single.id, groups: []) == nil)
 }
 
@@ -658,7 +658,7 @@ import LetItBrewCore
     #expect(MenuActivityViewportMetrics.height(for: MenuRepositoryLayoutPolicy.items(
         for: headerPlusFourRows,
         isExpanded: true
-    )) == 150)
+    )) == 198)
     #expect(MenuActivityViewportMetrics.height(for: MenuRepositoryLayoutPolicy.items(
         for: headerPlusTwelveRows,
         isExpanded: true
@@ -701,7 +701,7 @@ import LetItBrewCore
     #expect(items[6].shortSessionID == nil)
     #expect(groups.first?.sessionCountText == "2 working")
     // Two section headers, a folder header with two rows, and two sessions on their own.
-    #expect(MenuActivityViewportMetrics.height(for: items) == 226)
+    #expect(MenuActivityViewportMetrics.height(for: items) == 250)
 }
 
 @Test func aSessionOnItsOwnRowKeepsItsShortIDWhenItsFolderHasAWait() {
@@ -747,6 +747,42 @@ import LetItBrewCore
         groups: [],
         expandedRepositoryID: nil
     ).map(\.id) == [.section(.needsYou), .session("w")])
+}
+
+@Test func backgroundShellSessionsReadAsBackgroundAndStopCountingWhenTheirHoldEnds() throws {
+    let now = Date(timeIntervalSince1970: 100_000)
+    func record(id: String, detail: String?, updatedAt: Date) -> SessionRecord {
+        SessionRecord(
+            id: id, tool: "claude", state: .working, detail: detail,
+            cwd: "/work/app", pid: nil, updatedAt: updatedAt, lastEvent: "Stop",
+            startedAt: updatedAt, accumulatedWorkingTime: 60
+        )
+    }
+    let latch = WaitAnswerLatch()
+    let limit: TimeInterval = 3_600
+    let fresh = record(id: "fresh", detail: SessionWorkDetail.backgroundShell, updatedAt: now.addingTimeInterval(-60))
+    let ended = record(id: "ended", detail: SessionWorkDetail.backgroundShell, updatedAt: now.addingTimeInterval(-limit))
+    let plain = record(id: "plain", detail: "running-command", updatedAt: now.addingTimeInterval(-limit))
+
+    #expect(MenuSessionState.resolve(fresh, waitAnswers: latch, now: now, backgroundShellHoldLimit: limit)
+        == .workingInBackground)
+    #expect(MenuSessionState.resolve(ended, waitAnswers: latch, now: now, backgroundShellHoldLimit: limit)
+        == .backgroundHoldEnded)
+    #expect(MenuSessionState.resolve(plain, waitAnswers: latch, now: now, backgroundShellHoldLimit: limit)
+        == .working)
+    // Without a clock the hold is never treated as ended.
+    #expect(MenuSessionState.resolve(ended, waitAnswers: latch) == .workingInBackground)
+
+    let rows = MenuSessionPresentationPolicy.rows(from: [
+        input(id: "fresh", state: .workingInBackground, updatedAt: now),
+        input(id: "ended", state: .backgroundHoldEnded, updatedAt: now.addingTimeInterval(-1)),
+        input(id: "plain", updatedAt: now.addingTimeInterval(-2)),
+    ], now: now)
+    #expect(rows.map(\.stateText) == ["Running in background", "In background · Mac can sleep", "Working"])
+    #expect(rows.map(\.isWorking) == [true, false, true])
+    #expect(MenuHeaderDetailCopy.resolve(context: .awake, rows: rows) == "2 agents are working")
+    let group = try #require(MenuRepositoryPresentationPolicy.groups(from: rows).first)
+    #expect(group.sessionCountText == "2 working · 1 in background")
 }
 
 @Test func headerDetailCountsWaitingSessionsApart() {
