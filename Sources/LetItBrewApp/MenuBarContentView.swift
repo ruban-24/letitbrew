@@ -369,6 +369,14 @@ struct MenuBarContentView: View {
         }
         .scrollBounceBehavior(.basedOnSize)
         .frame(height: MenuActivityViewportMetrics.height(for: items))
+        // A row can vanish under the pointer, for example after Stop Watching,
+        // without reporting a hover exit, and collapsing moves a row out of its
+        // folder. Keep only rows still shown in the folder they were hovered in.
+        .onChange(of: items) { _, current in
+            hoveredFolderRows = hoveredFolderRows.filter { id, folder in
+                current.contains { $0.id == id && expandedFolderID(of: $0) == folder }
+            }
+        }
     }
 
     /// The expanded folder a row belongs to: its header or one of its sessions.
