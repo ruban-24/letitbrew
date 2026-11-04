@@ -145,6 +145,18 @@ public enum AgentDiskInspection {
         case .copilot:
             _ = try CopilotHooks.install(into: data, cliPath: helperPath)
             return CopilotHooks.report(for: data, cliPath: helperPath)
+        case .cursor:
+            _ = try CursorHooks.install(into: data, cliPath: helperPath)
+            return CursorHooks.report(for: data, cliPath: helperPath)
+        case .gemini:
+            _ = try GeminiHooks.adapter.install(into: data, cliPath: helperPath)
+            return GeminiHooks.adapter.report(for: data, cliPath: helperPath)
+        case .qwen:
+            _ = try QwenHooks.adapter.install(into: data, cliPath: helperPath)
+            return QwenHooks.adapter.report(for: data, cliPath: helperPath)
+        case .kimi:
+            _ = try KimiHooks.install(into: data, cliPath: helperPath)
+            return KimiHooks.report(for: data, cliPath: helperPath)
         }
     }
 

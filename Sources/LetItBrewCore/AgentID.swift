@@ -4,6 +4,10 @@ public enum AgentID: String, CaseIterable, Codable, Sendable {
     case opencode
     case copilot
     case pi
+    case cursor
+    case gemini
+    case qwen
+    case kimi
 
     /// Owned executable adapters must never follow a same-name file symlink.
     public var ownsWholeConfigurationFile: Bool {
@@ -24,6 +28,10 @@ public enum AgentID: String, CaseIterable, Codable, Sendable {
         case .opencode: "OpenCode"
         case .copilot: "GitHub Copilot CLI"
         case .pi: "Pi"
+        case .cursor: "Cursor"
+        case .gemini: "Gemini CLI"
+        case .qwen: "Qwen Code"
+        case .kimi: "Kimi Code"
         }
     }
 }

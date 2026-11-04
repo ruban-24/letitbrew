@@ -48,14 +48,14 @@ mkdir -p "$TEST_HOME/.claude" "$TEST_HOME/.codex" "$TEST_HOME/.copilot/hooks"
 printf '{"foreign":{"claude":{"nested":[1,{"kept":true}]}}}\n' > "$TEST_HOME/.claude/settings.json"
 printf '{"description":"foreign","hooks":{"foreign":[{"nested":["codex",2]}]}}\n' > "$TEST_HOME/.codex/hooks.json"
 printf '{"version":1,"hooks":{"foreign":[{"nested":["copilot",4]}]}}\n' > "$TEST_HOME/.copilot/hooks/letitbrew.json"
-for agent in claude codex opencode copilot pi; do "$CLI" install "$agent" >/dev/null; done
+for agent in claude codex opencode copilot pi cursor gemini qwen kimi; do "$CLI" install "$agent" >/dev/null; done
 REGISTRY="$TEST_HOME/Library/Application Support/LetItBrew/agent-hook-targets.json"
 test "$(stat -f '%Lp' "$REGISTRY")" = "600"
 
 # Every adapter accepts a genuinely missing target.  Three JSON adapters were
 # already exercised above with existing files; exercise the OpenCode existing
 # case separately because it is an exact standalone plugin file.
-for agent in claude codex opencode copilot pi; do
+for agent in claude codex opencode copilot pi cursor gemini qwen kimi; do
   MISSING_HOME="$(mktemp -d /tmp/letitbrew-agent-missing.XXXXXX)"
   env LETITBREW_TEST_HOME="$MISSING_HOME" "$CLI" install "$agent" >/dev/null
   test -f "$MISSING_HOME/Library/Application Support/LetItBrew/agent-hook-targets.json"
@@ -161,14 +161,14 @@ test "$(node "$SCRIPT_DIR/test-opencode-plugin.mjs" "$CLI" "$TEST_HOME/.config/o
 grep -q '__letitbrew_hook' "$TEST_HOME/.claude/settings.json"
 grep -q '__letitbrew_codex_hook' "$TEST_HOME/.codex/hooks.json"
 node -e 'const fs=require("fs"); const [claude,codex,copilot]=process.argv.slice(1).map(f=>JSON.parse(fs.readFileSync(f))); const actual=[claude.foreign,codex.hooks.foreign,copilot.hooks.foreign].map(JSON.stringify); const expected=[{"claude":{"nested":[1,{"kept":true}]}},[{"nested":["codex",2]}],[{"nested":["copilot",4]}]].map(JSON.stringify); if(actual.some((value,index)=>value!==expected[index])) process.exit(1)' "$TEST_HOME/.claude/settings.json" "$TEST_HOME/.codex/hooks.json" "$TEST_HOME/.copilot/hooks/letitbrew.json"
-# Exact grammar: unscoped and each five-agent scoped form are accepted; every
+# Exact grammar: unscoped and each agent's scoped form are accepted; every
 # malformed/extra form is rejected without relying on shell word splitting.
-for agent in claude codex opencode copilot pi; do "$CLI" install "$agent" >/dev/null; done
-for agent in claude codex opencode copilot pi; do "$CLI" uninstall "$agent" >/dev/null; done
+for agent in claude codex opencode copilot pi cursor gemini qwen kimi; do "$CLI" install "$agent" >/dev/null; done
+for agent in claude codex opencode copilot pi cursor gemini qwen kimi; do "$CLI" uninstall "$agent" >/dev/null; done
 "$CLI" install >/dev/null
 "$CLI" uninstall >/dev/null
 ! "$CLI" >/dev/null 2>&1
-for command in "install claude extra" "uninstall nope" "uninstall claude extra" "install nope" "install cursor" "uninstall cursor" "prepare-exact cursor" "prepare-exact"; do ! "$CLI" $command >/dev/null 2>&1; done
+for command in "install claude extra" "uninstall nope" "uninstall claude extra" "install nope" "prepare-exact nope" "prepare-exact"; do ! "$CLI" $command >/dev/null 2>&1; done
 # In a fresh home, an absent exact preparation creates only the requested
 # owned target.  A stale owned target is then repaired using a new exact
 # capture; neither case relies on an ambient vendor-home variable.
@@ -246,6 +246,10 @@ target_for_agent() {
     copilot) printf '%s/.copilot/hooks/letitbrew.json' "$2";;
     pi) printf '%s/.pi/agent/extensions/letitbrew.ts' "$2";;
     opencode) printf '%s/.config/opencode/plugins/letitbrew.js' "$2";;
+    cursor) printf '%s/.cursor/hooks.json' "$2";;
+    gemini) printf '%s/.gemini/settings.json' "$2";;
+    qwen) printf '%s/.qwen/settings.json' "$2";;
+    kimi) printf '%s/.kimi-code/config.toml' "$2";;
   esac
 }
 seed_agent_target() {
@@ -255,11 +259,13 @@ seed_agent_target() {
   case "$agent" in
     claude) printf '{"foreign":{"keep":1}}\n' > "$target";;
     codex) printf '{"description":"foreign","hooks":{"keep":[]}}\n' > "$target";;
-    copilot) printf '{"version":1,"hooks":{"keep":[]}}\n' > "$target";;
+    copilot|cursor) printf '{"version":1,"hooks":{"keep":[]}}\n' > "$target";;
+    gemini|qwen) printf '{"foreign":{"keep":1}}\n' > "$target";;
+    kimi) printf 'default_model = "keep"\n' > "$target";;
     opencode|pi) : ;; # its missing file is a valid install input
   esac
 }
-for agent in claude codex copilot opencode pi; do
+for agent in claude codex copilot opencode pi cursor gemini qwen kimi; do
   FAULT_HOME="$(mktemp -d /tmp/letitbrew-command-fault.XXXXXX)"
   seed_agent_target "$agent" "$FAULT_HOME"; TARGET="$(target_for_agent "$agent" "$FAULT_HOME")"
   test -e "$TARGET" && cp "$TARGET" "$FAULT_HOME/vendor-before" || : > "$FAULT_HOME/vendor-before"
@@ -334,5 +340,6 @@ ln -s "$OUTSIDE_HOME" "$SYMLINK_HOME/Library/Application Support/LetItBrew"
 ! test -e "$OUTSIDE_HOME/agent-hook-targets.json"
 ! test -e "$SYMLINK_HOME/.claude/settings.json"
 EXIT_SLEEP_DISABLED="$(agent_hook_test_read_sleepdisabled)" || { echo "FATAL: could not read SleepDisabled baseline on exit" >&2; exit 1; }
+python3 "$SCRIPT_DIR/test-agent-hook-replay.py" "$CLI" >/dev/null
 test "$ENTRY_SLEEP_DISABLED" = "$EXIT_SLEEP_DISABLED"
 echo "PASS"

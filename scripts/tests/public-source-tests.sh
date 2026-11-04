@@ -41,10 +41,6 @@ for agent in 'Claude Code' Codex OpenCode 'GitHub Copilot CLI'; do
     fi
 done
 
-if git grep -Iqi 'Cursor' -- README.md Sources Tests; then
-    fail "current public source still mentions removed Cursor support"
-fi
-
 if git grep -Fq '"$HELPER" --version' -- scripts ':!scripts/tests/public-source-tests.sh'; then
     fail "distribution scripts execute an unverified candidate helper"
 fi
@@ -68,8 +64,8 @@ if ! grep -qE '^[[:space:]]+MARKETING_VERSION: 1\.0\.0$' project.yml; then
     fail "project.yml MARKETING_VERSION is not 1.0.0"
 fi
 
-if ! grep -qE '^[[:space:]]+CURRENT_PROJECT_VERSION: 41$' project.yml; then
-    fail "project.yml CURRENT_PROJECT_VERSION is not 41"
+if ! grep -qE '^[[:space:]]+CURRENT_PROJECT_VERSION: 43$' project.yml; then
+    fail "project.yml CURRENT_PROJECT_VERSION is not 43"
 fi
 
 if ! grep -Fq 'print("letitbrew 1.0.0")' Sources/letitbrew/main.swift; then
@@ -89,8 +85,8 @@ if ! grep -Fq '0.6.5 or earlier' SUPPORT.md \
 fi
 
 if ! grep -Fq '## v1.0.0 release scope' docs/ATTENDED-UAT.md \
-    || ! grep -Fq 'Record version 1.0.0, build 41' docs/ATTENDED-UAT.md; then
-    fail "attended UAT release scope is not 1.0.0 build 41"
+    || ! grep -Fq 'Record version 1.0.0, build 43' docs/ATTENDED-UAT.md; then
+    fail "attended UAT release scope is not 1.0.0 build 43"
 fi
 
 if ! grep -Fq '## Manual replacement bridge' docs/ATTENDED-UAT.md \

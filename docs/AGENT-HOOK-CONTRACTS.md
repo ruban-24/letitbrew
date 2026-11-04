@@ -4,16 +4,16 @@
 
 Let It Brew observes local lifecycle hooks only. It does not enumerate agent
 processes, inspect CPU use, search for installed executables, parse conversations,
-or read Claude/Codex/OpenCode/Copilot/Pi prompt and response content. Each hook
+or read any supported agent's prompt and response content. Each hook
 command reads only its own parent chain to record the agent's process ID, which
 the menu uses to bring the agent's app forward; it affects the hold only by
-naming the app whose input can answer a Claude or Copilot approval. The one
+naming the app whose input can answer an approval that sends no hook. The one
 exception to hooks only is Copilot's Esc, which its session log alone records;
 see [GitHub Copilot CLI](#github-copilot-cli).
 
 Every adapter reduces to Working, Waiting, and Idle. A Waiting session releases
-the hold. Waits whose answer sends a hook resume through that hook; Claude and
-Copilot approvals, which send none, hold again once a local key press or click
+the hold. Waits whose answer sends a hook resume through that hook; Claude,
+Copilot, Gemini, and Qwen approvals, which send none, hold again once a local key press or click
 reaches the session's own app; see [ARCHITECTURE.md](ARCHITECTURE.md) for that
 rule.
 
@@ -201,7 +201,8 @@ rule.
   a local key press or click in the session's own app after the wait holds it
   as Working until the next
   hook.
-- Observed on Copilot 1.0.103: Esc fires no hook and writes an `abort` event to
+- Observed on Copilot 1.0.103 and 1.0.105, where it takes Esc twice: interrupting
+  fires no hook and writes an `abort` event to
   `session-state/<session>/events.jsonl` under Copilot's home. While a turn is
   active, `CopilotCancellation` reads the log's last 256 KB and decodes only
   `type` and `timestamp`. An `abort` newer than the session's latest hook, with
@@ -248,3 +249,96 @@ rule.
   that omit extension lifecycle events, and activity such as standalone tree
   summaries are not claimed. Forced termination cannot emit shutdown; the
   existing stale-session policy applies.
+
+## Cursor
+
+- Config: `~/.cursor/hooks.json`, a flat `event -> [entry]` file whose other
+  entries are kept. Source: https://cursor.com/docs/agent/hooks. Observed on
+  `cursor-agent` 2026.08.25 and 2026.10.22. The editor's agent was not run.
+- Observe only. `preToolUse`, `beforeShellExecution`, and `beforeMCPExecution`
+  must answer with a permission decision, so they are not installed. Cursor has
+  no other signal for a prompt on screen, so, like Codex, an approval keeps the
+  session Working and the Mac awake.
+- `beforeSubmitPrompt` is UserPromptSubmit and replies `{"continue":true}` before
+  the helper runs. `postToolUse` is PostToolUse, `stop` is Stop for every
+  `status`, and `sessionEnd` is SessionEnd. `afterAgentResponse` can follow `stop`,
+  so it is not installed. Neither is `postToolUseFailure`, which Ctrl+C during a
+  tool sends after `stop`. A `postToolUse` that lands after `stop` cannot reopen
+  the turn.
+- Esc while text streams and Ctrl+C during a tool each fire `stop` with `aborted`,
+  then `error`. Esc does not stop a running shell tool, so that turn correctly
+  stays Working. Esc at an approval prompt opens a box asking what to do instead,
+  and that turn also stays Working.
+- The session is `conversation_id` and the project is the first `workspace_roots`;
+  a tool hook's `cwd` can be empty.
+- Cursor runs hooks in the login shell, so each command is wrapped in `/bin/sh`.
+- Cursor runs the hooks in `~/.claude/settings.json` too, which records a second
+  session as Claude Code. Claude's command exits early when
+  `CURSOR_VERSION` and `CURSOR_PROJECT_DIR` are both set and `~/.cursor/hooks.json`
+  holds our marker. While Cursor is not connected that replay is left alone, because
+  it is the only hold those sessions have, so they keep appearing as Claude Code.
+  Observed on `cursor-agent` with real settings: connected shows only a Cursor row,
+  and not connected shows only a Claude Code row.
+
+## Gemini CLI
+
+- Config: `~/.gemini/settings.json`, or under `$GEMINI_CLI_HOME`. Settings with
+  comments are refused, because rewriting them would lose the comments.
+- Observed on 0.66.0 against a local fake model. `BeforeAgent` is
+  UserPromptSubmit, `BeforeTool` PreToolUse, `AfterTool` PostToolUse, and
+  `AfterAgent` Stop. `SessionStart`, `SessionEnd`, and `Notification` keep their
+  names. Timeouts are in milliseconds. Each entry is named, because Gemini shows
+  that name while a hook runs.
+- `BeforeTool` fires before the prompt. A `ToolPermission` notification then sets
+  Waiting (approval), and approving sends no hook until `AfterTool`. As with
+  Claude, a local key press or click holds again until the next hook, and Esc at
+  the prompt counts as that input. `ask_user` is Waiting (question) from
+  `BeforeTool`; its code was read, not run.
+- Esc while text streams fires `AfterAgent`, which is Idle. Esc during a tool fires
+  only `AfterTool`. As with Claude, that turn stays Working until the next prompt's
+  end, `/clear`, exit, Stop Tracking, or the 12-hour expiry.
+
+## Qwen Code
+
+- Config: `~/.qwen/settings.json`, or `$QWEN_HOME/settings.json`. Settings with
+  comments are refused, as for Gemini. Timeouts are in seconds.
+- Observed on 0.26.7 against a local fake model. Hooks are shaped like Claude's,
+  and `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`,
+  `PostToolUseFailure`, `Notification`, `Stop`, `StopFailure`, and `SessionEnd` are
+  installed.
+- `PreToolUse` fires before the prompt. `permission_prompt` then sets Waiting
+  (approval), and approving sends no hook until `PostToolUse`, so local input
+  latches the answer as with Claude. `PermissionRequest` runs before Qwen decides,
+  so it is not installed. `ask_user_question` is Waiting (question) from
+  `PreToolUse`; its code was read, not run.
+- `idle_prompt` also fires as every tool starts, within milliseconds of
+  `PreToolUse` and in either order. It is ignored while the latest edge is
+  `PreToolUse`, and a `PreToolUse` observed up to a second before an `idle_prompt`
+  still applies.
+- `Stop` does not fire after Esc. While text streams or at a prompt, `idle_prompt`
+  is Idle. During a tool, `PostToolUseFailure` with `is_interrupt` is Idle. Any
+  other tool failure returns to Working.
+- A subagent's tool hooks carry `agent_id` and count as activity in the parent's
+  turn. Subagent edges are not installed.
+
+## Kimi Code
+
+- Config: `[[hooks]]` tables in `~/.kimi-code/config.toml`, or under
+  `$KIMI_CODE_HOME`. Source:
+  https://moonshotai.github.io/kimi-code/en/customization/hooks.md. Observed on
+  2.4.1 against a local fake model.
+- The file is edited as lines, so bytes outside our tables are kept. A table is
+  ours when its `command` carries the ownership comment, because Kimi drops TOML
+  comments when it rewrites the file. A config that defines `hooks` any other way,
+  or that cannot be scanned, is refused.
+- Kimi validates this section strictly and ignores all of it, with a warning, if
+  one table is invalid. Tables hold only `event`, `command`, and `timeout`.
+  `Interrupt` needs Kimi 0.14.0 or later.
+- `PermissionRequest` fires only when a person is asked and is Waiting (approval).
+  `PermissionResult` returns it to Working, and is ignored if it lands after the
+  turn ended, because Kimi does not wait for it. Both carry `agent_id: "main"`,
+  which is not treated as a child.
+- `Interrupt` fires in place of `Stop` on Esc and is Idle. Esc at an approval prompt
+  is a rejection instead: `PermissionResult`, then `Stop`.
+- `SessionStart` fires with the first message, so it never ends a turn in progress.
+  `PreToolUse` for `AskUserQuestion` is Waiting (question).

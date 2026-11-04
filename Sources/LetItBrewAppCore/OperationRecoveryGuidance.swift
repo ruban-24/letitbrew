@@ -153,6 +153,14 @@ public enum OperationRecoveryCatalog {
             hookGuidance(agent: "Pi", id: "pi", diagnostic: diagnostic)
         case .removeCopilotHooks:
             hookGuidance(agent: "GitHub Copilot CLI", id: "copilot", diagnostic: diagnostic)
+        case .removeCursorHooks:
+            hookGuidance(agent: "Cursor", id: "cursor", diagnostic: diagnostic)
+        case .removeGeminiHooks:
+            hookGuidance(agent: "Gemini CLI", id: "gemini", diagnostic: diagnostic)
+        case .removeQwenHooks:
+            hookGuidance(agent: "Qwen Code", id: "qwen", diagnostic: diagnostic)
+        case .removeKimiHooks:
+            hookGuidance(agent: "Kimi Code", id: "kimi", diagnostic: diagnostic)
         case .retainBundleForHookRetry:
             guidance(
                 id: "uninstall-retained-app",

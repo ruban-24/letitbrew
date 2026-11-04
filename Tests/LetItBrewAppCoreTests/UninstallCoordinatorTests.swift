@@ -42,6 +42,10 @@ final class RecordingUninstallEnvironment: UninstallEnvironment, @unchecked Send
     func removeOpenCodeHooks() async -> Result<Void, UninstallFailure> { await perform(.removeOpenCodeHooks) }
     func removeCopilotHooks() async -> Result<Void, UninstallFailure> { await perform(.removeCopilotHooks) }
     func removePiHooks() async -> Result<Void, UninstallFailure> { await perform(.removePiHooks) }
+    func removeCursorHooks() async -> Result<Void, UninstallFailure> { await perform(.removeCursorHooks) }
+    func removeGeminiHooks() async -> Result<Void, UninstallFailure> { await perform(.removeGeminiHooks) }
+    func removeQwenHooks() async -> Result<Void, UninstallFailure> { await perform(.removeQwenHooks) }
+    func removeKimiHooks() async -> Result<Void, UninstallFailure> { await perform(.removeKimiHooks) }
     func disableLaunchAtLogin() async -> Result<Void, UninstallFailure> { await perform(.disableLaunchAtLogin) }
     func deleteUserData() async -> Result<Void, UninstallFailure> { await perform(.deleteUserData) }
     func clearPreferences() async -> Result<Void, UninstallFailure> { await perform(.clearPreferences) }
@@ -92,6 +96,7 @@ func makeFailure(_ step: UninstallStep) -> UninstallFailure {
     let removalSteps: Set<UninstallStep> = [
         .unregisterDaemon, .removeClaudeHooks, .removeCodexHooks,
         .removeOpenCodeHooks, .removeCopilotHooks, .removePiHooks,
+        .removeCursorHooks, .removeGeminiHooks, .removeQwenHooks, .removeKimiHooks,
         .disableLaunchAtLogin, .deleteUserData, .clearPreferences, .trashBundle,
     ]
     #expect(environment.calls.allSatisfy { !removalSteps.contains($0) })
@@ -138,6 +143,7 @@ func makeFailure(_ step: UninstallStep) -> UninstallFailure {
         .removeCodexHooks,
         .removeOpenCodeHooks,
         .removeCopilotHooks, .removePiHooks,
+        .removeCursorHooks, .removeGeminiHooks, .removeQwenHooks, .removeKimiHooks,
         .disableLaunchAtLogin,
         .deleteUserData,
         .clearPreferences,
@@ -162,6 +168,7 @@ func makeFailure(_ step: UninstallStep) -> UninstallFailure {
         .removeCodexHooks,
         .removeOpenCodeHooks,
         .removeCopilotHooks, .removePiHooks,
+        .removeCursorHooks, .removeGeminiHooks, .removeQwenHooks, .removeKimiHooks,
         .disableLaunchAtLogin,
         .deleteUserData,
         .clearPreferences,
@@ -237,6 +244,7 @@ func makeFailure(_ step: UninstallStep) -> UninstallFailure {
         .removeCodexHooks,
         .removeOpenCodeHooks,
         .removeCopilotHooks, .removePiHooks,
+        .removeCursorHooks, .removeGeminiHooks, .removeQwenHooks, .removeKimiHooks,
         .disableLaunchAtLogin,
         .deleteUserData,
         .clearPreferences,

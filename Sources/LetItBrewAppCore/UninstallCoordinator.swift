@@ -11,6 +11,10 @@ public enum UninstallStep: String, CaseIterable, Equatable, Sendable {
     case removeOpenCodeHooks
     case removeCopilotHooks
     case removePiHooks
+    case removeCursorHooks
+    case removeGeminiHooks
+    case removeQwenHooks
+    case removeKimiHooks
     case retainBundleForHookRetry
     case disableLaunchAtLogin
     case deleteUserData
@@ -26,7 +30,9 @@ public enum UninstallStep: String, CaseIterable, Equatable, Sendable {
         case .releaseHolds, .reconcileDaemon, .unregisterDaemon:
             true
         case .removeClaudeHooks, .removeCodexHooks,
-             .removeOpenCodeHooks, .removeCopilotHooks, .removePiHooks, .retainBundleForHookRetry,
+             .removeOpenCodeHooks, .removeCopilotHooks, .removePiHooks,
+             .removeCursorHooks, .removeGeminiHooks, .removeQwenHooks, .removeKimiHooks,
+             .retainBundleForHookRetry,
              .disableLaunchAtLogin,
              .deleteUserData, .clearPreferences, .trashBundle:
             false
@@ -79,6 +85,10 @@ public protocol UninstallEnvironment: AnyObject, Sendable {
     func removeOpenCodeHooks() async -> Result<Void, UninstallFailure>
     func removeCopilotHooks() async -> Result<Void, UninstallFailure>
     func removePiHooks() async -> Result<Void, UninstallFailure>
+    func removeCursorHooks() async -> Result<Void, UninstallFailure>
+    func removeGeminiHooks() async -> Result<Void, UninstallFailure>
+    func removeQwenHooks() async -> Result<Void, UninstallFailure>
+    func removeKimiHooks() async -> Result<Void, UninstallFailure>
     func disableLaunchAtLogin() async -> Result<Void, UninstallFailure>
     func deleteUserData() async -> Result<Void, UninstallFailure>
     func clearPreferences() async -> Result<Void, UninstallFailure>
@@ -159,6 +169,10 @@ public final class UninstallCoordinator {
             environment.removeOpenCodeHooks,
             environment.removeCopilotHooks,
             environment.removePiHooks,
+            environment.removeCursorHooks,
+            environment.removeGeminiHooks,
+            environment.removeQwenHooks,
+            environment.removeKimiHooks,
         ]
 
         var leftovers: [UninstallFailure] = []

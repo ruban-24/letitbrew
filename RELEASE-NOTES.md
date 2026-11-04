@@ -12,10 +12,16 @@ against the SHA-256 published with the release.
 
 ---
 
-## 1.0.0 (build 41)
+## 1.0.0 (build 43)
 
 Added:
 
+- Cursor, Gemini CLI, Qwen Code, and Kimi Code. Turn each on in **Settings →
+  Agents**. Gemini, Qwen, and Kimi release the hold while they wait for your
+  approval. Cursor reports no such wait, so like Codex it keeps the Mac awake
+  until you answer. Cursor already runs Claude Code's hooks, so with Claude Code
+  on, Cursor work appears as Claude Code. Turn Cursor on and it appears as Cursor
+  alone.
 - Closed-lid work runs in Low Power Mode. While agents work with the lid shut
   and no external display, Let It Brew switches each power source to Low Power
   Mode, then restores your exact setting, including High Power, when the lid
@@ -62,6 +68,11 @@ Changed:
 
 Fixed:
 
+- Interrupting GitHub Copilot CLI now ends its turn. Copilot records the
+  interruption in its session log but sends no hook, so a cancelled turn could
+  keep the Mac awake for up to 12 hours.
+- A failed restore of the sleep setting or energy mode now retries every five
+  seconds, even after the app quits.
 - **Respect Low Power Mode** no longer releases a hold because of the Low Power
   Mode Let It Brew itself turned on.
 - Copilot no longer lets the Mac sleep while a tool it approved on its own is

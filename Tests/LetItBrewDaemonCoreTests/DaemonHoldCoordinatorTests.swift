@@ -416,6 +416,27 @@ private final class FakeSleepControl: DaemonSleepSettingControlling {
     #expect(sleep.events == events)
 }
 
+@Test func restoreRetryTimerRecoversOnItsOwnQueue() async throws {
+    let store = FakeDebtStore()
+    let sleep = FakeSleepControl(live: false)
+    let coordinator = DaemonHoldCoordinator(debtStore: store, sleepControl: sleep)
+    let id = UUID()
+    #expect(coordinator.setHold(true, for: id) == .applied)
+    sleep.writeSucceeds = false
+    _ = coordinator.connectionInvalidated(id)
+    #expect(store.state != .none)
+    sleep.writeSucceeds = true
+
+    let timer = coordinator.startRestoreRetryTimer(interval: .milliseconds(10))
+    defer { timer.cancel() }
+    for _ in 0..<500 {
+        if store.state == .none { break }
+        try await Task.sleep(for: .milliseconds(10))
+    }
+    #expect(sleep.live == false)
+    #expect(store.state == .none)
+}
+
 @Test func maintenanceAndUnownedReleaseNeverRestoreAnActiveHold() {
     let store = FakeDebtStore()
     let sleep = FakeSleepControl(live: false)

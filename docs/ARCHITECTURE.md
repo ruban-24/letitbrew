@@ -104,7 +104,10 @@ The common lifecycle mapping is:
   approval wait is latched as answered by local input. `PermissionRequest`
   for Claude and Codex returns no effect: both run it before another hook, auto
   mode, or Codex's auto-reviewer decides, so it does not prove a person is
-  being asked.
+  being asked. Cursor sends no signal for a prompt on screen, so like Codex its
+  approvals stay Working. Gemini's `ToolPermission` and Qwen's `permission_prompt`
+  set Waiting, and are latched by local input as with Claude. Kimi's
+  `PermissionRequest` sets Waiting and its `PermissionResult` reports the answer.
 - `SubagentStop` and `SessionEnd` remove the addressed active record. For Claude
   and Codex, a parent `SessionEnd` also removes its children. Codex can omit a
   child's `SubagentStop`, so a Codex parent `Stop` or `Interrupt` also removes children that
@@ -137,8 +140,8 @@ known, because a wait and its answer move `stateChangedAt` inside the turn.
 
 The hook CLI records the agent's process ID by walking its parents past shell
 wrappers (`sh`, `bash`, `zsh`, `env`, and similar). The ID lets the menu
-bring the agent's app forward, and it names the app whose input can answer a
-Claude or Copilot approval. A Working or Waiting session whose agent has
+bring the agent's app forward, and it names the app whose input can answer an
+approval that sends no hook. A Working or Waiting session whose agent has
 exited neither shows nor holds: a wait can no longer be answered, and an agent
 that quit without `SessionEnd` has no work left. The check asks the kernel
 about that one recorded ID (`SessionStore.excludingExitedAgents`, shared by
@@ -162,8 +165,8 @@ an untrusted reading must not bypass the battery floor.
 
 A Waiting session releases the hold, with no grace period. Every question,
 and every OpenCode and Pi wait, reports its answer with a hook, so those waits
-never consult input. Approving a Claude or Copilot prompt fires no hook before
-the approved tool runs, so for those approvals `WaitAnswerLatch` treats a key
+never consult input. Approving a Claude, Copilot, Gemini, or Qwen prompt fires no
+hook before the approved tool finishes, so for those approvals `WaitAnswerLatch` treats a key
 press or click after the wait began as a possible answer: the session holds
 again, and is shown as Working, until its next hook. Only input that went to
 the session's own app counts: `FrontmostInputAttribution` credits each input to
@@ -378,12 +381,14 @@ The adapters are deliberately narrow and user-scoped: Claude Code uses
 `$CODEX_HOME/hooks.json`; OpenCode writes its one global plugin at
 `~/.config/opencode/plugins/letitbrew.js` or
 `$OPENCODE_CONFIG_DIR/plugins/letitbrew.js`; GitHub Copilot CLI uses
-`~/.copilot/hooks/letitbrew.json` or `$COPILOT_HOME/hooks/letitbrew.json`; and
+`~/.copilot/hooks/letitbrew.json` or `$COPILOT_HOME/hooks/letitbrew.json`;
 Pi uses `~/.pi/agent/extensions/letitbrew.ts` or
-`$PI_CODING_AGENT_DIR/extensions/letitbrew.ts`.
-The three JSON markers are adapter-specific and frozen: Claude uses
-`__letitbrew_hook`, Codex `__letitbrew_codex_hook`, and Copilot
-`__letitbrew_copilot_hook`. OpenCode and Pi own
+`$PI_CODING_AGENT_DIR/extensions/letitbrew.ts`; Cursor uses
+`~/.cursor/hooks.json`; Gemini CLI uses `~/.gemini/settings.json`; Qwen Code uses
+`~/.qwen/settings.json`; and Kimi Code uses `~/.kimi-code/config.toml`.
+The markers are adapter-specific and frozen: Claude uses `__letitbrew_hook`, and
+the others `__letitbrew_<agent>_hook` (Codex, Copilot, Cursor, Gemini, Qwen, and
+Kimi). OpenCode and Pi own
 only their named plugin/extension files. The versioned registry at
 `~/Library/Application Support/LetItBrew/agent-hook-targets.json` records the
 exact selected target, so later environment changes cannot redirect an owned

@@ -18,9 +18,10 @@ using the affected feature until it is understood.
 
 This release adds three things: closed-lid Low Power Mode in the daemon, a
 Waiting state with an input check, and app-level session activation. It also
-redesigns the menu and Settings and carries the unpublished v0.8.4 fixes, so
-run the v0.8.4 release scope below with this build too.
-Record version 1.0.0, build 41, the full commit, and artifact hashes. Before
+redesigns the menu and Settings, connects Cursor, Gemini CLI, Qwen Code, and Kimi
+Code, and carries the unpublished v0.8.4 fixes, so run the v0.8.4 release scope
+below with this build too.
+Record version 1.0.0, build 43, the full commit, and artifact hashes. Before
 starting, record `pmset -g custom | grep -E 'Power:|powermode'` and
 `pmset -g | grep SleepDisabled`. Both must read back identically after every
 case below.
@@ -187,6 +188,50 @@ to confirm the hold, and the menu to confirm the row.
 6. Start a Codex session, let it work, and `kill -9` the Codex process. On
    the next poll the row disappears and the hold releases. Repeat with a
    Claude session: same result.
+
+### Cursor, Gemini CLI, Qwen Code, and Kimi Code
+
+Real CLI runs recorded in [AGENT-HOOK-CONTRACTS.md](AGENT-HOOK-CONTRACTS.md)
+cover each agent's prompt, tool, Esc, and quit. These cases cover what those runs
+could not.
+
+1. Install this build over the previous one with Claude Code connected. Without
+   any action, Claude stays connected, because its hook command changed and the
+   app repairs it. Run a Claude prompt: the row goes Working, then Idle. Wait a
+   minute, then confirm the background service kept the same process ID:
+   `pgrep -x LetItBrewDaemon`. The automated checks can finish before a crash.
+2. In **Settings → Agents**, turn each new agent on, then off. All nine rows fit,
+   each connects, and turning it off removes only Let It Brew's entries. Turning an
+   agent on creates its configuration file even if that CLI is not installed.
+3. In Gemini or Qwen in a real terminal, approve a long command such as `sleep 60`
+   with a real key press, without clicking the terminal first. The row reads
+   **Needs your approval**, then stays Working and holds until the command
+   finishes. Simulated keys do not count as input, so only this case proves it. A
+   click in the terminal, or an Enter under a second before the prompt appears,
+   also counts as an answer, so the row can read Working early. That is expected.
+4. With Claude and Cursor both connected, run one `cursor-agent` prompt. There is one
+   Cursor row and no Claude Code row. A duplicate row still holds the Mac, so it does
+   not block a release.
+5. With Claude connected and Cursor not, run one `cursor-agent` prompt. The session
+   appears as Claude Code and holds until the turn ends.
+6. In Cursor's editor agent, send one prompt and let it finish. The row goes Working,
+   then Idle.
+7. In Copilot, press Esc twice mid-turn; its footer reads `esc esc interrupt`. The
+   row goes Idle.
+
+8. Run one closed-lid test, because this release also changed the daemon's restore
+   retry. Record `pmset -g | grep SleepDisabled` and `pgrep -x LetItBrewDaemon`. On
+   battery with no external display, start a long agent task and close the lid for
+   at least a minute. Open it and confirm from the task's output that work continued.
+   When the task finishes, `SleepDisabled` reads its recorded value and the process
+   ID is unchanged. Start another task and quit Let It Brew during the hold:
+   `SleepDisabled` returns to its recorded value within a few seconds. A failed
+   restore cannot be forced on a real Mac, so only unit tests cover the retry itself.
+
+Esc during a Gemini tool leaves the turn Working until the next prompt's end, `/clear`,
+exit, Stop Tracking, or the 12-hour expiry, as with Claude. Esc at a Gemini approval
+prompt counts as a key press and holds the same way. Both are accepted limits, not
+failures.
 
 ## v0.8.4 release scope
 

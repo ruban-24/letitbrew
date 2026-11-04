@@ -59,7 +59,8 @@ public enum HookReducer {
         trigger: String? = nil,
         backgroundWork: HookPayload.BackgroundWork = .none,
         hasSessionCrons: Bool = false,
-        errorRecoverable: Bool? = nil
+        errorRecoverable: Bool? = nil,
+        isInterrupt: Bool = false
     ) -> HookEffect? {
         switch event {
         case "SessionStart":
@@ -88,15 +89,20 @@ public enum HookReducer {
             // left Working. Auto compaction can run inside a turn.
             return agent == .claude && trigger == "manual" ? .set(.idle, detail: nil) : nil
         case "Interrupt":
-            // Codex's only hook for an Esc-cancelled turn; no Stop follows it.
-            return agent == .codex ? .set(.idle, detail: nil) : nil
+            // Codex's and Kimi's only hook for an Esc-cancelled turn; no Stop
+            // follows it.
+            return agent == .codex || agent == .kimi ? .set(.idle, detail: nil) : nil
         case "SubagentStart":
             return .set(.working, detail: nil)
         case "UserPromptSubmit", "PostToolUse":
             return .set(.working, detail: nil)
         case "PostToolUseFailure":
             // A failed or cancelled Copilot tool, including its question
-            // tool, returns to the turn it interrupted.
+            // tool, returns to the turn it interrupted. Qwen fires no Stop
+            // after Esc, so a tool the person cancelled ends the turn here.
+            if agent == .qwen {
+                return isInterrupt ? .set(.idle, detail: nil) : .set(.working, detail: nil)
+            }
             return agent == .copilot ? .set(.working, detail: nil) : nil
         case "PreToolUse":
             // The question tool blocks on the person until its PostToolUse.
@@ -109,11 +115,11 @@ public enum HookReducer {
             // auto mode, an allow rule, or Codex's auto-reviewer decides, so it
             // does not prove a person is being asked. Their approvals keep the
             // prior state; Copilot's question tool still blocks on the person.
-            // OpenCode reports it only when it asks.
+            // OpenCode and Kimi report it only when they ask.
             if agent == .copilot, isUserQuestionTool(agent: agent, toolName: toolName) {
                 return .set(.waiting, detail: SessionWaitDetail.question)
             }
-            return agent == .opencode
+            return agent == .opencode || agent == .kimi
                 ? .set(.waiting, detail: SessionWaitDetail.approval)
                 : nil
         case "Notification":
@@ -126,6 +132,12 @@ public enum HookReducer {
             if agent == .claude, notificationType == "permission_prompt" {
                 return .set(.waiting, detail: SessionWaitDetail.approval)
             }
+            // Both send theirs once a prompt is on screen, after PreToolUse.
+            // Answering sends no hook until the tool finishes.
+            if (agent == .qwen && notificationType == "permission_prompt")
+                || (agent == .gemini && notificationType == "ToolPermission") {
+                return .set(.waiting, detail: SessionWaitDetail.approval)
+            }
             if agent == .copilot,
                ["permission_prompt", "elicitation_dialog"].contains(notificationType) {
                 return .set(.waiting, detail: SessionWaitDetail.approval)
@@ -136,7 +148,8 @@ public enum HookReducer {
                 ? .set(.waiting, detail: SessionWaitDetail.question)
                 : nil
         case "UserInputResolved":
-            return agent == .opencode || agent == .pi ? .set(.working, detail: nil) : nil
+            return agent == .opencode || agent == .pi || agent == .kimi
+                ? .set(.working, detail: nil) : nil
         case "Stop":
             // The turn ended. Background work it left running, or scheduled
             // crons that will start more turns, keep it Working in the
@@ -182,7 +195,10 @@ public enum HookReducer {
         case (.copilot, "ask_user"), (.copilot, "ask_user_question"),
              (.copilot, "AskUserQuestion"),
              (.claude, "AskUserQuestion"),
-             (.codex, "request_user_input"):
+             (.codex, "request_user_input"),
+             (.gemini, "ask_user"),
+             (.qwen, "ask_user_question"), (.qwen, "AskUserQuestion"),
+             (.kimi, "AskUserQuestion"):
             true
         default:
             false

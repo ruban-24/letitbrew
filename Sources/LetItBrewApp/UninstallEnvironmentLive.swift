@@ -115,6 +115,22 @@ extension LetItBrewAppModel: UninstallEnvironment {
         await removeHooks(agentID: "copilot", agentName: "GitHub Copilot CLI", step: .removeCopilotHooks)
     }
 
+    func removeCursorHooks() async -> Result<Void, UninstallFailure> {
+        await removeHooks(agentID: "cursor", agentName: "Cursor", step: .removeCursorHooks)
+    }
+
+    func removeGeminiHooks() async -> Result<Void, UninstallFailure> {
+        await removeHooks(agentID: "gemini", agentName: "Gemini CLI", step: .removeGeminiHooks)
+    }
+
+    func removeQwenHooks() async -> Result<Void, UninstallFailure> {
+        await removeHooks(agentID: "qwen", agentName: "Qwen Code", step: .removeQwenHooks)
+    }
+
+    func removeKimiHooks() async -> Result<Void, UninstallFailure> {
+        await removeHooks(agentID: "kimi", agentName: "Kimi Code", step: .removeKimiHooks)
+    }
+
     private func removeHooks(
         agentID: String,
         agentName: String,

@@ -58,7 +58,7 @@ work is happening.
 | **Releases when agent work stops** | ✅ Yes — automatically | ❌ No — manual switch or timer | ❌ No — ends with its session or trigger |
 | **Closed lid — with charger** | ✅ Yes | ❌ No | ✅ Yes |
 | **Closed lid — without charger** | ✅ Yes | ❌ No | ❌ No |
-| **Agent-specific integration** | ✅ Claude Code, Codex, OpenCode, GitHub Copilot CLI, and Pi | ❌ None | ❌ None |
+| **Agent-specific integration** | ✅ Claude Code, Codex, OpenCode, GitHub Copilot CLI, Pi, Cursor, Gemini CLI, Qwen Code, and Kimi Code | ❌ None | ❌ None |
 
 See the [full comparison and guidance](https://letitbrew.app/compare/let-it-brew-vs-caffeine-vs-amphetamine).
 If you want a general-purpose keep-awake utility, Caffeine and Amphetamine are
@@ -73,6 +73,10 @@ good at that. Let It Brew follows coding-agent sessions.
 | OpenCode | Stable 1.x local CLI/app runtime | Global OpenCode plugin |
 | GitHub Copilot CLI | Local CLI | Copilot user hooks |
 | Pi 0.87.1+ | Local CLI | Global Pi extension |
+| Cursor | Editor agent and CLI | Cursor user hooks |
+| Gemini CLI | Local CLI | Gemini user settings hooks |
+| Qwen Code | Local CLI | Qwen user settings hooks |
+| Kimi Code | Local CLI | Hooks in Kimi's config file |
 
 Pi support is new in v0.8.0. After connecting Pi in Settings → Agents,
 restart Pi or use `/reload` to load the extension. Download
@@ -116,8 +120,8 @@ that were already open when hooks changed may need to be restarted.
 Let It Brew releases its holds when no observed local session is Working, an
 agent asks a question or waits for your approval, you pause the app, the
 configured battery floor is reached, or macOS reports serious or critical
-thermal pressure. Approving a Claude or Copilot command sends no signal of its
-own, so if you press a key or click in that session's app after the prompt
+thermal pressure. Approving a Claude, Copilot, Gemini, or Qwen command sends no
+signal of its own, so if you press a key or click in that session's app after the prompt
 appears, Let It Brew assumes you may have approved and keeps the Mac awake until
 the agent reports again. Typing in other apps does not count.
 
@@ -186,5 +190,5 @@ or modified build as the official Let It Brew project. See
 
 Let It Brew is an independent project. It is not affiliated with or endorsed by
 the owners of the supported agents or Apple. Claude, Claude Code, Codex,
-OpenCode, GitHub Copilot CLI, and macOS are trademarks of their respective
-owners.
+OpenCode, GitHub Copilot CLI, Cursor, Gemini CLI, Qwen Code, Kimi Code, and macOS
+are trademarks of their respective owners.
