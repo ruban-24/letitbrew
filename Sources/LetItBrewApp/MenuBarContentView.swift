@@ -771,6 +771,26 @@ struct AgentLogo: View {
                     .resizable()
                     .interpolation(.high)
                     .scaledToFit()
+            case "cursor":
+                Image("CursorAgent")
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+            case "gemini":
+                Image("GeminiAgent")
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+            case "qwen":
+                Image("QwenAgent")
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+            case "kimi":
+                Image("KimiAgent")
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
             default:
                 Image(systemName: "terminal")
                     .resizable()

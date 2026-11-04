@@ -7,6 +7,9 @@ struct LetItBrewSettingsView: View {
     @State private var selectedPane: SettingsPane
     @State private var presentedRecovery: RecoveryGuidance?
     @State private var uninstallHovered = false
+    /// The footer's text as of the last finished connection change.
+    @State private var settledHookMessage: String?
+    @State private var connectionCheckIsSlow = false
 
     init(initialPane: SettingsPane = .general) {
         _selectedPane = State(initialValue: initialPane)
@@ -143,8 +146,7 @@ struct LetItBrewSettingsView: View {
                     WatchedAgentRow(
                         health: health,
                         isWatched: model.isAgentWatched(health.id),
-                        isWorking: model.hookActionInProgress
-                            || model.uninstallInProgress
+                        isWorking: model.uninstallInProgress
                             || model.updateBlocksOtherActions,
                         setWatched: { model.setAgent(health.id, watched: $0) }
                     )
@@ -153,10 +155,11 @@ struct LetItBrewSettingsView: View {
                 Text("Watched Agents")
             } footer: {
                 VStack(alignment: .leading, spacing: 8) {
-                    if let message = displayedHookMessage {
+                    if let message = settledHookMessage {
                         Text(message)
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
+                            .contentTransition(.opacity)
                     }
 
                     HStack {
@@ -168,7 +171,7 @@ struct LetItBrewSettingsView: View {
                         }
                         .controlSize(.small)
                         .disabled(
-                            model.hookActionInProgress
+                            connectionCheckIsSlow
                                 || model.uninstallInProgress
                                 || model.updateBlocksOtherActions
                                 || !model.agentHooks.contains {
@@ -180,11 +183,27 @@ struct LetItBrewSettingsView: View {
                     }
                 }
                 .font(.callout)
+                .animation(.easeInOut(duration: 0.15), value: settledHookMessage)
             }
         }
         .formStyle(.grouped)
         .onAppear {
+            settledHookMessage = displayedHookMessage
             model.refreshCodexTrustIfNeeded()
+        }
+        // The footer changes only between finished operations, so a change in
+        // progress never shows its interim text.
+        .onChange(of: displayedHookMessage) { _, message in
+            if !model.hookActionInProgress { settledHookMessage = message }
+        }
+        .onChange(of: model.hookActionInProgress) { _, inProgress in
+            if !inProgress { settledHookMessage = displayedHookMessage }
+        }
+        .task(id: model.hookActionInProgress) {
+            connectionCheckIsSlow = false
+            guard model.hookActionInProgress else { return }
+            try? await Task.sleep(for: slowConnectionCheckDelay)
+            if !Task.isCancelled { connectionCheckIsSlow = true }
         }
     }
 
@@ -760,11 +779,19 @@ private extension View {
     }
 }
 
+/// Connection changes usually finish in a moment. Progress appears only for one
+/// slow enough to notice, so a quick change never flashes interim state.
+private let slowConnectionCheckDelay: Duration = .milliseconds(500)
+
 private struct WatchedAgentRow: View {
     let health: AgentHookHealth
     let isWatched: Bool
     let isWorking: Bool
     let setWatched: (Bool) -> Void
+
+    /// What the row showed before the current check began.
+    @State private var settledStatus: Status?
+    @State private var checkIsSlow = false
 
     var body: some View {
         Toggle(isOn: Binding(
@@ -786,15 +813,27 @@ private struct WatchedAgentRow: View {
         .toggleStyle(.switch)
         .disabled(isWorking)
         .accessibilityLabel("Watch \(health.name)")
-        .accessibilityValue(statusText)
+        .accessibilityValue(displayedStatus.text)
         .accessibilityHint(isWatched
             ? "Stop watching \(health.name) sessions"
             : "Watch \(health.name) sessions")
+        .onAppear {
+            if !isChecking { settledStatus = liveStatus }
+        }
+        .onChange(of: liveStatus) { _, status in
+            if !isChecking { settledStatus = status }
+        }
+        .task(id: isChecking) {
+            checkIsSlow = false
+            guard isChecking else { return }
+            try? await Task.sleep(for: slowConnectionCheckDelay)
+            if !Task.isCancelled { checkIsSlow = true }
+        }
     }
 
     private var status: some View {
         HStack(alignment: .firstTextBaseline, spacing: 5) {
-            switch tone {
+            switch displayedStatus.tone {
             case .progress:
                 ProgressView()
                     .controlSize(.mini)
@@ -811,16 +850,37 @@ private struct WatchedAgentRow: View {
             case .off:
                 EmptyView()
             }
-            Text(statusText)
+            Text(displayedStatus.text)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
                 .textSelection(.enabled)
+                .contentTransition(.opacity)
         }
         .font(.callout)
-        .help(statusText)
+        .help(displayedStatus.text)
+        .animation(.easeInOut(duration: 0.15), value: displayedStatus)
     }
 
     private enum Tone { case progress, attention, connected, off }
+
+    private struct Status: Equatable {
+        let tone: Tone
+        let text: String
+    }
+
+    private var isChecking: Bool {
+        liveStatus.tone == .progress
+    }
+
+    /// A quick check keeps the row's previous status until its result arrives.
+    private var displayedStatus: Status {
+        guard isChecking, !checkIsSlow, let settledStatus else { return liveStatus }
+        return settledStatus
+    }
+
+    private var liveStatus: Status {
+        Status(tone: tone, text: statusText)
+    }
 
     private var tone: Tone {
         if showsRecovery { return .attention }
