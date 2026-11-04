@@ -68,6 +68,11 @@ Changed:
 
 Fixed:
 
+- Interrupting GitHub Copilot CLI now ends its turn. Copilot records the
+  interruption in its session log but sends no hook, so a cancelled turn could
+  keep the Mac awake for up to 12 hours.
+- A failed restore of the sleep setting or energy mode now retries every five
+  seconds, even after the app quits.
 - **Respect Low Power Mode** no longer releases a hold because of the Low Power
   Mode Let It Brew itself turned on.
 - Copilot no longer lets the Mac sleep while a tool it approved on its own is
