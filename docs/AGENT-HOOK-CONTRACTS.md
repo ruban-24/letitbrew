@@ -7,7 +7,9 @@ processes, inspect CPU use, search for installed executables, parse conversation
 or read Claude/Codex/OpenCode/Copilot/Pi prompt and response content. Each hook
 command reads only its own parent chain to record the agent's process ID, which
 the menu uses to bring the agent's app forward; it affects the hold only by
-naming the app whose input can answer a Claude or Copilot approval.
+naming the app whose input can answer a Claude or Copilot approval. The one
+exception to hooks only is Copilot's Esc, which its session log alone records;
+see [GitHub Copilot CLI](#github-copilot-cli).
 
 Every adapter reduces to Working, Waiting, and Idle. A Waiting session releases
 the hold. Waits whose answer sends a hook resume through that hook; Claude and
@@ -199,6 +201,12 @@ rule.
   a local key press or click in the session's own app after the wait holds it
   as Working until the next
   hook.
+- Observed on Copilot 1.0.103: Esc fires no hook and writes an `abort` event to
+  `session-state/<session>/events.jsonl` under Copilot's home. While a turn is
+  active, `CopilotCancellation` reads the log's last 256 KB and decodes only
+  `type` and `timestamp`. An `abort` newer than the session's latest hook, with
+  nothing but usage records after it, reads as Idle. Any other later event
+  voids it, and the stored session record is left unchanged.
 - `ErrorOccurred` is observational and its output is not processed. A payload
   with `recoverable: false` maps to Idle; `true`, missing, or malformed
   recoverability preserves the prior state so a continuing turn stays Working.

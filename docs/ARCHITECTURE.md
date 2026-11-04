@@ -128,7 +128,7 @@ keep their existing per-record update semantics. Session scans also honor the
 parent terminal if child-file cleanup was interrupted. The optional numeric
 `reopened_at` field preserves sub-second ordering after a proven terminal/reopen;
 initial or legacy parent records have no such cutoff. Readers retain children
-when a parent's state is missing or unreadable. The product remains hook-only;
+when a parent's state is missing or unreadable. Claude tracking remains hook-only;
 no process polling, transcript inspection, or silence-based early release is
 used to guess whether an interrupted Claude turn finished. A Waiting parent is
 still inside its turn, so a Codex `Stop` or `Interrupt` from Waiting sweeps

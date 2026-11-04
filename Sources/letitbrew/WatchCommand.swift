@@ -5,7 +5,10 @@ import LetItBrewCore
 private func recentSessions(storage: SessionStorage, settings: Settings,
                             now: Date) -> [SessionRecord] {
     SessionStore.excludingExitedAgents(
-        SessionStore.recent(records: storage.loadAll(), now: now, ttl: settings.staleTTL)
+        SessionStore.recent(
+            records: CopilotCancellation.reconcile(storage.loadAll()),
+            now: now, ttl: settings.staleTTL
+        )
     )
 }
 
