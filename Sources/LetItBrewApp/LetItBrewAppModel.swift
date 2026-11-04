@@ -1242,7 +1242,8 @@ final class LetItBrewAppModel: ObservableObject {
             queuedAgentChoices.removeAll { $0.id == first.id }
             guard connectedAgentIDs.contains(first.id) != watched else { continue }
             setAgent(first.id, watched: watched)
-            return
+            // A rejected change starts nothing, so nothing else would apply the rest.
+            if hookActionInProgress { return }
         }
     }
 
