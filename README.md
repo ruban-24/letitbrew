@@ -19,6 +19,7 @@ agents work. It lets your Mac sleep as soon as the work stops.
 
 <br>
 
+Version 1.0.0 (build 45) &middot;
 [Release notes and SHA-256](https://github.com/ruban-24/letitbrew/releases/latest) &middot;
 [letitbrew.app](https://letitbrew.app)
 
@@ -29,23 +30,24 @@ agents work. It lets your Mac sleep as soon as the work stops.
 ## What it does
 
 You give an agent a task and walk away. The agent works without touching your
-keyboard or trackpad, so macOS may decide you are idle and put the Mac to sleep.
-Let It Brew follows the agent's real lifecycle and holds the Mac awake only while
-work is happening.
+keyboard or trackpad, so macOS can treat you as idle and put the Mac to sleep.
+Let It Brew follows signals from the agent about its work.
+An awake hold prevents the Mac from sleeping while that work continues.
 
 - **Follows real work.** The hold starts and stops with supported
   local agent activity.
-- **Releases when work stops.** Questions, approvals waiting for you,
-  completion, pause, battery limits, and thermal pressure let the Mac sleep.
+- **Releases when work stops.** Supported questions and approval waits,
+  completion, pause, battery limits, and heat limits let the Mac sleep.
+  Codex and Cursor approval waits keep the Mac awake.
 - **Works with the lid closed.** Active work can continue after you shut the
   MacBook.
-- **Saves power with the lid shut.** Closed-lid work runs in Low Power Mode,
-  and your exact energy setting comes back when the lid opens or work stops.
+- **Saves power with the lid shut.** Closed-lid work runs in Low Power Mode.
+  Your exact energy mode returns when the lid opens or work stops.
 - **Shows when an agent needs you.** Sessions waiting for an answer or approval
   are marked in the menu. Click any session to bring its terminal, editor, or
   agent app forward.
 - **Follows your power rules.** Choose connected-power-only operation, set a
-  battery floor, use Low Power Mode, and decide whether displays may sleep.
+  battery floor, use Low Power Mode, and decide whether displays can sleep.
 - **Stays out of the way.** It has no Dock icon, main window, or notifications.
 - **Keeps session data local.** There is no account, cloud service, or telemetry.
 
@@ -53,8 +55,8 @@ work is happening.
 
 | Feature | **Let It Brew** | Caffeine | Amphetamine |
 |---|---|---|---|
-| **Best for** | Claude Code, Codex, OpenCode, and GitHub Copilot CLI work that should keep your Mac awake automatically | A simple manual keep-awake switch | Timers, schedules, and triggers |
-| **Understands active agent work** | ✅ Yes — Claude Code, Codex, OpenCode, and GitHub Copilot CLI | ❌ No | ❌ No |
+| **Best for** | Work from any of the nine supported local agents | A simple manual keep-awake switch | Timers, schedules, and triggers |
+| **Understands active agent work** | ✅ Yes, for all nine supported agents | ❌ No | ❌ No |
 | **Releases when agent work stops** | ✅ Yes — automatically | ❌ No — manual switch or timer | ❌ No — ends with its session or trigger |
 | **Closed lid — with charger** | ✅ Yes | ❌ No | ✅ Yes |
 | **Closed lid — without charger** | ✅ Yes | ❌ No | ❌ No |
@@ -76,15 +78,21 @@ good at that. Let It Brew follows coding-agent sessions.
 | Cursor | Editor agent and CLI | Cursor user hooks |
 | Gemini CLI | Local CLI | Gemini user settings hooks |
 | Qwen Code | Local CLI | Qwen user settings hooks |
-| Kimi Code | Local CLI | Hooks in Kimi's config file |
+| Kimi Code | Local CLI | Hooks in Kimi's configuration file |
 
-Pi support is new in v0.8.0. After connecting Pi in Settings → Agents,
-restart Pi or use `/reload` to load the extension. Download
-[v0.8.0 or later](https://github.com/ruban-24/letitbrew/releases/latest)
-for Pi support; see [release notes](RELEASE-NOTES.md) for details.
+Version 1.0.0 adds Cursor, Gemini CLI, Qwen Code, and Kimi Code.
+To connect an agent, turn on its switch in Settings → Agents.
+If you connect Pi, restart Pi or use `/reload` to load the extension.
 
-Let It Brew observes local sessions only. Remote, cloud, SSH, and unsupported
-hook scopes are not observed.
+Hooks are signals that an agent sends about its work.
+Let It Brew uses these signals to follow local sessions.
+Codex and Cursor do not distinguish manual approval waits from automatic approvals,
+so their approval waits keep the Mac awake.
+See the [release notes](RELEASE-NOTES.md) for other limits.
+
+Let It Brew follows local sessions only.
+Remote, cloud, and SSH sessions are not tracked.
+Signals outside the supported hook types are ignored.
 
 Connections are optional. Let It Brew changes no agent configuration until you
 turn on an agent's watched switch. Turning it off removes only the entry or
@@ -94,10 +102,14 @@ boundaries.
 
 ## Install
 
+A DMG is a disk image that contains the app.
+Its SHA-256 is a fingerprint of the downloaded file.
+
 1. [Download the latest signed and notarized DMG](https://github.com/ruban-24/letitbrew/releases/latest/download/LetItBrew.dmg).
-2. Check it against the SHA-256 on the [latest release](https://github.com/ruban-24/letitbrew/releases/latest), then drag **Let It Brew.app** into `/Applications`.
-3. Launch the app, open **Settings → Agents**, and turn on the watched switch
-   for each local agent you want Let It Brew to follow.
+2. Make sure that its SHA-256 matches the value on the [latest release](https://github.com/ruban-24/letitbrew/releases/latest).
+3. Drag Let It Brew.app into `/Applications`.
+4. Launch the app.
+5. In Settings → Agents, turn on each agent that you want Let It Brew to follow.
 
 Requires macOS 14 or later. The universal app supports Apple silicon and Intel.
 The signed DMG is the only install channel; Let It Brew is not distributed
@@ -110,28 +122,29 @@ Let It Brew must run directly from `/Applications/Let It Brew.app`. A copy in a
 subfolder, on the mounted DMG, or in Downloads cannot manage the privileged
 closed-lid service.
 
-Codex requires one manual trust step. Run `/hooks` in Codex, trust the Let It
-Brew entries, then return to **Settings → Agents**. The connection refreshes
-automatically; **Refresh Connections** remains available as a fallback. Sessions
-that were already open when hooks changed may need to be restarted.
+Codex requires one manual trust step.
+Run `/hooks` in Codex.
+Trust the Let It Brew entries.
+Return to Settings → Agents. The connection refreshes automatically.
+If it does not refresh, choose Refresh Connections.
+If a session was open when its hooks changed, restart it.
 
 ## Safety and privacy
 
-Let It Brew releases its holds when no observed local session is Working, an
-agent asks a question or waits for your approval, you pause the app, the
-configured battery floor is reached, or macOS reports serious or critical
-thermal pressure. Approving a Claude, Copilot, Gemini, or Qwen command sends no
-signal of its own, so if you press a key or click in that session's app after the prompt
-appears, Let It Brew assumes you may have approved and keeps the Mac awake until
-the agent reports again. Typing in other apps does not count.
+Let It Brew releases its holds when no tracked session is Working.
+Supported questions, approval waits, pause, battery limits, and serious or
+critical heat also release the hold.
+Codex and Cursor approval waits keep the Mac awake.
+Approving a Claude, Copilot, Gemini, or Qwen command sends no
+signal of its own. After the prompt appears, Let It Brew treats input in that session's app as a possible approval.
+It then keeps the Mac awake until the agent reports again.
+Typing in other apps does not count, except for sessions under tmux or screen.
 
-Closed-lid support uses a privileged background service because it must change
-and safely restore a system-wide sleep setting, and the energy mode it switches
-to Low Power Mode. It records each original value before changing anything and
-restores it exactly, including after a crash or restart. Declining the background item
-leaves ordinary open-lid behavior working. The
-[architecture document](docs/ARCHITECTURE.md) explains the service, its safety
-gates, and how the app proves it is talking to the right process.
+Closed-lid support uses a background service with system permissions.
+It changes the sleep setting and energy mode, then restores each original value.
+Recovery also runs after a crash or restart.
+If you decline approval for this service, open-lid operation still works.
+See the [architecture document](docs/ARCHITECTURE.md) for the service and its safety rules.
 
 Session content never leaves the Mac. Let It Brew does not record prompts,
 responses, reasoning, tool inputs, tool outputs, or final assistant text. See
@@ -144,6 +157,9 @@ Let It Brew checks GitHub for a newer release about 30 seconds after launch, no
 more than once per day. It never downloads an update without confirmation. You
 can also open **Settings → General → Check for Updates…** at any time. Settings,
 agent connections, and session records stay in place.
+
+If you use v0.7.0 or earlier, quit the app and replace it with the new DMG.
+Do not uninstall first. See [Support](SUPPORT.md) for the steps.
 
 To remove the app, open **Settings → About → Uninstall Let It Brew…**. Let It
 Brew releases its holds, disconnects its agent integrations, unregisters its
@@ -183,9 +199,9 @@ starting feature or release-process work so the scope can be agreed first. See
 ## License
 
 Let It Brew v0.6.0 and later is licensed under the
-[Apache License 2.0](LICENSE) (`Apache-2.0`). Apache 2.0 permits commercial use
-and redistribution of the code, but it does not grant rights to present a fork
-or modified build as the official Let It Brew project. See
+[Apache License 2.0](LICENSE) (`Apache-2.0`). Apache 2.0 permits commercial use and redistribution of the code.
+It does not grant rights to present a fork or modified build as the official
+Let It Brew project. See
 [TRADEMARKS.md](TRADEMARKS.md).
 
 Let It Brew is an independent project. It is not affiliated with or endorsed by

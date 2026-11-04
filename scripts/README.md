@@ -157,7 +157,7 @@ updater continues to select and verify the two versioned assets.
 
 ## In-app updater transaction
 
-**Settings → About → Check for Updates…** drives the existing guarded upgrade;
+**Settings → General → Check for Updates…** drives the existing guarded upgrade;
 it does not replace the app bundle directly. The app accepts only the latest
 published GitHub release metadata, exact versioned DMG/checksum asset names,
 bounded HTTPS downloads, matching SHA-256 evidence, a valid signed image,

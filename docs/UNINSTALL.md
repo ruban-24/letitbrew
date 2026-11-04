@@ -12,10 +12,10 @@ it is still present**. Deleting the app first strands a registered service with
 no owner, and your Mac may keep a modified sleep setting.
 
 1. In **Settings → Agents**, turn off each watched-agent switch. Do this for
-   Claude Code, Codex, OpenCode, and GitHub Copilot CLI when watched. Turning a
-   switch off removes only Let It Brew-owned JSON entries, or only the owned
-   `letitbrew.js` OpenCode plugin; it does not remove any foreign hook entry,
-   plugin, project, team, or enterprise configuration.
+   Claude Code, Codex, OpenCode, GitHub Copilot CLI, Pi, Cursor, Gemini CLI,
+   Qwen Code, and Kimi Code when watched.
+   Turning a switch off removes only the entries, plugin, or extension that
+   Let It Brew owns. It preserves all other agent configuration.
 2. Turn off Launch at Login.
 3. Turn off closed-lid operation.
 4. Turn the popup master switch off.

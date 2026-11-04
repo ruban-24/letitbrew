@@ -4,7 +4,7 @@
 
 Security and power-safety fixes are provided for the newest published release.
 Older releases are not patched — update through
-**Settings → About → Check for Updates…** or install the latest
+**Settings → General → Check for Updates…** or install the latest
 [signed DMG](https://github.com/ruban-24/letitbrew/releases/latest).
 
 ## Reporting a vulnerability
