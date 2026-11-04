@@ -117,6 +117,23 @@ private struct Harness {
     }
 }
 
+@Test func maintenanceRestoresEnergyDebtWithoutReleasingAnActiveEnergyHold() {
+    let harness = Harness()
+    let client = UUID()
+    #expect(harness.coordinator.setHold(true, for: client) == .applied)
+    #expect(harness.coordinator.setLowPowerMode(true, for: client) == .applied(personalSources: []))
+    let writes = harness.power.writes
+    harness.coordinator.retryPendingRestoration()
+    #expect(harness.power.writes == writes)
+    harness.power.failingWrites = [.battery, .charger]
+    _ = harness.coordinator.connectionInvalidated(client)
+    #expect(harness.debt.state != .none)
+    harness.power.failingWrites = []
+    harness.coordinator.retryPendingRestoration()
+    #expect(harness.power.live == laptop)
+    #expect(harness.debt.state == .none)
+}
+
 @Test func lowPowerModeRequiresTheClientsOwnLidClosedHold() {
     let harness = Harness()
     let client = UUID()

@@ -12,7 +12,8 @@ should stay awake:
 - Working, Waiting, or Idle state;
 - project path;
 - the agent's process ID when known, found from the hook's parent processes;
-- semantic activity token and lifecycle event; and
+- semantic activity token and lifecycle event;
+- for GitHub Copilot CLI, the path of its configuration folder; and
 - timestamps.
 
 The process ID is used to bring the session's terminal, editor, or agent app
@@ -37,6 +38,12 @@ clicked, from the macOS HID system's per-event idle counters. It notes which
 app was in front at the time, from macOS's own record of the frontmost app, so
 only input in the waiting session's own app counts. It reads no keys or
 positions, needs no permission, and stores nothing.
+
+GitHub Copilot CLI records Esc in its session log but sends no hook for it. While
+a Copilot turn is active, the app therefore reads the last 256 KB of that
+session's `session-state/<session>/events.jsonl` and decodes only each event's
+`type` and `timestamp`, never prompts, responses, or tool details. Nothing from
+the log is stored.
 
 Nothing from session records is uploaded.
 

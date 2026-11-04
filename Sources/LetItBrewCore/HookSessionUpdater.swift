@@ -316,7 +316,10 @@ public enum HookSessionUpdater {
                     promptObservedAt: event == "UserPromptSubmit"
                         ? observedAt.timeIntervalSince1970 : previous?.promptObservedAt,
                     staleChildCutoff: staleChildCutoff ?? previous?.staleChildCutoff,
-                    familyEdgeAt: previous?.familyEdgeAt
+                    familyEdgeAt: previous?.familyEdgeAt,
+                    copilotHome: agent == .copilot
+                        ? CopilotHooks.hooksURL().deletingLastPathComponent()
+                            .deletingLastPathComponent().path : nil
                 ))
             }
         }

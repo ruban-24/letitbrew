@@ -140,6 +140,9 @@ public struct SessionRecord: Codable, Equatable, Sendable {
     /// parent's subagents. That child's record is deleted, so the parent keeps
     /// its edge for the family's `MonitoringLease`. Nil when none was heard.
     public var familyEdgeAt: TimeInterval?
+    /// Copilot's configuration home as seen by the hook process. The GUI may
+    /// not inherit the terminal's COPILOT_HOME environment override.
+    public var copilotHome: String?
     /// When this agent session began. Optional so records written by older
     /// Let It Brew versions continue to decode. Consumers should use
     /// `effectiveStartedAt` when presenting elapsed session time.
@@ -167,6 +170,7 @@ public struct SessionRecord: Codable, Equatable, Sendable {
         case promptObservedAt = "prompt_observed_at"
         case staleChildCutoff = "stale_child_cutoff"
         case familyEdgeAt = "family_edge_at"
+        case copilotHome = "copilot_home"
         case startedAt = "started_at"
         case accumulatedWorkingTime = "accumulated_working_time"
         case lastEvent = "last_event"
@@ -181,7 +185,7 @@ public struct SessionRecord: Codable, Equatable, Sendable {
                 stateChangedAt: Date? = nil, stateTransitionID: String? = nil,
                 eventObservedAt: TimeInterval? = nil, reopenedAt: TimeInterval? = nil,
                 promptObservedAt: TimeInterval? = nil, staleChildCutoff: TimeInterval? = nil,
-                familyEdgeAt: TimeInterval? = nil) {
+                familyEdgeAt: TimeInterval? = nil, copilotHome: String? = nil) {
         self.id = id
         self.tool = tool
         self.state = state
@@ -194,6 +198,7 @@ public struct SessionRecord: Codable, Equatable, Sendable {
         self.promptObservedAt = promptObservedAt
         self.staleChildCutoff = staleChildCutoff
         self.familyEdgeAt = familyEdgeAt
+        self.copilotHome = copilotHome
         self.startedAt = startedAt
         self.accumulatedWorkingTime = accumulatedWorkingTime
         self.lastEvent = lastEvent
@@ -223,6 +228,7 @@ public struct SessionRecord: Codable, Equatable, Sendable {
             TimeInterval.self, forKey: .staleChildCutoff
         )
         familyEdgeAt = try container.decodeIfPresent(TimeInterval.self, forKey: .familyEdgeAt)
+        copilotHome = try container.decodeIfPresent(String.self, forKey: .copilotHome)
         startedAt = try container.decodeIfPresent(Date.self, forKey: .startedAt)
         accumulatedWorkingTime = try container.decodeIfPresent(
             TimeInterval.self, forKey: .accumulatedWorkingTime
@@ -246,6 +252,7 @@ public struct SessionRecord: Codable, Equatable, Sendable {
         try container.encodeIfPresent(promptObservedAt, forKey: .promptObservedAt)
         try container.encodeIfPresent(staleChildCutoff, forKey: .staleChildCutoff)
         try container.encodeIfPresent(familyEdgeAt, forKey: .familyEdgeAt)
+        try container.encodeIfPresent(copilotHome, forKey: .copilotHome)
         try container.encodeIfPresent(startedAt, forKey: .startedAt)
         try container.encodeIfPresent(accumulatedWorkingTime, forKey: .accumulatedWorkingTime)
         try container.encodeIfPresent(lastEvent, forKey: .lastEvent)

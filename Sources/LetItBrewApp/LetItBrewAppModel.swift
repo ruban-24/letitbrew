@@ -2026,7 +2026,7 @@ final class LetItBrewAppModel: ObservableObject {
         let activeDisplayMonitor = activeDisplayMonitor
         let read = await Task.detached(priority: .utility) {
             let sessions = MenuSessionSnapshot.read(
-                loadRecords: { storage.loadAll() },
+                loadRecords: { CopilotCancellation.reconcile(storage.loadAll()) },
                 ttl: 12 * 3_600
             )
             let snapshot = LetItBrewSnapshot(
