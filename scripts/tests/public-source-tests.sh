@@ -64,8 +64,8 @@ if ! grep -qE '^[[:space:]]+MARKETING_VERSION: 1\.0\.0$' project.yml; then
     fail "project.yml MARKETING_VERSION is not 1.0.0"
 fi
 
-if ! grep -qE '^[[:space:]]+CURRENT_PROJECT_VERSION: 41$' project.yml; then
-    fail "project.yml CURRENT_PROJECT_VERSION is not 41"
+if ! grep -qE '^[[:space:]]+CURRENT_PROJECT_VERSION: 42$' project.yml; then
+    fail "project.yml CURRENT_PROJECT_VERSION is not 42"
 fi
 
 if ! grep -Fq 'print("letitbrew 1.0.0")' Sources/letitbrew/main.swift; then
