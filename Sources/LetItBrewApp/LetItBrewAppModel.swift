@@ -276,7 +276,17 @@ final class LetItBrewAppModel: ObservableObject {
             details: []
         )
     }
-    @Published private(set) var hookActionInProgress = false
+    @Published private(set) var hookActionInProgress = false {
+        didSet {
+            guard oldValue, !hookActionInProgress else { return }
+            // After the current update, because a finished change may still be
+            // publishing its result or starting its own follow-up.
+            Task { [weak self] in self?.applyNextQueuedAgentChoice() }
+        }
+    }
+    /// Switches flipped while another connection change runs. Agent switches
+    /// stay live during those changes, so these wait their turn.
+    @Published private var queuedAgentChoices: [(id: String, watched: Bool)] = []
     @Published private(set) var hookMessage: String?
     private var uninstallCycle = AgentUninstallCycle()
     @Published private(set) var launchAtLogin = false
@@ -1159,6 +1169,7 @@ final class LetItBrewAppModel: ObservableObject {
     }
 
     private func beginUninstallHooks(removalIDs: Set<String>) {
+        queuedAgentChoices = []
         AgentUninstallHooksCoordinator.performAsync(
             selected: connectedAgentIDs,
             persist: { next in persistConnectedAgentIDs(next) },
@@ -1203,14 +1214,35 @@ final class LetItBrewAppModel: ObservableObject {
     }
 
     func isAgentWatched(_ id: String) -> Bool {
-        connectedAgentIDs.contains(id)
+        queuedAgentChoices.last { $0.id == id }?.watched ?? connectedAgentIDs.contains(id)
     }
 
     func setAgent(_ id: String, watched: Bool) {
+        guard !hookActionInProgress else {
+            queuedAgentChoices.append((id, watched))
+            return
+        }
         if watched {
             connectAgent(id)
         } else {
             disconnectAgent(id)
+        }
+    }
+
+    private func applyNextQueuedAgentChoice() {
+        guard !hookActionInProgress else { return }
+        guard !uninstallInProgress, !updateBlocksOtherActions else {
+            queuedAgentChoices = []
+            return
+        }
+        while !queuedAgentChoices.isEmpty {
+            // Only the latest flip of a switch counts.
+            let first = queuedAgentChoices[0]
+            let watched = queuedAgentChoices.last { $0.id == first.id }?.watched ?? first.watched
+            queuedAgentChoices.removeAll { $0.id == first.id }
+            guard connectedAgentIDs.contains(first.id) != watched else { continue }
+            setAgent(first.id, watched: watched)
+            return
         }
     }
 
@@ -1378,7 +1410,9 @@ final class LetItBrewAppModel: ObservableObject {
                 }
             }
 
-            let successful = results.filter(\.succeeded).map(\.agentID)
+            let successful = results.filter(\.succeeded).map {
+                AgentID(rawValue: $0.agentID)?.displayName ?? $0.agentID
+            }
             let failed = results.filter { !$0.succeeded }
             let message: String
             if failed.isEmpty {
