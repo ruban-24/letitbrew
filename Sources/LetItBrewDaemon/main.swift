@@ -216,15 +216,7 @@ private let delegate = DaemonListenerDelegate(
 let listener = NSXPCListener(machServiceName: daemonIdentity.identifier)
 listener.delegate = delegate
 listener.resume()
-// A failed final release must recover even after the app quits or crashes.
-// Keep blocking pmset work off the listener's run loop; the coordinator
-// serializes retries with client requests and protects active ownership.
-let restoreTimer = DispatchSource.makeTimerSource(
-    queue: DispatchQueue(label: "com.ruban24.letitbrew.restore", qos: .utility)
-)
-restoreTimer.schedule(deadline: .now() + 5, repeating: 5, leeway: .seconds(1))
-restoreTimer.setEventHandler { coordinator.retryPendingRestoration() }
-restoreTimer.resume()
+let restoreRetryTimer = coordinator.startRestoreRetryTimer()
 logger.notice(
     "Let It Brew daemon protocol v\(LetItBrewDaemonProtocolVersion.current) build \(daemonBuildIdentity.versionDescription, privacy: .public) cdhash \(daemonBuildIdentity.codeDirectoryHash, privacy: .public) ready."
 )

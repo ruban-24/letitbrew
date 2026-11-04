@@ -12,7 +12,7 @@ against the SHA-256 published with the release.
 
 ---
 
-## 1.0.0 (build 42)
+## 1.0.0 (build 43)
 
 Added:
 

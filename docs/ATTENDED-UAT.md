@@ -21,7 +21,7 @@ Waiting state with an input check, and app-level session activation. It also
 redesigns the menu and Settings, connects Cursor, Gemini CLI, Qwen Code, and Kimi
 Code, and carries the unpublished v0.8.4 fixes, so run the v0.8.4 release scope
 below with this build too.
-Record version 1.0.0, build 42, the full commit, and artifact hashes. Before
+Record version 1.0.0, build 43, the full commit, and artifact hashes. Before
 starting, record `pmset -g custom | grep -E 'Power:|powermode'` and
 `pmset -g | grep SleepDisabled`. Both must read back identically after every
 case below.
@@ -197,7 +197,9 @@ could not. They use none of the closed-lid or power cases above.
 
 1. Install this build over the previous one with Claude Code connected. Without
    any action, Claude stays connected, because its hook command changed and the
-   app repairs it. Run a Claude prompt: the row goes Working, then Idle.
+   app repairs it. Run a Claude prompt: the row goes Working, then Idle. Wait a
+   minute, then confirm the background service kept the same process ID:
+   `pgrep -x LetItBrewDaemon`. The automated checks can finish before a crash.
 2. In **Settings → Agents**, turn each new agent on, then off. All nine rows fit,
    each connects, and turning it off removes only Let It Brew's entries. Turning an
    agent on creates its configuration file even if that CLI is not installed.

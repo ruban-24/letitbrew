@@ -134,6 +134,25 @@ public final class DaemonHoldCoordinator: @unchecked Sendable {
         }
     }
 
+    /// Starts the retry that lets a failed final release recover even after the
+    /// app quits or crashes. Blocking `pmset` work stays off the listener's run
+    /// loop, and the coordinator serializes retries with client requests.
+    ///
+    /// This lives here, not in the daemon's `main.swift`: Swift 6 isolates a
+    /// closure written in top-level code to the main actor, so one running on
+    /// this queue traps at its first firing.
+    public func startRestoreRetryTimer(
+        interval: DispatchTimeInterval = .seconds(5)
+    ) -> DispatchSourceTimer {
+        let timer = DispatchSource.makeTimerSource(
+            queue: DispatchQueue(label: "com.ruban24.letitbrew.restore", qos: .utility)
+        )
+        timer.schedule(deadline: .now() + interval, repeating: interval, leeway: .seconds(1))
+        timer.setEventHandler { [self] in retryPendingRestoration() }
+        timer.resume()
+        return timer
+    }
+
     /// Restores an energy mode the previous daemon run left switched. Called
     /// at launch beside `reconcileAtLaunch`, and independent of it.
     @discardableResult
