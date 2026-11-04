@@ -201,7 +201,8 @@ rule.
   a local key press or click in the session's own app after the wait holds it
   as Working until the next
   hook.
-- Observed on Copilot 1.0.103: Esc fires no hook and writes an `abort` event to
+- Observed on Copilot 1.0.103 and 1.0.105, where it takes Esc twice: interrupting
+  fires no hook and writes an `abort` event to
   `session-state/<session>/events.jsonl` under Copilot's home. While a turn is
   active, `CopilotCancellation` reads the log's last 256 KB and decodes only
   `type` and `timestamp`. An `abort` newer than the session's latest hook, with
@@ -272,11 +273,12 @@ rule.
   a tool hook's `cwd` can be empty.
 - Cursor runs hooks in the login shell, so each command is wrapped in `/bin/sh`.
 - Cursor runs the hooks in `~/.claude/settings.json` too, which records a second
-  session as Claude Code from `~/.claude`. Claude's command exits early when
+  session as Claude Code. Claude's command exits early when
   `CURSOR_VERSION` and `CURSOR_PROJECT_DIR` are both set and `~/.cursor/hooks.json`
   holds our marker. While Cursor is not connected that replay is left alone, because
   it is the only hold those sessions have, so they keep appearing as Claude Code.
-  Both variables were set for Cursor's native hooks.
+  Observed on `cursor-agent` with real settings: connected shows only a Cursor row,
+  and not connected shows only a Claude Code row.
 
 ## Gemini CLI
 

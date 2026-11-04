@@ -204,8 +204,11 @@ could not.
    each connects, and turning it off removes only Let It Brew's entries. Turning an
    agent on creates its configuration file even if that CLI is not installed.
 3. In Gemini or Qwen in a real terminal, approve a long command such as `sleep 60`
-   with a real key press. The row stays Working and the Mac stays held until it
-   finishes. Simulated keys do not count as input, so only this case proves it.
+   with a real key press, without clicking the terminal first. The row reads
+   **Needs your approval**, then stays Working and holds until the command
+   finishes. Simulated keys do not count as input, so only this case proves it. A
+   click in the terminal, or an Enter under a second before the prompt appears,
+   also counts as an answer, so the row can read Working early. That is expected.
 4. With Claude and Cursor both connected, run one `cursor-agent` prompt. There is one
    Cursor row and no Claude Code row. A duplicate row still holds the Mac, so it does
    not block a release.
@@ -213,7 +216,8 @@ could not.
    appears as Claude Code and holds until the turn ends.
 6. In Cursor's editor agent, send one prompt and let it finish. The row goes Working,
    then Idle.
-7. In Copilot, press Esc mid-turn. The row goes Idle.
+7. In Copilot, press Esc twice mid-turn; its footer reads `esc esc interrupt`. The
+   row goes Idle.
 
 8. Run one closed-lid test, because this release also changed the daemon's restore
    retry. Record `pmset -g | grep SleepDisabled` and `pgrep -x LetItBrewDaemon`. On
