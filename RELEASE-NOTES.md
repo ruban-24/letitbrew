@@ -1,149 +1,127 @@
 # Release notes
 
-Let It Brew is a menu-bar macOS app that keeps a Mac awake while selected local
-agent hooks report Working, then releases its hold when no managed session is
-Working.
+Let It Brew keeps a Mac awake while selected local coding agents work.
+It lets the Mac sleep when no tracked session is Working.
 
 v0.6.0 and later are open source under the [Apache License 2.0](LICENSE).
 Releases are distributed as a
-signed, notarized, and stapled DMG from
-[GitHub Releases](https://github.com/ruban-24/letitbrew/releases). Verify the DMG
-against the SHA-256 published with the release.
+signed DMG, with Apple notarization attached, from
+[GitHub Releases](https://github.com/ruban-24/letitbrew/releases). Make sure that the DMG matches the SHA-256 published with the release.
 
 ---
 
 ## 1.0.0 (build 45)
 
+Let It Brew 1.0.0 supports nine local coding agents on macOS 14 or later.
+The same app runs on Apple silicon and Intel Macs.
+An awake hold prevents the Mac from sleeping while an agent works.
+Hooks are signals that an agent sends about its work.
+
 Added:
 
-- Cursor, Gemini CLI, Qwen Code, and Kimi Code. Turn each on in **Settings →
-  Agents**. Gemini, Qwen, and Kimi release the hold while they wait for your
-  approval. Cursor reports no such wait, so like Codex it keeps the Mac awake
-  until you answer. Cursor already runs Claude Code's hooks, so with Claude Code
-  on, Cursor work appears as Claude Code. Turn Cursor on and it appears as Cursor
-  alone.
-- Closed-lid work runs in Low Power Mode. While agents work with the lid shut
-  and no external display, Let It Brew switches each power source to Low Power
-  Mode, then restores your exact setting, including High Power, when the lid
-  opens or the work stops. The background service records the original before
-  changing anything and restores it after a crash, restart, or uninstall. It is
-  on by default; turn it off in **Settings → Closed Lid**.
-- Waiting sessions. A Claude Code, Codex, Copilot, OpenCode, or Pi session that
-  asks a question, or a Claude Code, Copilot, OpenCode, or Pi session waiting
-  for an approval it is actually showing you, appears in the menu with an
-  orange "Waiting for your answer" or "Needs your approval"
-  and lets the Mac sleep. Answering sends a hook that resumes the session.
-  Approving a Claude or Copilot command sends none, so a key press or click in
-  that session's own app after the prompt appears keeps the Mac awake again
-  until the agent's next hook. Typing in other apps, pointer movement,
-  scrolling, and Let It Brew's own menu never count.
-- Click a session in the menu to bring its terminal, editor, or agent app
-  forward. No Accessibility or Automation permission is used, so the app is
-  activated rather than a specific window or tab.
-- **Monitoring background tasks.** When a Claude turn ends but leaves
-  background shells, Monitor tasks, or subagents running, or scheduled session
-  crons such as `/loop` that will start more turns, the session keeps the Mac
-  awake, with the lid closed too, and reads "Monitoring background tasks".
-  It ends when Claude reports the work finished, a new prompt starts, or the
-  session or its agent exits. If the session and its subagents send nothing
-  for two hours, it stops holding and reads "No update in 2 h · Mac can
-  sleep", so a forgotten server or a killed subagent cannot keep the Mac awake
-  indefinitely. The menu header counts monitoring sessions separately.
+- Cursor, Gemini CLI, Qwen Code, and Kimi Code join Claude Code, Codex,
+  OpenCode, GitHub Copilot CLI, and Pi. Turn on each agent in Settings → Agents.
+- Closed-lid work uses Low Power Mode when no external display is connected.
+  Let It Brew restores your exact energy mode when the lid opens or work stops.
+  This includes High Power mode. Recovery also runs after a crash, restart, or
+  uninstall. To turn this feature off, use Settings → Closed Lid.
+- Supported questions and approval waits appear as "Waiting for your answer"
+  or "Needs your approval". These waits let the Mac sleep.
+  Codex and Cursor approval waits still keep the Mac awake.
+- Click a session to bring its terminal, editor, or agent app forward.
+  This opens the app, not a specific window or tab.
+  It needs no Accessibility or Automation permission.
+- Claude background shells, Monitor tasks, subagents, and scheduled work such as
+  `/loop` can keep the Mac awake after a turn ends.
+  The row reads "Monitoring background tasks", including with the lid closed.
+  Monitoring ends when the work finishes, a new prompt starts, or the session
+  or agent exits. If the session and its subagents send no signals for two hours,
+  the Mac can sleep. The row then reads "No update in 2 h · Mac can sleep".
 
 Changed:
 
-- The menu is more compact and lists sessions waiting for you first, under
-  **Needs You**. An expanded folder and its sessions share a shaded block,
-  aligned with every other row and without repeating the folder name, and the header
-  counts waiting sessions apart from working ones. Battery status moved into
-  the header, and text is lighter so project names stand out.
-- Hovering a session highlights it and swaps its active time for **Stop
-  Watching**; right-click a session for the same actions. Hovering an expanded
-  folder highlights the folder and all of its sessions together.
-- Settings uses the standard macOS toolbar tabs: General, Agents, Power, Closed
-  Lid, and About. Every closed-lid setting, including the background helper, is
-  now under **Closed Lid**, and **Check for Updates…** moved to General. Each
-  agent shows its connection status, and the battery limit is a menu.
-- The OpenCode and Copilot marks stay visible in dark mode.
+- The compact menu puts waiting sessions first under Needs You.
+  Expanded folders share a shaded block with their sessions.
+  The header shows the battery and counts waiting, working, and monitoring
+  sessions separately.
+- Point at a session to show Stop Watching in place of its active time.
+  Right-click the session for the same actions.
+- Settings uses the General, Agents, Power, Closed Lid, and About tabs.
+  Closed Lid contains the background helper controls.
+  Check for Updates… is now in General.
+- Agent switches stay available during connection changes.
+  Quick changes no longer make the switches, status text, or footer flash.
+  If you flip several switches, each agent keeps your last choice.
+- Cursor, Gemini CLI, Qwen Code, and Kimi Code have their own icons.
+  The OpenCode and Copilot icons stay visible in dark mode.
+- Claude approval prompts let the Mac sleep once a notification proves that the
+  prompt is on screen. Automatic approvals still keep the Mac awake.
+- Claude, Copilot, Gemini, and Qwen send no signal when you approve a command.
+  A key press or click in that session's app resumes the awake hold until the
+  next signal. Pointer movement, scrolling, and input in Let It Brew do not count.
+  Input in other apps does not count unless the session runs under tmux or screen.
+- Cursor can also run Claude Code hooks. If only Claude Code is connected,
+  Cursor work appears as Claude Code. If Cursor is connected, it appears once,
+  as Cursor.
 
 Fixed:
 
-- Interrupting GitHub Copilot CLI now ends its turn. Copilot records the
-  interruption in its session log but sends no hook, so a cancelled turn could
-  keep the Mac awake for up to 12 hours.
-- A failed restore of the sleep setting or energy mode now retries every five
-  seconds, even after the app quits.
-- **Respect Low Power Mode** no longer releases a hold because of the Low Power
-  Mode Let It Brew itself turned on.
-- Copilot no longer lets the Mac sleep while a tool it approved on its own is
-  running. Its permission hook fires before allow rules and session approvals
-  decide, so only a prompt Copilot actually shows you counts as Waiting.
-- A failed or cancelled Copilot tool, including a question you dismissed,
-  returns the session to Working instead of leaving it Waiting.
-- A Pi dialog opened at the idle prompt no longer shows as Waiting, nested
-  dialogs count as one wait, and a new Pi run ends any wait left open.
-- Claude sessions no longer stay Working after Claude Code compacts an idle
-  conversation, or after a compaction that was cancelled.
-- Running `/compact` in Claude marks the session Idle, which also clears a turn
-  that an Esc interrupt left Working. Background work still holds the Mac.
-- Codex compaction no longer changes a session's state.
-- Pressing Esc in Codex 0.150 or later ends the turn: Let It Brew now installs
-  Codex's `Interrupt` hook.
-- Codex subagents that never report completion no longer keep the Mac awake.
-  They are cleared when their session ends, and when the parent finishes a turn
-  in which they sent nothing. A subagent heard during that turn is kept.
-- Let It Brew finds the Codex CLI bundled in newer ChatGPT and Codex desktop
-  apps, so it can verify Codex hook approval without a separate CLI install.
-  Thanks to @deepblueeeee.
-- Background work a Claude turn leaves running, such as a `sleep` or `tail` a
-  subagent left behind, no longer holds the Mac for twelve hours when nothing
-  reports it finished; see Monitoring above. It is also no longer released a
-  minute after the turn ends, when Claude sends an idle notification.
-- Claude subagents that never report completion are cleared when the parent's
-  next turn ends without listing them, instead of staying Working for twelve
-  hours. A subagent's own completion no longer counts itself as still running
-  when it checks whether the parent has work left.
-- A Working session whose agent process has exited, such as a Codex that quit
-  without a session-end hook, no longer shows or keeps the Mac awake.
+- Interrupting GitHub Copilot CLI ends its turn instead of leaving the Mac awake
+  for up to 12 hours.
+- The background service retries a failed sleep or energy-mode restore every
+  five seconds, even after the app quits.
+- The background service no longer crashes when its restore timer runs.
+- Respect Low Power Mode no longer releases a hold because Let It Brew enabled
+  Low Power Mode itself.
+- Copilot keeps the Mac awake while an automatically approved tool runs.
+  A failed or canceled tool returns the session to Working.
 - An unanswered Claude or Copilot question stays "Waiting for your answer".
-  Both agents also announce their question dialog with the permission
-  notification about six seconds in, which used to relabel the row "Needs your
-  approval" and let any key press in that app keep the Mac awake for a
-  question nobody had answered.
+  A later permission notification no longer changes it to "Needs your approval".
+- A Pi dialog at the idle prompt no longer appears as Waiting.
+  Nested dialogs count as one wait. A new run clears an old wait.
+- Claude conversation compaction, which shortens the saved context, no longer
+  leaves an idle or canceled conversation Working.
+  Manual `/compact` clears a turn left Working after Esc.
+  Background monitoring continues.
+- Codex compaction preserves the session state. Esc ends the turn in Codex 0.150
+  or later through the new `Interrupt` hook.
+- Codex subagents stop holding when their session ends, or when they send no
+  signals during the next parent turn. Active subagents remain tracked.
+- Let It Brew finds the Codex CLI inside newer ChatGPT and Codex desktop apps.
+  This lets it read hook approval without a separate CLI installation.
+  Thanks to @deepblueeeee.
+- Claude background work follows the two-hour monitoring limit instead of
+  holding for 12 hours without an update.
+  The idle notification after a turn no longer releases ongoing background work.
+- Claude subagents stop holding when the next parent turn no longer lists them.
+  A completed subagent no longer counts itself as ongoing work.
+- A session whose agent process exits disappears and stops holding the Mac awake.
 
-Changed:
+Limits:
 
-- Claude permission prompts let the Mac sleep once Claude's notification
-  confirms the prompt is on screen, instead of holding until the next hook.
-  Approvals that another hook or auto mode settles still hold.
-- Codex approvals still keep the Mac awake: Codex's auto-reviewer answers
-  through the same hook, so it cannot be told apart from you.
-- An approved Copilot command now keeps the Mac awake after a key press or
-  click in its session's app, instead of letting it sleep before the command
-  finishes.
+- Codex and Cursor do not provide a separate signal for a manual approval wait.
+  These waits keep the Mac awake.
+- Approval from another device sends no local key press or click.
+  With the lid open, the Mac can sleep before the approved command finishes.
+- Sessions under tmux or screen have no app to bring forward.
+  Input in any app can count as approval for Claude, Copilot, Gemini, or Qwen.
+- Claude sends no hook when Esc interrupts a turn. Gemini can also leave a turn
+  Working after Esc during a tool.
+  These sessions can hold until the next prompt ends, the session ends, a manual
+  stop, or the 12-hour limit. Claude `/compact` and Gemini `/clear` also clear them.
+- A Codex subagent that stops reporting during the final turn can hold until the
+  session ends or the 12-hour limit.
+- Remote, cloud, and SSH sessions are not tracked.
 
-Limitations:
+To update:
 
-- An approval given from another device with the lid open sends no local key
-  press or click, so the Mac can sleep before the approved command finishes.
-- Sessions under tmux or screen have no app to bring forward, and input in any
-  app can count as approving their Claude or Copilot prompts.
-- Claude Code sends no hook when Esc interrupts a turn. That session stays
-  Working until its next prompt finishes, `/compact`, the session ends, Stop
-  Tracking, or the 12-hour expiry.
-- A Codex subagent that stops reporting during the final turn of a session can
-  hold the Mac until that session ends or the 12-hour expiry.
-
-Updating:
-
-- v0.7.1 and later can install v1.0.0 from **Settings → About → Check for
-  Updates…**. Users on v0.7.0 or earlier should quit the app and replace it
-  manually using the DMG without uninstalling first.
-- Let It Brew updates its Copilot hooks and Pi extension when it launches.
-  Restart Copilot and Pi sessions that were already open to use them.
-- After updating, type `/hooks` in Codex and approve Let It Brew's new
-  `Interrupt` hook, then restart Codex sessions that were already open. Until
-  then, Agents settings shows Codex as needing that approval.
+1. If you use v0.7.1 or later, choose Check for Updates… in Settings.
+   In older versions, it is under About. In 1.0.0, it is under General.
+2. If you use v0.7.0 or earlier, quit the app and replace it with the new DMG.
+   Do not uninstall first. Your preferences, agent connections, and session data stay in place.
+3. Restart open Copilot and Pi sessions to load the updated hooks and extension.
+4. In Codex, run `/hooks` and approve the new Let It Brew `Interrupt` hook.
+5. Restart Codex sessions that were open during the update.
 
 ## 0.8.3 (build 34)
 

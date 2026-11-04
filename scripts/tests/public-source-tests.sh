@@ -35,7 +35,7 @@ if git grep -IqEi '(^|[^[:alnum:]])task[[:space:]_-]*[0-9]+([^[:alnum:]]|$)' -- 
     fail "tracked source still contains an internal task-number reference from development"
 fi
 
-for agent in 'Claude Code' Codex OpenCode 'GitHub Copilot CLI'; do
+for agent in 'Claude Code' Codex OpenCode 'GitHub Copilot CLI' Pi Cursor 'Gemini CLI' 'Qwen Code' 'Kimi Code'; do
     if ! grep -Fq "$agent" README.md; then
         fail "README is missing supported agent: $agent"
     fi

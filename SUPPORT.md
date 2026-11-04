@@ -35,7 +35,7 @@ listed as **Working**. Let It Brew releases its hold when a session becomes Idle
 the app is paused, or a battery, thermal, or power-status safety gate requires
 the Mac to sleep.
 
-**A session stays Working after the agent stops.** Choose **Stop Tracking** for
+**A session stays Working after the agent stops.** Choose **Stop Watching** for
 that session to release it immediately. Let It Brew relies on lifecycle hooks,
 so a missing terminal event can leave a record Working until the 12-hour stale
 record backstop removes it.
@@ -57,16 +57,20 @@ subfolder, mounted DMG, or Downloads disables closed-lid management.
 **Do settings survive an update?** Yes. Updating replaces the app bundle while
 leaving preferences, agent connections, and session data in place. About 30
 seconds after launch, Let It Brew checks GitHub for release metadata if it has
-not attempted an automatic check in the previous 24 hours. You can also check
-manually from **Settings → About**. Downloads always require confirmation.
+not attempted an automatic check in the previous 24 hours. In version 1.0.0, use **Settings → General → Check for Updates…**.
+In older versions, use **Settings → About**. Downloads always require confirmation.
 
-**How do I update from v0.6.5 or earlier to v0.7.1?** Quit Let It Brew,
-download v0.7.1 from GitHub Releases, open the DMG, drag **Let It Brew.app** to
-**Applications**, choose **Replace**, and relaunch it. Do not uninstall first;
-your settings, agent connections, and session data stay in place. This is a
-one-time manual replacement because the updater inside v0.6.5 and earlier
-rejects the guided installer layout. Future in-app updates use the corrected
-check. Follow the same steps if you installed the withdrawn v0.7.0.
+To update from v0.6.5 or earlier to 1.0.0, replace the app manually.
+The old updater rejects the layout of the DMG. The withdrawn v0.7.0 also needs
+manual replacement. Do not uninstall first. Your preferences, agent connections,
+and session data stay in place.
+
+1. Quit Let It Brew.
+2. Download the 1.0.0 DMG from GitHub Releases.
+3. Open the DMG.
+4. Drag Let It Brew.app to Applications.
+5. When Finder asks, choose **Replace**.
+6. Launch Let It Brew.
 
 **Is Let It Brew available through Homebrew or the App Store?** No. The signed,
 notarized DMG on [GitHub Releases](https://github.com/ruban-24/letitbrew/releases/latest)
