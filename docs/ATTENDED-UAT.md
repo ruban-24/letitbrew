@@ -21,7 +21,7 @@ Waiting state with an input check, and app-level session activation. It also
 redesigns the menu and Settings, connects Cursor, Gemini CLI, Qwen Code, and Kimi
 Code, and carries the unpublished v0.8.4 fixes, so run the v0.8.4 release scope
 below with this build too.
-Record version 1.0.0, build 44, the full commit, and artifact hashes. Before
+Record version 1.0.0, build 45, the full commit, and artifact hashes. Before
 starting, record `pmset -g custom | grep -E 'Power:|powermode'` and
 `pmset -g | grep SleepDisabled`. Both must read back identically after every
 case below.
