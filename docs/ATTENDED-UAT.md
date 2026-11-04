@@ -193,7 +193,7 @@ to confirm the hold, and the menu to confirm the row.
 
 Real CLI runs recorded in [AGENT-HOOK-CONTRACTS.md](AGENT-HOOK-CONTRACTS.md)
 cover each agent's prompt, tool, Esc, and quit. These cases cover what those runs
-could not. They use none of the closed-lid or power cases above.
+could not.
 
 1. Install this build over the previous one with Claude Code connected. Without
    any action, Claude stays connected, because its hook command changed and the
@@ -214,6 +214,15 @@ could not. They use none of the closed-lid or power cases above.
 6. In Cursor's editor agent, send one prompt and let it finish. The row goes Working,
    then Idle.
 7. In Copilot, press Esc mid-turn. The row goes Idle.
+
+8. Run one closed-lid test, because this release also changed the daemon's restore
+   retry. Record `pmset -g | grep SleepDisabled` and `pgrep -x LetItBrewDaemon`. On
+   battery with no external display, start a long agent task and close the lid for
+   at least a minute. Open it and confirm from the task's output that work continued.
+   When the task finishes, `SleepDisabled` reads its recorded value and the process
+   ID is unchanged. Start another task and quit Let It Brew during the hold:
+   `SleepDisabled` returns to its recorded value within a few seconds. A failed
+   restore cannot be forced on a real Mac, so only unit tests cover the retry itself.
 
 Esc during a Gemini tool leaves the turn Working until the next prompt's end, `/clear`,
 exit, Stop Tracking, or the 12-hour expiry, as with Claude. Esc at a Gemini approval
