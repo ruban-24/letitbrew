@@ -123,6 +123,17 @@ public final class DaemonHoldCoordinator: @unchecked Sendable {
         withLock { lowPowerHolders.count }
     }
 
+    /// Retries abandoned restore debt even when no client remains to reconnect.
+    /// Ownership and reconciliation share the lock so a retry cannot release
+    /// a newly acquired hold. Upgrade preparation freezes further mutations.
+    public func retryPendingRestoration() {
+        withLock {
+            guard preparedUpgradeBaseline == nil else { return }
+            if holders.isEmpty { _ = reconcileDebt() }
+            if lowPowerHolders.isEmpty { _ = reconcilePowerModeDebt() }
+        }
+    }
+
     /// Restores an energy mode the previous daemon run left switched. Called
     /// at launch beside `reconcileAtLaunch`, and independent of it.
     @discardableResult
@@ -277,7 +288,7 @@ public final class DaemonHoldCoordinator: @unchecked Sendable {
         // Its restore failure never keeps disablesleep held. The app's
         // periodic release confirmation retries a restore that failed.
         _ = releaseLowPower(for: connectionID)
-        guard holders.remove(connectionID) != nil else { return .applied }
+        holders.remove(connectionID)
         guard holders.isEmpty else { return .applied }
 
         let result = reconcileDebt()

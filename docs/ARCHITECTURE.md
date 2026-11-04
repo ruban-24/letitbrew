@@ -297,6 +297,8 @@ the app crashes, the daemon is killed, or the Mac reboots mid-hold. So the daemo
 records a **sleep debt** — the exact prior value plus a timestamp — under
 `/Library/Application Support/LetItBrew/` before it changes anything. On
 `RunAtLoad`, the daemon reconciles that debt before serving any XPC request.
+Once no client holds the setting, a failed restore is also retried every five
+seconds, so it recovers even after the app quits or crashes.
 
 The rule that follows from this, and that every code path must respect:
 
@@ -326,7 +328,8 @@ after every recorded source reads back with its recorded value; a source
 missing from either reading keeps the record. Values, not names, are compared
 and restored, and each write uses the name the live system reports, so a
 record survives macOS renaming the setting. Launch reconciles a leftover
-record, and every later release or handshake retries a failed restore. Upgrade
+record, and every later release or handshake retries a failed restore, as does
+the daemon's five-second timer once no client holds Low Power Mode. Upgrade
 and uninstall preparation retry it up to three times, because no daemon follows
 an uninstall, but never block on it: a record that can never be restored must
 not strand the upgrade or uninstall, and a later daemon reconciles it.

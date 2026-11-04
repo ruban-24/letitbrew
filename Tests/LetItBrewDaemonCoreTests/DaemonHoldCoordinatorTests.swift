@@ -374,6 +374,74 @@ private final class FakeSleepControl: DaemonSleepSettingControlling {
     #expect(debt.priorValue == false)
 }
 
+@Test func repeatedReleaseRetriesAFailedRestore() {
+    let store = FakeDebtStore()
+    let sleep = FakeSleepControl(live: false)
+    let coordinator = DaemonHoldCoordinator(debtStore: store, sleepControl: sleep)
+    let id = UUID()
+    #expect(coordinator.setHold(true, for: id) == .applied)
+    sleep.writeSucceeds = false
+    guard case .failed = coordinator.connectionInvalidated(id) else {
+        Issue.record("Expected the disconnect restore to fail")
+        return
+    }
+    #expect(coordinator.holdCount == 0)
+    guard case .failed = coordinator.setHold(false, for: id) else {
+        Issue.record("A repeated release must not falsely report success")
+        return
+    }
+    sleep.writeSucceeds = true
+    #expect(coordinator.setHold(false, for: id) == .applied)
+    #expect(sleep.live == false)
+    #expect(store.state == .none)
+}
+
+@Test func maintenanceRestoresAfterTheLastClientDisappears() {
+    let store = FakeDebtStore()
+    let sleep = FakeSleepControl(live: false)
+    let coordinator = DaemonHoldCoordinator(debtStore: store, sleepControl: sleep)
+    let id = UUID()
+    #expect(coordinator.setHold(true, for: id) == .applied)
+    sleep.writeSucceeds = false
+    _ = coordinator.connectionInvalidated(id)
+    coordinator.retryPendingRestoration()
+    #expect(sleep.live == true)
+    #expect(store.state != .none)
+    sleep.writeSucceeds = true
+    coordinator.retryPendingRestoration()
+    #expect(sleep.live == false)
+    #expect(store.state == .none)
+    let events = sleep.events
+    coordinator.retryPendingRestoration()
+    #expect(sleep.events == events)
+}
+
+@Test func maintenanceAndUnownedReleaseNeverRestoreAnActiveHold() {
+    let store = FakeDebtStore()
+    let sleep = FakeSleepControl(live: false)
+    let coordinator = DaemonHoldCoordinator(debtStore: store, sleepControl: sleep)
+    let id = UUID()
+    #expect(coordinator.setHold(true, for: id) == .applied)
+    let events = sleep.events
+    coordinator.retryPendingRestoration()
+    #expect(coordinator.setHold(false, for: UUID()) == .applied)
+    #expect(sleep.events == events)
+    #expect(sleep.live == true)
+    #expect(coordinator.holdCount == 1)
+}
+
+@Test func maintenanceHonorsUpgradeQuiescence() {
+    let store = FakeDebtStore()
+    let sleep = FakeSleepControl(live: false)
+    let coordinator = DaemonHoldCoordinator(debtStore: store, sleepControl: sleep)
+    #expect(coordinator.prepareForUpgrade() == .ready(baseline: false))
+    let reads = store.events
+    let events = sleep.events
+    coordinator.retryPendingRestoration()
+    #expect(store.events == reads)
+    #expect(sleep.events == events)
+}
+
 @Test func signingIdentityDerivesTheMatchingAppAndRequirement() throws {
     let daemon = RuntimeSigningIdentity(
         identifier: "com.ruban24.letitbrew.dev.daemon",
