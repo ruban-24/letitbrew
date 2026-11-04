@@ -12,7 +12,7 @@ import Testing
         launchRemoval: { events.append("remove:\($0.sorted())") }
     )
     #expect(selected.isEmpty)
-    #expect(events == ["persist:[]", "refresh:[]", "remove:[\"claude\", \"codex\", \"copilot\", \"opencode\", \"pi\"]"])
+    #expect(events == ["persist:[]", "refresh:[]", "remove:[\"claude\", \"codex\", \"copilot\", \"cursor\", \"gemini\", \"kimi\", \"opencode\", \"pi\", \"qwen\"]"])
 }
 
 @Test func uninstallCompletionKeepsSelectionEmptyAndProvidesExactFailureRetry() {
@@ -70,7 +70,7 @@ import Testing
     }
 
     run(cycle.beginFresh())
-    #expect(events == ["persist:[]", "refresh:[]", "remove:[\"claude\", \"codex\", \"copilot\", \"opencode\", \"pi\"]"])
+    #expect(events == ["persist:[]", "refresh:[]", "remove:[\"claude\", \"codex\", \"copilot\", \"cursor\", \"gemini\", \"kimi\", \"opencode\", \"pi\", \"qwen\"]"])
     retained?(AgentID.allCases.map { agent in
         .init(agentID: agent.rawValue, status: agent == .opencode ? 1 : 0, output: "", timedOut: false)
     })
@@ -86,5 +86,5 @@ import Testing
 
     cycle.beginPositiveIntent()
     run(cycle.beginFresh())
-    #expect(events.suffix(3) == ["persist:[]", "refresh:[]", "remove:[\"claude\", \"codex\", \"copilot\", \"opencode\", \"pi\"]"])
+    #expect(events.suffix(3) == ["persist:[]", "refresh:[]", "remove:[\"claude\", \"codex\", \"copilot\", \"cursor\", \"gemini\", \"kimi\", \"opencode\", \"pi\", \"qwen\"]"])
 }

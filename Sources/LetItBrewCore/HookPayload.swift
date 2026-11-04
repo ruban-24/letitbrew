@@ -50,6 +50,8 @@ public struct HookPayload: Decodable, Equatable, Sendable {
     public var toolName: String?
     public var notificationType: String?
     public var errorRecoverable: Bool?
+    /// Qwen's `PostToolUseFailure` says whether the person cancelled the tool.
+    public var isInterrupt: Bool
     /// How many scheduled session crons Claude's `Stop` reports, or nil when
     /// the hook carried no `session_crons` array. Only the count is read,
     /// never a cron's prompt or schedule.
@@ -58,8 +60,10 @@ public struct HookPayload: Decodable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case sessionID = "session_id"
         case camelSessionID = "sessionId"
+        case conversationID = "conversation_id"
         case agentID = "agent_id"
         case cwd
+        case workspaceRoots = "workspace_roots"
         case source
         case trigger
         case backgroundTasks = "background_tasks"
@@ -67,6 +71,7 @@ public struct HookPayload: Decodable, Equatable, Sendable {
         case toolName = "tool_name"
         case notificationType = "notification_type"
         case errorRecoverable = "recoverable"
+        case isInterrupt = "is_interrupt"
         case sessionCrons = "session_crons"
     }
 
@@ -81,7 +86,8 @@ public struct HookPayload: Decodable, Equatable, Sendable {
         toolName: String? = nil,
         notificationType: String? = nil,
         errorRecoverable: Bool? = nil,
-        sessionCronCount: Int? = nil
+        sessionCronCount: Int? = nil,
+        isInterrupt: Bool = false
     ) {
         self.sessionId = sessionId
         self.agentId = agentId
@@ -94,14 +100,19 @@ public struct HookPayload: Decodable, Equatable, Sendable {
         self.notificationType = notificationType
         self.errorRecoverable = errorRecoverable
         self.sessionCronCount = sessionCronCount
+        self.isInterrupt = isInterrupt
     }
 
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         sessionId = try values.decodeIfPresent(String.self, forKey: .sessionID)
             ?? values.decodeIfPresent(String.self, forKey: .camelSessionID)
+            ?? values.decodeIfPresent(String.self, forKey: .conversationID)
         agentId = try values.decodeIfPresent(String.self, forKey: .agentID)
-        cwd = try values.decodeIfPresent(String.self, forKey: .cwd)
+        // Cursor names the project in `workspace_roots`. Its `cwd`, when
+        // present, is a tool's directory, and a user hook runs in `~/.cursor`.
+        cwd = try (try? values.decodeIfPresent([String].self, forKey: .workspaceRoots))?.first
+            ?? values.decodeIfPresent(String.self, forKey: .cwd)
         source = try values.decodeIfPresent(String.self, forKey: .source)
         trigger = try values.decodeIfPresent(String.self, forKey: .trigger)
         backgroundTasks = try values.decodeIfPresent(
@@ -111,6 +122,7 @@ public struct HookPayload: Decodable, Equatable, Sendable {
         toolName = try values.decodeIfPresent(String.self, forKey: .toolName)
         notificationType = try values.decodeIfPresent(String.self, forKey: .notificationType)
         errorRecoverable = try values.decodeIfPresent(Bool.self, forKey: .errorRecoverable)
+        isInterrupt = (try? values.decodeIfPresent(Bool.self, forKey: .isInterrupt)) ?? false
         sessionCronCount = (try? values.decodeIfPresent(
             [OpaqueJSONValue].self, forKey: .sessionCrons
         ))?.map(\.count)
@@ -164,7 +176,11 @@ public struct HookPayload: Decodable, Equatable, Sendable {
         let isSubagentEdge = event == "SubagentStart" || event == "SubagentStop"
         let parent = nonempty(sessionId)
         guard let parent else { return nil }
-        let child = nonempty(agentId)
+        // Qwen tags a subagent's tool hooks with `agent_id`, and Kimi tags its
+        // approvals with `main`. Neither adapter installs subagent edges, so a
+        // child record would have nothing to close it; those hooks count as
+        // activity in the parent's turn instead.
+        let child = agent == .qwen || agent == .kimi ? nil : nonempty(agentId)
         guard !isSubagentEdge || child != nil else { return nil }
         return HookRecordID(agent: agent, parentID: parent, childID: child)?.encoded
     }

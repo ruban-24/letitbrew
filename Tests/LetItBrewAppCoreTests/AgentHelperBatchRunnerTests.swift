@@ -70,6 +70,6 @@ private func helperStub() throws -> URL {
     let ids = AgentID.allCases.map(\.rawValue)
     let results = AgentHelperBatchRunner.run(executableURL: helper, command: "uninstall", agentIDs: ids, timeout: 5)
     #expect(results.map(\.agentID) == ids)
-    #expect(results.filter(\.succeeded).map(\.agentID) == ["claude", "codex", "copilot", "pi"])
+    #expect(results.filter(\.succeeded).map(\.agentID) == ids.filter { $0 != "opencode" })
     #expect(results.first(where: { $0.agentID == "opencode" })?.status == 7)
 }

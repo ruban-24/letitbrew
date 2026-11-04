@@ -1481,6 +1481,10 @@ final class LetItBrewAppModel: ObservableObject {
         case .opencode: OpenCodePlugin.pluginURL(home: home, environment: environment)
         case .pi: PiExtension.extensionURL(home: home, environment: environment)
         case .copilot: CopilotHooks.hooksURL(home: home, environment: environment)
+        case .cursor: CursorHooks.hooksURL(home: home)
+        case .gemini: GeminiHooks.settingsURL(home: home, environment: environment)
+        case .qwen: QwenHooks.settingsURL(home: home, environment: environment)
+        case .kimi: KimiHooks.configURL(home: home, environment: environment)
         }
     }
 
@@ -1575,6 +1579,10 @@ final class LetItBrewAppModel: ObservableObject {
         case .opencode: configured = OpenCodePlugin.pluginURL(home: home, environment: environment)
         case .pi: configured = PiExtension.extensionURL(home: home, environment: environment)
         case .copilot: configured = CopilotHooks.hooksURL(home: home, environment: environment)
+        case .cursor: configured = CursorHooks.hooksURL(home: home)
+        case .gemini: configured = GeminiHooks.settingsURL(home: home, environment: environment)
+        case .qwen: configured = QwenHooks.settingsURL(home: home, environment: environment)
+        case .kimi: configured = KimiHooks.configURL(home: home, environment: environment)
         }
         return ExactTargetSelection(
             recordedTarget: registry?.targets[agent],
@@ -1916,7 +1924,7 @@ final class LetItBrewAppModel: ObservableObject {
         // The remaining integrations share the exact helper protocol. They
         // deliberately do not probe whether a vendor executable is installed:
         // hook configuration is local and independent of that discovery.
-        for agent in [AgentID.opencode, .copilot, .pi] where agentIDs.contains(agent.rawValue) {
+        for agent in [AgentID.opencode, .copilot, .pi, .cursor, .gemini, .qwen, .kimi] where agentIDs.contains(agent.rawValue) {
             if disconnected.contains(agent.rawValue) {
                 health.append(AgentHookHealth(id: agent.rawValue, name: agent.displayName, state: .actionNeeded, details: ["Disconnected. Choose Connect to use this agent with Let It Brew."], disposition: .intentionallyDisconnected))
                 continue

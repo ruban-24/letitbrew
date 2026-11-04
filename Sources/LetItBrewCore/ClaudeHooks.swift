@@ -70,9 +70,16 @@ public enum ClaudeHooks {
     /// be the exact end of the string. Ownership is matched with `hasSuffix`,
     /// so a trailing space, newline, or semicolon after it would make the
     /// command unrecognizable to uninstall — orphaning a hook that still fires.
+    ///
+    /// Cursor also runs the hooks in Claude's settings, and sets these two
+    /// variables for hook commands. Once its own adapter is connected it reports
+    /// those sessions, so they must not also appear here as Claude Code. Until
+    /// then this replay is the only hold a Cursor session has, so it stays.
     public static func hookCommand(event: String, cliPath: String) throws -> String {
         guard cliPath.hasPrefix("/") else { throw RelativeCLIPath(cliPath) }
-        return "c=\(shellSingleQuoted(cliPath)); [ -x \"$c\" ] || c=\(shellSingleQuoted(fallbackCLIPath)); "
+        return "[ -n \"$CURSOR_VERSION\" ] && [ -n \"$CURSOR_PROJECT_DIR\" ] "
+            + "&& /usr/bin/grep -qs \(CursorHooks.marker) \"$HOME/.cursor/hooks.json\" && exit 0; "
+            + "c=\(shellSingleQuoted(cliPath)); [ -x \"$c\" ] || c=\(shellSingleQuoted(fallbackCLIPath)); "
             + "\"$c\" hook claude \(event) >/dev/null 2>&1; \(HookFile.ownershipComment(marker: marker))"
     }
 

@@ -76,6 +76,10 @@ private final class CommandFilesystem {
         case .opencode: url = OpenCodePlugin.pluginURL(home: homeURL, environment: adapterEnvironment)
         case .pi: url = PiExtension.extensionURL(home: homeURL, environment: adapterEnvironment)
         case .copilot: url = CopilotHooks.hooksURL(home: homeURL, environment: adapterEnvironment)
+        case .cursor: url = CursorHooks.hooksURL(home: homeURL)
+        case .gemini: url = GeminiHooks.settingsURL(home: homeURL, environment: adapterEnvironment)
+        case .qwen: url = QwenHooks.settingsURL(home: homeURL, environment: adapterEnvironment)
+        case .kimi: url = KimiHooks.configURL(home: homeURL, environment: adapterEnvironment)
         }
         return try target(at: url, resolvingParentSymlinks: true)
     }
@@ -118,6 +122,10 @@ private func replacement(agent: AgentID, data: Data?, cli: String, removing: Boo
     case .copilot: return removing ? try CopilotHooks.remove(from: data) : try CopilotHooks.install(into: data, cliPath: cli)
     case .pi: return removing ? try PiExtension.remove(from: data) : try PiExtension.install(into: data, cliPath: cli)
     case .opencode: return removing ? try OpenCodePlugin.remove(from: data) : try OpenCodePlugin.install(into: data, cliPath: cli)
+    case .cursor: return removing ? try CursorHooks.remove(from: data) : try CursorHooks.install(into: data, cliPath: cli)
+    case .gemini: return removing ? try GeminiHooks.adapter.remove(from: data) : try GeminiHooks.adapter.install(into: data, cliPath: cli)
+    case .qwen: return removing ? try QwenHooks.adapter.remove(from: data) : try QwenHooks.adapter.install(into: data, cliPath: cli)
+    case .kimi: return removing ? try KimiHooks.remove(from: data) : try KimiHooks.install(into: data, cliPath: cli)
     }
 }
 
@@ -128,6 +136,10 @@ private func report(agent: AgentID, data: Data?, cli: String) -> HookInstallRepo
     case .copilot: CopilotHooks.report(for: data, cliPath: cli)
     case .pi: PiExtension.report(for: data, cliPath: cli)
     case .opencode: OpenCodePlugin.report(for: data, cliPath: cli)
+    case .cursor: CursorHooks.report(for: data, cliPath: cli)
+    case .gemini: GeminiHooks.adapter.report(for: data, cliPath: cli)
+    case .qwen: QwenHooks.adapter.report(for: data, cliPath: cli)
+    case .kimi: KimiHooks.report(for: data, cliPath: cli)
     }
 }
 

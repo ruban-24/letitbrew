@@ -69,8 +69,8 @@ public struct Decision: Equatable, Sendable {
 /// Remembers which Waiting sessions local input may have answered.
 ///
 /// A Waiting session is blocked on the person, so it releases the hold. But
-/// approving a Claude or Copilot prompt fires no hook before the approved tool
-/// runs, and a skipped question may not fire one either. A key press or click
+/// approving a Claude, Copilot, Gemini, or Qwen prompt fires no hook before the
+/// approved tool finishes, and a skipped question may not fire one either. A key press or click
 /// after the wait began is therefore treated as a possible answer: the session
 /// holds again, as Working, until its next hook. The worst case is the hold a
 /// Claude approval kept before Waiting existed.
@@ -85,7 +85,7 @@ public struct WaitAnswerLatch: Equatable, Sendable {
     public static let answerLeadTolerance: TimeInterval = 3
     /// Copilot's notification timing is unverified, so a fast answer keeps a
     /// margin for hook delivery without counting the Enter that submitted a
-    /// turn seconds earlier.
+    /// turn seconds earlier. Gemini and Qwen use the same margin.
     public static let copilotAnswerLeadTolerance: TimeInterval = 1
 
     /// For callers that observe no input: every wait releases.
@@ -96,12 +96,14 @@ public struct WaitAnswerLatch: Equatable, Sendable {
 
     public init() {}
 
-    /// Approving a Claude or Copilot prompt sends no hook until the approved
-    /// tool finishes, so only local input can suggest it was answered. Every
-    /// other wait reports its answer with a hook and never consults input.
+    /// Approving a Claude, Copilot, Gemini, or Qwen prompt sends no hook until
+    /// the approved tool finishes, so only local input can suggest it was
+    /// answered. Every other wait reports its answer with a hook and never
+    /// consults input.
     public static func answerIsSilent(_ session: SessionRecord) -> Bool {
         session.state == .waiting && session.detail == SessionWaitDetail.approval
-            && (session.tool == AgentID.claude.rawValue || session.tool == AgentID.copilot.rawValue)
+            && [AgentID.claude, .copilot, .gemini, .qwen]
+                .contains { $0.rawValue == session.tool }
     }
 
     /// A latch built from one observation, for one-shot callers.

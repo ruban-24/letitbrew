@@ -18,9 +18,10 @@ using the affected feature until it is understood.
 
 This release adds three things: closed-lid Low Power Mode in the daemon, a
 Waiting state with an input check, and app-level session activation. It also
-redesigns the menu and Settings and carries the unpublished v0.8.4 fixes, so
-run the v0.8.4 release scope below with this build too.
-Record version 1.0.0, build 41, the full commit, and artifact hashes. Before
+redesigns the menu and Settings, connects Cursor, Gemini CLI, Qwen Code, and Kimi
+Code, and carries the unpublished v0.8.4 fixes, so run the v0.8.4 release scope
+below with this build too.
+Record version 1.0.0, build 42, the full commit, and artifact hashes. Before
 starting, record `pmset -g custom | grep -E 'Power:|powermode'` and
 `pmset -g | grep SleepDisabled`. Both must read back identically after every
 case below.
@@ -187,6 +188,35 @@ to confirm the hold, and the menu to confirm the row.
 6. Start a Codex session, let it work, and `kill -9` the Codex process. On
    the next poll the row disappears and the hold releases. Repeat with a
    Claude session: same result.
+
+### Cursor, Gemini CLI, Qwen Code, and Kimi Code
+
+Real CLI runs recorded in [AGENT-HOOK-CONTRACTS.md](AGENT-HOOK-CONTRACTS.md)
+cover each agent's prompt, tool, Esc, and quit. These cases cover what those runs
+could not. They use none of the closed-lid or power cases above.
+
+1. Install this build over the previous one with Claude Code connected. Without
+   any action, Claude stays connected, because its hook command changed and the
+   app repairs it. Run a Claude prompt: the row goes Working, then Idle.
+2. In **Settings → Agents**, turn each new agent on, then off. All nine rows fit,
+   each connects, and turning it off removes only Let It Brew's entries. Turning an
+   agent on creates its configuration file even if that CLI is not installed.
+3. In Gemini or Qwen in a real terminal, approve a long command such as `sleep 60`
+   with a real key press. The row stays Working and the Mac stays held until it
+   finishes. Simulated keys do not count as input, so only this case proves it.
+4. With Claude and Cursor both connected, run one `cursor-agent` prompt. There is one
+   Cursor row and no Claude Code row. A duplicate row still holds the Mac, so it does
+   not block a release.
+5. With Claude connected and Cursor not, run one `cursor-agent` prompt. The session
+   appears as Claude Code and holds until the turn ends.
+6. In Cursor's editor agent, send one prompt and let it finish. The row goes Working,
+   then Idle.
+7. In Copilot, press Esc mid-turn. The row goes Idle.
+
+Esc during a Gemini tool leaves the turn Working until the next prompt's end, `/clear`,
+exit, Stop Tracking, or the 12-hour expiry, as with Claude. Esc at a Gemini approval
+prompt counts as a key press and holds the same way. Both are accepted limits, not
+failures.
 
 ## v0.8.4 release scope
 

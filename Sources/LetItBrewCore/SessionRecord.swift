@@ -115,7 +115,7 @@ public struct SessionRecord: Codable, Equatable, Sendable {
     public var cwd: String
     /// The agent process, found by walking the hook's parents past shell
     /// wrappers. Brings the agent's app forward from the menu and names the
-    /// app whose input can answer a Claude or Copilot approval; it never
+    /// app whose input can answer an approval that sends no hook; it never
     /// affects eviction. Nil when the walk failed.
     public var pid: Int32?
     public var updatedAt: Date

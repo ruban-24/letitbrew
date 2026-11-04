@@ -19,7 +19,8 @@ public enum HookSessionUpdater {
             trigger: payload.trigger,
             backgroundWork: payload.backgroundWork,
             hasSessionCrons: payload.hasSessionCrons,
-            errorRecoverable: payload.errorRecoverable
+            errorRecoverable: payload.errorRecoverable,
+            isInterrupt: payload.isInterrupt
         ) else { return }
 
         if agent.tracksSubagentFamilies,
@@ -242,17 +243,40 @@ public enum HookSessionUpdater {
             id: id,
             observedAt: observedAt.timeIntervalSince1970
         ) { previous in
+            // Qwen sends idle_prompt as a tool starts, within milliseconds of
+            // its PreToolUse. It does not mean the turn ended, so that
+            // PreToolUse still applies if it lands second.
             if let previousObservedAt = previous?.eventObservedAt,
-               previousObservedAt > observedAt.timeIntervalSince1970 {
+               previousObservedAt > observedAt.timeIntervalSince1970,
+               !(agent == .qwen && event == "PreToolUse"
+                   && previous?.state == .idle && previous?.lastEvent == "Notification"
+                   && previousObservedAt - observedAt.timeIntervalSince1970 < 1) {
+                return .keep
+            }
+
+            if agent == .qwen, event == "Notification",
+               payload.notificationType == "idle_prompt",
+               previous?.state == .working, previous?.lastEvent == "PreToolUse" {
                 return .keep
             }
 
             // Copilot may run its independent hook commands out of lifecycle
-            // order. A delayed SessionStart is still a creation edge, not
-            // evidence that a prompt already in its turn became idle.
-            if agent == .copilot,
+            // order, and Kimi awaits SessionStart while submitting a session's
+            // first prompt. A delayed SessionStart is still a creation edge,
+            // not evidence that a prompt already in its turn became idle.
+            if [.copilot, .gemini, .qwen, .kimi].contains(agent),
                event == "SessionStart",
                previous?.state.isInTurn == true {
+                return .keep
+            }
+
+            // Neither edge starts a turn, and each can land after its turn
+            // ended: Kimi does not wait for PermissionResult before firing
+            // Interrupt, and Cursor does not order postToolUse against stop.
+            // Reopening the turn would hold the Mac with no end edge to come.
+            if previous?.state == .idle,
+               (agent == .kimi && event == "UserInputResolved")
+                || (agent == .cursor && event == "PostToolUse") {
                 return .keep
             }
 
@@ -268,7 +292,7 @@ public enum HookSessionUpdater {
                 return .keep
             }
 
-            // Claude and Copilot also announce their question dialog with a
+            // Claude, Copilot, and Qwen also announce their question dialog with a
             // permission-style Notification about six seconds in. The question
             // is already Waiting and its answer arrives as a hook, so it must
             // not become an approval wait, which local input would latch as

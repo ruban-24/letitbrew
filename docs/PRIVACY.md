@@ -18,8 +18,8 @@ should stay awake:
 
 The process ID is used to bring the session's terminal, editor, or agent app
 forward when you click its menu row, to ignore a Waiting session whose agent
-has exited, and to find the app whose input can answer a Claude or Copilot
-approval. Let It Brew reads each ancestor's process ID, parent ID, and short
+has exited, and to find the app whose input can answer an approval that sends
+no hook. Let It Brew reads each ancestor's process ID, parent ID, and short
 command name, never its arguments or environment. When no ancestor is a regular
 app, as with a terminal host that runs detached from its app, it also reads
 the executable path of the process at the root of that chain to find the app
@@ -32,7 +32,8 @@ outputs, other tool details, or final assistant text. Only `tool_name` is reduce
 to the semantic activity token. Question text and approval details are never
 read; a Waiting record says only whether it waits for an answer or an approval.
 
-To tell whether you may have approved a Claude or Copilot prompt, the app reads
+To tell whether you may have approved a Claude, Copilot, Gemini, or Qwen prompt,
+the app reads
 how long ago a key was last pressed and a mouse button or trackpad last
 clicked, from the macOS HID system's per-event idle counters. It notes which
 app was in front at the time, from macOS's own record of the frontmost app, so
@@ -66,6 +67,10 @@ records. Downloads begin only after you confirm an available update.
 | `~/.codex/hooks.json` | Default Codex hook file. When `CODEX_HOME` is set, Let It Brew uses `<CODEX_HOME>/hooks.json`. |
 | `~/.config/opencode/plugins/letitbrew.js` | Default OpenCode plugin. When `OPENCODE_CONFIG_DIR` is set, Let It Brew uses `<OPENCODE_CONFIG_DIR>/plugins/letitbrew.js`. |
 | `~/.copilot/hooks/letitbrew.json` | Default GitHub Copilot CLI hook file. When `COPILOT_HOME` is set, Let It Brew uses `<COPILOT_HOME>/hooks/letitbrew.json`. |
+| `~/.cursor/hooks.json` | Cursor user hooks. Only Let It Brew-owned entries are changed. |
+| `~/.gemini/settings.json` | Gemini CLI user settings. Only Let It Brew-owned hook entries are changed. When `GEMINI_CLI_HOME` is set, Let It Brew uses `<GEMINI_CLI_HOME>/.gemini/settings.json`. |
+| `~/.qwen/settings.json` | Qwen Code user settings. Only Let It Brew-owned hook entries are changed. When `QWEN_HOME` is set, Let It Brew uses `<QWEN_HOME>/settings.json`. |
+| `~/.kimi-code/config.toml` | Kimi Code configuration. Only Let It Brew-owned `[[hooks]]` tables are changed. When `KIMI_CODE_HOME` is set, Let It Brew uses `<KIMI_CODE_HOME>/config.toml`. |
 
 `OPENCODE_CONFIG_DIR` selects an additional explicit configuration directory.
 It does not replace OpenCode's standard configuration roots or other plugins.

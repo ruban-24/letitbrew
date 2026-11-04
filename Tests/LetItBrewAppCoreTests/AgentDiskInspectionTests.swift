@@ -14,6 +14,10 @@ private func generatedBytes(_ agent: AgentID) -> Data {
     case .opencode: return try! OpenCodePlugin.install(into: nil, cliPath: "/letitbrew")
     case .pi: return try! PiExtension.install(into: nil, cliPath: "/letitbrew")
     case .copilot: return try! CopilotHooks.install(into: nil, cliPath: "/letitbrew")
+    case .cursor: return try! CursorHooks.install(into: nil, cliPath: "/letitbrew")
+    case .gemini: return try! GeminiHooks.adapter.install(into: nil, cliPath: "/letitbrew")
+    case .qwen: return try! QwenHooks.adapter.install(into: nil, cliPath: "/letitbrew")
+    case .kimi: return try! KimiHooks.install(into: nil, cliPath: "/letitbrew")
     }
 }
 

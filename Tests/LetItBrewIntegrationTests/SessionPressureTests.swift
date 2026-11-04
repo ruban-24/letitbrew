@@ -106,7 +106,8 @@ import Testing
 
     #expect(records.count == 100)
     #expect(Set(records.map(\.tool)) == Set(AgentID.allCases.map(\.rawValue)))
-    #expect(Dictionary(grouping: records, by: \.tool).values.allSatisfy { $0.count == 100 / AgentID.allCases.count })
+    let share = 100 / AgentID.allCases.count
+    #expect(Dictionary(grouping: records, by: \.tool).values.allSatisfy { $0.count == share || $0.count == share + 1 })
     let decision = decide(
         sessions: records,
         now: Date(timeIntervalSince1970: 2_000),
