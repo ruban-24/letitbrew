@@ -10,6 +10,31 @@ signed DMG, with Apple notarization attached, from
 
 ---
 
+## 1.0.1 (build 46)
+
+Fixed:
+
+- Opening Let It Brew's menu while a Claude, Copilot, Gemini CLI, or Qwen Code
+  approval was waiting counted as approving it. The row switched to Working and
+  kept the Mac awake, even with the lid closed, until you answered.
+- A click or key press in the agent's terminal could do the same without
+  answering the prompt.
+
+Changed:
+
+- Clicks and key presses no longer count as an answer. An approval now keeps the
+  Mac awake only while the command you approved runs. Let It Brew sees the agent
+  start it. A prompt that you deny, ignore, or leave on screen lets the Mac sleep.
+- Approvals given from another device, such as through a remote session, now
+  keep the Mac awake too.
+- Let It Brew no longer reads when you last pressed a key or clicked. While an
+  approval waits, it reads which processes that agent started, without their
+  command lines.
+- An approved MCP tool or web fetch starts no process. With the lid closed, the
+  Mac can sleep before it finishes.
+
+---
+
 ## 1.0.0 (build 45)
 
 Let It Brew 1.0.0 supports nine local coding agents on macOS 14 or later.

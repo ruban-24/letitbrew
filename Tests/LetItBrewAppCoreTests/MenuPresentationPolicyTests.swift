@@ -241,30 +241,34 @@ import LetItBrewCore
     #expect(rows.map(\.agentPID) == [812, nil])
 }
 
-@Test func menuStateHoldsAnAnsweredWaitAsWorking() {
+@Test func menuStateShowsAWaitWithARunningApprovedCommandAsWorking() {
     let since = Date(timeIntervalSince1970: 1_000)
+    let now = since.addingTimeInterval(30)
     var record = SessionRecord(
         id: "wait", tool: "claude", state: .waiting, detail: SessionWaitDetail.approval,
-        cwd: "/work/app", pid: nil, updatedAt: since
+        cwd: "/work/app", pid: 7, updatedAt: since
     )
     record.stateChangedAt = since
-    func resolve(_ input: UserInputObservation) -> MenuSessionState {
-        MenuSessionState.resolve(record, waitAnswers: .observing([record], input: input))
+    let command = AgentChildProcess(
+        pid: 70, parentPID: 7, processGroup: 70, startedAt: since.addingTimeInterval(5)
+    )
+    func resolve(_ children: [AgentChildProcess]) -> MenuSessionState {
+        MenuSessionState.resolve(
+            record, runningApprovals: .observing([record], children: children, now: now)
+        )
     }
-    #expect(resolve(.none) == .waitingForApproval)
-    #expect(resolve(.lastInput(at: since.addingTimeInterval(5))) == .working)
-    #expect(resolve(.unavailable) == .working)
+    #expect(resolve([]) == .waitingForApproval)
+    #expect(resolve([command]) == .working)
 
     record.detail = SessionWaitDetail.question
-    #expect(resolve(.none) == .waitingForAnswer)
-    // A question's answer sends a hook, so input never makes it look answered.
-    #expect(resolve(.lastInput(at: since.addingTimeInterval(5))) == .waitingForAnswer)
-    #expect(resolve(.unavailable) == .waitingForAnswer)
+    #expect(resolve([]) == .waitingForAnswer)
+    // A question's answer sends a hook, so a running command never answers it.
+    #expect(resolve([command]) == .waitingForAnswer)
     record.detail = nil
-    #expect(resolve(.none) == .waitingForAnswer)
+    #expect(resolve([]) == .waitingForAnswer)
 
     record.state = .idle
-    #expect(resolve(.unavailable) == .idle)
+    #expect(resolve([command]) == .idle)
 }
 
 @Test func sessionRowsKeepBlankToolIdentityWhileDisplayingUnknownAgent() throws {
@@ -760,7 +764,7 @@ import LetItBrewCore
             startedAt: updatedAt, accumulatedWorkingTime: 60
         )
     }
-    let latch = WaitAnswerLatch()
+    let approvals = RunningApprovals()
     let limit: TimeInterval = 7_200
     let fresh = record(id: "fresh", detail: SessionWorkDetail.backgroundShell, updatedAt: now.addingTimeInterval(-60))
     let crons = record(id: "crons", detail: SessionWorkDetail.scheduledTasks, updatedAt: now.addingTimeInterval(-60))
@@ -770,21 +774,21 @@ import LetItBrewCore
         lastEvent: "PreToolUse"
     )
 
-    #expect(MenuSessionState.resolve(fresh, waitAnswers: latch, now: now, monitoringHoldLimit: limit)
+    #expect(MenuSessionState.resolve(fresh, runningApprovals: approvals, now: now, monitoringHoldLimit: limit)
         == .monitoring)
-    #expect(MenuSessionState.resolve(crons, waitAnswers: latch, now: now, monitoringHoldLimit: limit)
+    #expect(MenuSessionState.resolve(crons, runningApprovals: approvals, now: now, monitoringHoldLimit: limit)
         == .monitoring)
-    #expect(MenuSessionState.resolve(ended, waitAnswers: latch, now: now, monitoringHoldLimit: limit)
+    #expect(MenuSessionState.resolve(ended, runningApprovals: approvals, now: now, monitoringHoldLimit: limit)
         == .leaseEnded)
-    #expect(MenuSessionState.resolve(plain, waitAnswers: latch, now: now, monitoringHoldLimit: limit)
+    #expect(MenuSessionState.resolve(plain, runningApprovals: approvals, now: now, monitoringHoldLimit: limit)
         == .working)
     // A newer edge in the same family renews the lease, as in decide().
     let edges = MonitoringLease.latestEdges([ended]).mapValues { _ in now }
     #expect(MenuSessionState.resolve(
-        ended, waitAnswers: latch, now: now, familyEdges: edges, monitoringHoldLimit: limit
+        ended, runningApprovals: approvals, now: now, familyEdges: edges, monitoringHoldLimit: limit
     ) == .monitoring)
     // Without a clock the lease is never treated as ended.
-    #expect(MenuSessionState.resolve(ended, waitAnswers: latch) == .monitoring)
+    #expect(MenuSessionState.resolve(ended, runningApprovals: approvals) == .monitoring)
 
     let rows = MenuSessionPresentationPolicy.rows(from: [
         input(id: "fresh", state: .monitoring, updatedAt: now),

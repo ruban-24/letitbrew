@@ -75,7 +75,7 @@ public struct ClaudeStyleHooks: Sendable {
 
 /// Gemini CLI's user settings. Its approval prompt sends a `ToolPermission`
 /// notification after `BeforeTool`, and approving it sends no hook until
-/// `AfterTool`, so local input latches the answer, as with Claude.
+/// `AfterTool`, so its running command holds the wait, as with Claude.
 public enum GeminiHooks {
     public static let marker = "__letitbrew_gemini_hook"
 
@@ -107,7 +107,7 @@ public enum GeminiHooks {
 
 /// Qwen Code's user settings. Its approval prompt sends `permission_prompt`
 /// after `PreToolUse`, and approving it sends no hook until `PostToolUse`, so
-/// local input latches the answer, as with Claude. `PermissionRequest` runs
+/// its running command holds the wait, as with Claude. `PermissionRequest` runs
 /// before Qwen decides, so it is not installed. Esc fires no `Stop`: it sends
 /// `idle_prompt`, or `PostToolUseFailure` with `is_interrupt` during a tool.
 public enum QwenHooks {

@@ -16,8 +16,8 @@ struct LetItBrewSnapshot: Sendable {
     let power: PowerState
     let clamshell: ClamshellStateReading
     let displays: ActiveDisplayTopologyReading
-    /// Consulted only for Waiting sessions; see `WaitAnswerLatch`.
-    let answerInput: UserAnswerInputReading?
+    /// Children of agents with an approval wait; see `RunningApprovals`.
+    let agentChildren: [AgentChildProcess]
     let now: Date
 }
 
@@ -348,7 +348,6 @@ final class LetItBrewAppModel: ObservableObject {
     private var pollTask: Task<Void, Never>?
     private var updateResultTask: Task<Void, Never>?
     private var automaticUpdateTask: Task<Void, Never>?
-    private var frontmostAppTask: Task<Void, Never>?
     private var latestSnapshot: LetItBrewSnapshot?
     private var latestAppliedSnapshotAt: Date?
     private var daemonConnection: DaemonConnection?
@@ -370,18 +369,6 @@ final class LetItBrewAppModel: ObservableObject {
     /// Sources already in Low Power Mode before the switch: that mode stays the
     /// person's own, so "Respect Low Power Mode" still applies to it.
     private var personalLowPowerSources: Set<PowerModeSource> = []
-    /// Waits that a key press or click may have answered.
-    private var waitAnswers = WaitAnswerLatch()
-    /// Input aimed at this app's own menu never answers an agent's wait.
-    private var ownMenuInputFilter = OwnMenuInputFilter()
-    /// Which app each key press or click went to, so only input in a
-    /// session's own app can answer its approval.
-    private var inputAttribution = FrontmostInputAttribution()
-    /// Input times read as the front app changed, credited once they settle.
-    private var unsettledInputTimes: [Date] = []
-    /// The app hosting each silently answered wait's agent, resolved once per
-    /// agent process; nil when no app hosts it, as under tmux.
-    private var waitHostApps: [Int32: Int32?] = [:]
     private var requestedSystemHold = false
     private var lastDaemonAttempt = Date.distantPast
     private var nextDaemonHealthCheck = Date.distantPast
@@ -491,7 +478,6 @@ final class LetItBrewAppModel: ObservableObject {
         presentUnselectedAgents()
 
         if startsPolling {
-            startFollowingFrontmostApp()
             startPolling()
             startPendingUpdateResultPolling()
             runDaemonRecovery(trigger: .automaticLaunch)
@@ -514,7 +500,6 @@ final class LetItBrewAppModel: ObservableObject {
         pollTask?.cancel()
         updateResultTask?.cancel()
         automaticUpdateTask?.cancel()
-        frontmostAppTask?.cancel()
         daemonRecoveryTask?.cancel()
         powerAssertion.setSystemHold(false, reason: "Let It Brew quit")
         powerAssertion.setDisplayHold(false, reason: "Let It Brew quit")
@@ -941,75 +926,6 @@ final class LetItBrewAppModel: ObservableObject {
 
     func revealSessionFolder() {
         NSWorkspace.shared.open(SessionStorage.sessionsDirectory)
-    }
-
-    func menuDidOpen() {
-        let now = Date()
-        ownMenuInputFilter.menuOpened(
-            at: now, lastClick: CGUserAnswerInput().current(now: now)?.lastClick
-        )
-    }
-
-    func menuDidClose() {
-        ownMenuInputFilter.menuClosed(at: Date())
-    }
-
-    /// Credits input to the app that was in front when it happened. Each
-    /// switch is recorded as it happens, because the HID counters keep only
-    /// the latest event and a poll may come too late to credit it.
-    private func startFollowingFrontmostApp() {
-        let workspace = NSWorkspace.shared
-        inputAttribution.activate(workspace.frontmostApplication?.processIdentifier, at: Date())
-        frontmostAppTask = Task { [weak self] in
-            let activations = workspace.notificationCenter.notifications(
-                named: NSWorkspace.didActivateApplicationNotification
-            ).map {
-                ($0.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?
-                    .processIdentifier
-            }
-            for await app in activations {
-                guard let self else { return }
-                let now = Date()
-                // Read before a later event replaces it: an Enter that
-                // approved, then the Cmd-Tab away, are each only the latest.
-                if let reading = CGUserAnswerInput().current(now: now) {
-                    self.unsettledInputTimes += [reading.lastKeyPress, reading.lastClick]
-                }
-                self.inputAttribution.activate(app, at: now)
-            }
-        }
-    }
-
-    private func creditInput(_ reading: UserAnswerInputReading?, now: Date) {
-        // A switch whose notification has not arrived yet is the newest.
-        inputAttribution.activate(NSWorkspace.shared.frontmostApplication?.processIdentifier, at: Date())
-        var times = Set(unsettledInputTimes)
-        if let reading { times.formUnion([reading.lastKeyPress, reading.lastClick]) }
-        unsettledInputTimes = []
-        for time in times where time != .distantPast {
-            switch ownMenuInputFilter.counts(time, now: now) {
-            case nil: unsettledInputTimes.append(time)
-            case true?: inputAttribution.credit(inputAt: time)
-            case false?: break
-            }
-        }
-    }
-
-    private func hostApps(forSilentWaitsIn sessions: [SessionRecord]) -> [Int32: Int32] {
-        let agents = Set(sessions.filter(WaitAnswerLatch.answerIsSilent).compactMap(\.pid))
-        waitHostApps = waitHostApps.filter { agents.contains($0.key) }
-        var hosts: [Int32: Int32] = [:]
-        for agent in agents {
-            let host: Int32?
-            if let cached = waitHostApps[agent] {
-                host = cached
-            } else {
-                host = SessionHostActivator.hostApp(of: agent)?.processIdentifier
-                waitHostApps[agent] = host
-            }
-            if let host { hosts[agent] = host }
-        }
-        return hosts
     }
 
     /// Brings forward the terminal, editor, or agent app running a session.
@@ -2077,7 +1993,9 @@ final class LetItBrewAppModel: ObservableObject {
                 power: IOKitPowerSource().current(),
                 clamshell: clamshellMonitor.currentClamshellState(),
                 displays: activeDisplayMonitor.currentDisplayTopology(),
-                answerInput: CGUserAnswerInput().current(now: sessions.now),
+                agentChildren: AgentChildProcesses().current(
+                    of: RunningApprovals.agentsToRead(sessions.sessions)
+                ) ?? [],
                 now: sessions.now
             )
             return (snapshot: snapshot, startedAt: sessions.readStartedAt)
@@ -2176,7 +2094,7 @@ final class LetItBrewAppModel: ObservableObject {
             power: snapshot.power,
             clamshell: snapshot.clamshell,
             displays: snapshot.displays,
-            answerInput: snapshot.answerInput,
+            agentChildren: snapshot.agentChildren,
             now: snapshot.now
         ))
     }
@@ -2201,26 +2119,19 @@ final class LetItBrewAppModel: ObservableObject {
         settings.allowDisplaysToSleep = allowDisplaysToSleep
         settings.lidClosedFollowsSession = keepWorkingWithLidClosed
         currentPower = snapshot.power
-        let input = ownMenuInputFilter.observation(snapshot.answerInput, now: snapshot.now)
-        if readsLiveState {
-            creditInput(snapshot.answerInput, now: snapshot.now)
-        }
         // A session whose recorded agent process has exited neither shows nor
         // holds. The same rule feeds `letitbrew watch` and `status`.
         let liveSessions = SessionStore.excludingExitedAgents(snapshot.sessions)
-        let hosts = hostApps(forSilentWaitsIn: liveSessions)
-        waitAnswers.observe(liveSessions) { wait in
-            // An agent with no known app falls back to input anywhere.
-            guard let agent = wait.pid, let host = hosts[agent] else { return input }
-            return inputAttribution.observation(forApp: host, global: input)
-        }
+        let runningApprovals = RunningApprovals.observing(
+            liveSessions, children: snapshot.agentChildren, now: snapshot.now
+        )
 
         let familyEdges = MonitoringLease.latestEdges(liveSessions)
         let nextSessions = MenuSessionPresentationPolicy.rows(
             from: liveSessions.map {
                 Self.menuInput(
                     $0,
-                    waitAnswers: waitAnswers,
+                    runningApprovals: runningApprovals,
                     now: snapshot.now,
                     familyEdges: familyEdges,
                     monitoringHoldLimit: settings.monitoringHoldLimit
@@ -2241,7 +2152,7 @@ final class LetItBrewAppModel: ObservableObject {
             now: snapshot.now,
             settings: settings,
             power: snapshot.power,
-            waitAnswers: waitAnswers,
+            runningApprovals: runningApprovals,
             lowPowerModeOwnedByLetItBrew: ownsLowPowerMode(
                 at: snapshot.now,
                 onBattery: snapshot.power.onBattery
@@ -2613,14 +2524,14 @@ final class LetItBrewAppModel: ObservableObject {
 
     private static func menuInput(
         _ record: SessionRecord,
-        waitAnswers: WaitAnswerLatch,
+        runningApprovals: RunningApprovals,
         now: Date,
         familyEdges: [String: Date],
         monitoringHoldLimit: TimeInterval
     ) -> SessionMenuInput {
         let state = MenuSessionState.resolve(
             record,
-            waitAnswers: waitAnswers,
+            runningApprovals: runningApprovals,
             now: now,
             familyEdges: familyEdges,
             monitoringHoldLimit: monitoringHoldLimit
@@ -2659,10 +2570,7 @@ extension LetItBrewAppModel {
             power: power,
             clamshell: .open,
             displays: .noExternalDisplay,
-            answerInput: UserAnswerInputReading(
-                lastKeyPress: .distantPast,
-                lastClick: .distantPast
-            ),
+            agentChildren: [],
             now: now
         ))
         return model

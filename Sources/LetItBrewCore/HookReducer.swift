@@ -4,8 +4,8 @@ import Foundation
 public enum SessionState: String, Codable, Sendable, Equatable {
     case working
     /// Blocked on the person: a question or an approval prompt. The detail
-    /// token says which. A wait releases the hold until local input suggests
-    /// someone may have answered; see `WaitAnswerLatch`. Its stored value is
+    /// token says which. A wait releases the hold unless its approved command
+    /// is running; see `RunningApprovals`. Its stored value is
     /// not "waiting": pre-0.5 records used that name with other semantics and
     /// remain unsupported.
     case waiting = "awaiting_input"

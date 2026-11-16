@@ -393,16 +393,20 @@ private final class Replay {
         )
     }
 
-    /// Whether the Mac holds, with local input this long after the latest hook.
-    func holds(lastInput: TimeInterval?) throws -> Bool {
-        let record = try #require(record)
-        let latch = WaitAnswerLatch.observing(
-            [record], input: lastInput.map { .lastInput(at: Date(timeIntervalSince1970: clock + $0)) } ?? .none
-        )
+    /// Whether the Mac holds, with an approved command that the agent started
+    /// this long after the latest hook still running.
+    func holds(commandStartedAfter delay: TimeInterval?) throws -> Bool {
+        var record = try #require(record)
+        record.pid = 4_242
+        let now = Date(timeIntervalSince1970: clock + 5)
+        let children = delay.map {
+            [AgentChildProcess(pid: 4_243, parentPID: 4_242, processGroup: 4_243,
+                               startedAt: Date(timeIntervalSince1970: clock + $0))]
+        } ?? []
         return decide(
-            sessions: [record], now: Date(timeIntervalSince1970: clock + 2), settings: Settings(),
+            sessions: [record], now: now, settings: Settings(),
             power: PowerState(onBattery: false, batteryPercent: 100, thermal: .nominal),
-            waitAnswers: latch
+            runningApprovals: .observing([record], children: children, now: now)
         ).holdLidClosed
     }
 }
@@ -412,7 +416,7 @@ private final class Replay {
     try replay.send("beforeSubmitPrompt")
     // An approval prompt sends nothing Cursor's adapter installs, as with Codex.
     #expect(replay.record?.state == .working)
-    #expect(try replay.holds(lastInput: 1))
+    #expect(try replay.holds(commandStartedAfter: 1))
     try replay.send("postToolUse", tool: "Shell")
     #expect(replay.record?.state == .working)
     try replay.send("stop")
@@ -441,9 +445,9 @@ private final class Replay {
     #expect(replay.record?.state == .working)
     try replay.send("Notification", notification: "ToolPermission")
     #expect(replay.record?.state == .waiting)
-    #expect(try !replay.holds(lastInput: nil))
-    // Approving sends nothing until AfterTool, so the tool holds on input alone.
-    #expect(try replay.holds(lastInput: 1))
+    #expect(try !replay.holds(commandStartedAfter: nil))
+    // Approving sends nothing until AfterTool, so only the running command holds.
+    #expect(try replay.holds(commandStartedAfter: 1))
     try replay.send("AfterTool", tool: "run_shell_command")
     #expect(replay.record?.state == .working)
     try replay.send("AfterAgent")
@@ -452,13 +456,13 @@ private final class Replay {
     #expect(replay.record == nil)
 }
 
-@Test func geminiQuestionToolWaitsWithoutTheApprovalLatch() throws {
+@Test func geminiQuestionToolWaitsWithoutApprovalDetection() throws {
     let replay = Replay(.gemini)
     try replay.send("BeforeAgent")
     try replay.send("BeforeTool", tool: "ask_user")
     try replay.send("Notification", notification: "ToolPermission")
     #expect(replay.record?.detail == SessionWaitDetail.question)
-    #expect(try !replay.holds(lastInput: 1))
+    #expect(try !replay.holds(commandStartedAfter: 1))
     try replay.send("AfterTool", tool: "ask_user")
     #expect(replay.record?.state == .working)
 }
@@ -469,7 +473,7 @@ private final class Replay {
     try replay.send("PreToolUse", tool: "run_shell_command")
     try replay.send("Notification", notification: "idle_prompt")
     #expect(replay.record?.state == .working)
-    #expect(try replay.holds(lastInput: nil))
+    #expect(try replay.holds(commandStartedAfter: nil))
     try replay.send("PostToolUse", tool: "run_shell_command")
     try replay.send("Stop")
     #expect(replay.record?.state == .idle)
@@ -494,8 +498,8 @@ private final class Replay {
     try replay.send("Notification", notification: "idle_prompt")
     try replay.send("Notification", notification: "permission_prompt")
     #expect(replay.record?.state == .waiting)
-    #expect(try !replay.holds(lastInput: nil))
-    #expect(try replay.holds(lastInput: 1))
+    #expect(try !replay.holds(commandStartedAfter: nil))
+    #expect(try replay.holds(commandStartedAfter: 1))
     try replay.send("PostToolUse", tool: "run_shell_command")
     #expect(replay.record?.state == .working)
 }
@@ -539,8 +543,8 @@ private final class Replay {
     #expect(replay.record?.state == .working)
     try replay.send("PermissionRequest", tool: "Bash", agentId: "main")
     #expect(replay.record?.state == .waiting)
-    // The answer has its own hook, so input means nothing here.
-    #expect(try !replay.holds(lastInput: 1))
+    // The answer has its own hook, so a running command means nothing here.
+    #expect(try !replay.holds(commandStartedAfter: 1))
     try replay.send("PermissionResult", tool: "Bash", agentId: "main")
     #expect(replay.record?.state == .working)
     try replay.send("PreToolUse", tool: "AskUserQuestion")

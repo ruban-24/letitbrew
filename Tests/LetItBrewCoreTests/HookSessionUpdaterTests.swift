@@ -1748,7 +1748,7 @@ import Testing
     #expect(record.state == .waiting)
     #expect(record.detail == SessionWaitDetail.question)
     #expect(record.lastEvent == "PreToolUse")
-    #expect(!WaitAnswerLatch.answerIsSilent(record))
+    #expect(!RunningApprovals.answerIsSilent(record))
 
     // The answer still arrives as a hook and resumes the turn.
     try applyHooks([("PostToolUse", #","tool_name":"AskUserQuestion""#), ("Stop", "")],

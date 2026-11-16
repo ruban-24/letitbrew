@@ -14,6 +14,28 @@ If a safety or power test fails, stop with physical access to the Mac, preserve
 the original `SleepDisabled` baseline, record the exact reproduction, and stop
 using the affected feature until it is understood.
 
+## v1.0.1 release scope
+
+This release replaces the input check for Claude, Copilot, Gemini, and Qwen
+approvals. A click or key press no longer counts as an answer; an approval holds
+only while the approved command runs. Record version 1.0.1, build 46, the full
+commit, and artifact hashes, and `pmset -g | grep SleepDisabled` before and after.
+
+1. Connect each of the four agents in Settings → Agents, then run
+   `swift build` and `scripts/check-approval-hold.py claude`, then `copilot`,
+   `gemini`, and `qwen`. Each prints three PASS lines: an unanswered approval is
+   not running, an approved one is, and a denied one is not.
+2. With a Claude approval showing "Needs your approval", open and close Let It
+   Brew's menu, click in the terminal, and type in another pane without
+   answering. Confirm the row stays "Needs your approval" and the menu header
+   does not count it as working.
+3. Approve `for i in $(seq 13); do date +%T | tee -a heartbeat.log; sleep 5; done`
+   on battery, then close the lid within ten seconds. After two minutes, open it:
+   the timestamps continue without a gap, and `pmset -g log` shows a Clamshell
+   Sleep a few seconds after the last one.
+4. Deny an approval with Esc, and leave another unanswered. Confirm each row
+   lets the Mac sleep.
+
 ## v1.0.0 release scope
 
 This release adds three things: closed-lid Low Power Mode in the daemon, a

@@ -60,21 +60,21 @@ func activityAfterAbortProtectsNewWork(event: String) {
     ) == claude)
 }
 
-@Test func cancellationClearsTheAnsweredApprovalLatchAndItsSleepHold() {
-    let waiting = cancellationRecord()
+@Test func cancellationReleasesARunningApprovalsSleepHold() {
+    var waiting = cancellationRecord()
+    waiting.pid = 4_242
     let now = Date(timeIntervalSince1970: 111)
     let power = PowerState(onBattery: false, batteryPercent: 100, thermal: .nominal)
-    var latch = WaitAnswerLatch.observing(
-        [waiting], input: .lastInput(at: Date(timeIntervalSince1970: 110))
-    )
-    #expect(decide(sessions: [waiting], now: now, settings: Settings(),
-                   power: power, waitAnswers: latch).holdLidClosed)
+    let command = [AgentChildProcess(pid: 4_243, parentPID: 4_242, processGroup: 4_243,
+                                     startedAt: Date(timeIntervalSince1970: 105))]
+    #expect(decide(sessions: [waiting], now: now, settings: Settings(), power: power,
+                   runningApprovals: .observing([waiting], children: command, now: now))
+        .holdLidClosed)
     let cancelled = CopilotCancellation.reconcile(
         waiting, tail: Data(cancellationEvent("abort").utf8)
     )
-    latch.observe([cancelled], input: .none)
-    let decision = decide(sessions: [cancelled], now: now, settings: Settings(),
-                          power: power, waitAnswers: latch)
+    let decision = decide(sessions: [cancelled], now: now, settings: Settings(), power: power,
+                          runningApprovals: .observing([cancelled], children: command, now: now))
     #expect(!decision.holdSystem)
     #expect(!decision.holdLidClosed)
     let resumed = CopilotCancellation.reconcile(

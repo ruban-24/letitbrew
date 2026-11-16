@@ -132,11 +132,9 @@ struct MenuBarContentView: View {
         // Polling updates content in place. Only an explicit disclosure click
         // animates layout, so background work cannot animate the scroll area.
         .onAppear {
-            model.menuDidOpen()
             updateExpansionState()
         }
         .onDisappear {
-            model.menuDidClose()
             expandedRepositoryID = nil
             initializedExpansion = false
             hoveredFolderRows = [:]

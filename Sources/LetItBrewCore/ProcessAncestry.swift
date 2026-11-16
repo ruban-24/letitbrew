@@ -16,8 +16,8 @@ public struct ProcessIdentity: Equatable, Sendable {
 }
 
 /// Walks process parents to find the agent that ran a hook, and later the app
-/// that hosts that agent: to bring it forward when the person clicks a
-/// session, and to tell which app's input can answer an approval.
+/// that hosts that agent, to bring it forward when the person clicks a
+/// session.
 public enum ProcessAncestry {
     public typealias Lookup = @Sendable (Int32) -> ProcessIdentity?
 

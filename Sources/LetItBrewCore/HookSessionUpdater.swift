@@ -295,8 +295,8 @@ public enum HookSessionUpdater {
             // Claude, Copilot, and Qwen also announce their question dialog with a
             // permission-style Notification about six seconds in. The question
             // is already Waiting and its answer arrives as a hook, so it must
-            // not become an approval wait, which local input would latch as
-            // answered and hold the Mac awake for an unanswered question.
+            // not become an approval wait, which would ask for the wrong thing
+            // and be judged by a running command instead of that hook.
             if event == "Notification",
                case .set(.waiting, SessionWaitDetail.approval) = effect,
                previous?.state == .waiting,

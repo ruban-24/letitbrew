@@ -39,7 +39,7 @@ case "status":
 case "repair":
     exit(runRepair())
 case "--version":
-    print("letitbrew 1.0.0")
+    print("letitbrew 1.0.1")
     exit(0)
 default:
     print("""

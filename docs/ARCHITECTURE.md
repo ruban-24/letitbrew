@@ -101,12 +101,12 @@ The common lifecycle mapping is:
   request another hook or auto mode settles never sends it. Claude and Copilot
   send the same notification for their question dialogs, so a session already
   Waiting on a question keeps that question: its answer is a hook, whereas an
-  approval wait is latched as answered by local input. `PermissionRequest`
+  approval wait holds only while its approved command runs. `PermissionRequest`
   for Claude and Codex returns no effect: both run it before another hook, auto
   mode, or Codex's auto-reviewer decides, so it does not prove a person is
   being asked. Cursor sends no signal for a prompt on screen, so like Codex its
   approvals stay Working. Gemini's `ToolPermission` and Qwen's `permission_prompt`
-  set Waiting, and are latched by local input as with Claude. Kimi's
+  set Waiting, and hold while the approved command runs, as with Claude. Kimi's
   `PermissionRequest` sets Waiting and its `PermissionResult` reports the answer.
 - `SubagentStop` and `SessionEnd` remove the addressed active record. For Claude
   and Codex, a parent `SessionEnd` also removes its children. Codex can omit a
@@ -158,43 +158,34 @@ Each adapter's exact source-event vocabulary is frozen in
 not infer a state.
 
 `Decision.decide()` is a pure function over sessions, settings, power state,
-local input, and whether Let It Brew owns the current Low Power Mode. It is
+running approved commands, and whether Let It Brew owns the current Low Power Mode. It is
 where the battery floor and thermal release live. `PowerState.trusted` exists
 so a *failed* IOKit read is never mistaken for "this machine has no battery" —
 an untrusted reading must not bypass the battery floor.
 
 A Waiting session releases the hold, with no grace period. Every question,
-and every OpenCode and Pi wait, reports its answer with a hook, so those waits
-never consult input. Approving a Claude, Copilot, Gemini, or Qwen prompt fires no
-hook before the approved tool finishes, so for those approvals `WaitAnswerLatch` treats a key
-press or click after the wait began as a possible answer: the session holds
-again, and is shown as Working, until its next hook. Only input that went to
-the session's own app counts: `FrontmostInputAttribution` credits each input to
-the app in front when it happened, sampling the counters on every poll and on
-every activation change, and the app is the one the menu brings forward for
-that session. Typing in a chat therefore cannot answer a terminal's prompt. A
-session whose app is unknown, as under tmux, falls back to input in any app.
-The click that brings the app forward counts for it, because the app may act
-on that first click. Input from before the first activation Let It Brew saw,
-such as an approval made before it relaunched, counts for every app. Claude's
-permission notification also accepts input up to three seconds before it,
-because it arrives about six seconds after its prompt and can land just after
-the answering keystroke. Copilot's accepts one second, a margin for hook
-delivery that the Enter submitting a turn seconds earlier does not reach.
-Input from the last half second waits for the next poll, so the menu can
-report that it opened before its own opening click is judged. Pointer movement
-and scrolling never count. `OwnMenuInputFilter` discards the status-item click
-that opened Let It Brew's menu, recognized as the latest click when the menu
-reports opening, and key presses and clicks while the menu is open, so
-checking the menu cannot answer a wait while an answer just before it still
-counts. A menu that never reports closing stops discarding after five minutes.
-The times come from the HID system's per-event idle counters,
-which need no permission; an unreadable counter keeps those approvals held. Because the
-counters report only each kind's latest event, the latch keeps a wait answered
-for its lifetime once any poll saw an answer. The worst case for a Claude
-approval is the hold it kept before Waiting existed. An approval given from
-another device while the lid is open has no local input and can still let the
-Mac sleep before the approved tool finishes.
+and every OpenCode and Pi wait, reports its answer with a hook. Approving a
+Claude, Copilot, Gemini, or Qwen prompt fires no hook before the approved tool
+finishes, so for those approvals `RunningApprovals` looks for the approved
+command itself. Each of these agents runs a tool command as a direct child that
+leads its own process group, so cancelling can stop the command's whole tree:
+Claude's command shell, Copilot's and Qwen's `bash -c` (or the program it
+becomes), and Gemini's detached or pseudo-terminal shell. The agent's own
+helpers, such as `caffeinate`, MCP servers, and update checks, stay in the
+agent's group. While a wait lasts, the app reads the children of that session's
+agent process from the kernel's process table, with no command lines, and the
+session holds, shown as Working, while one of them leads its own group, started
+no earlier than the wait (less three seconds for Claude, whose notification
+arrives about six seconds after its prompt, and one second for the others),
+and has run for at least two seconds. Hooks also lead their own groups but
+finish well within that; a hook that runs longer shows Working only while it
+runs. Nothing is remembered between polls, so the hold ends when the command
+does, and a command from an earlier approval that is still running does not
+answer a newer wait. Clicks and key presses are never read: they cannot tell an
+approval from a stray click, and a stray click must not keep a Mac awake. A
+wait whose agent process is unknown, or whose process table cannot be read,
+releases. An approved MCP tool or web fetch starts no process, so with the lid
+closed the Mac can sleep before it finishes.
 
 "Respect Low Power Mode" releases on Low Power Mode only when it is the
 person's own. While Let It Brew's closed-lid switch is confirmed, `decide()`

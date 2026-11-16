@@ -57,16 +57,16 @@ subfolder, mounted DMG, or Downloads disables closed-lid management.
 **Do settings survive an update?** Yes. Updating replaces the app bundle while
 leaving preferences, agent connections, and session data in place. About 30
 seconds after launch, Let It Brew checks GitHub for release metadata if it has
-not attempted an automatic check in the previous 24 hours. In version 1.0.0, use **Settings → General → Check for Updates…**.
+not attempted an automatic check in the previous 24 hours. In version 1.0.0 and later, use **Settings → General → Check for Updates…**.
 In older versions, use **Settings → About**. Downloads always require confirmation.
 
-To update from v0.6.5 or earlier to 1.0.0, replace the app manually.
+To update from v0.6.5 or earlier to 1.0.1, replace the app manually.
 The old updater rejects the layout of the DMG. The withdrawn v0.7.0 also needs
 manual replacement. Do not uninstall first. Your preferences, agent connections,
 and session data stay in place.
 
 1. Quit Let It Brew.
-2. Download the 1.0.0 DMG from GitHub Releases.
+2. Download the 1.0.1 DMG from GitHub Releases.
 3. Open the DMG.
 4. Drag Let It Brew.app to Applications.
 5. When Finder asks, choose **Replace**.

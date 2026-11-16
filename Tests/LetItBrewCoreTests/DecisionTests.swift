@@ -289,58 +289,95 @@ private func waiting(
     return record
 }
 
-private func answers(
-    _ sessions: [SessionRecord],
-    input: UserInputObservation
-) -> WaitAnswerLatch {
-    .observing(sessions, input: input)
+/// A child of `agent` started at `startedAt`. An approved command leads its
+/// own process group; the agent's helpers stay in the agent's group.
+private func child(
+    startedAt: Date,
+    pid: Int32 = 50,
+    agent: Int32 = 1,
+    ownGroup: Bool = true
+) -> AgentChildProcess {
+    AgentChildProcess(
+        pid: pid, parentPID: agent, processGroup: ownGroup ? pid : agent, startedAt: startedAt
+    )
 }
 
-@Test func waitingSessionsReleaseWithoutInput() {
+private func approvals(
+    _ sessions: [SessionRecord],
+    _ children: [AgentChildProcess]
+) -> RunningApprovals {
+    .observing(sessions, children: children, now: now)
+}
+
+private func holds(_ sessions: [SessionRecord], _ children: [AgentChildProcess]) -> Bool {
+    decide(
+        sessions: sessions, now: now, settings: Settings(), power: plugged,
+        runningApprovals: approvals(sessions, children)
+    ).holdSystem
+}
+
+@Test func waitingSessionsReleaseWithoutARunningCommand() {
     for detail in [SessionWaitDetail.question, SessionWaitDetail.approval] {
         let sessions = [waiting(detail)]
         let decision = decide(
             sessions: sessions, now: now, settings: Settings(), power: plugged,
-            waitAnswers: answers(sessions, input: .lastInput(at: now.addingTimeInterval(-600)))
+            runningApprovals: approvals(sessions, [])
         )
         #expect(!decision.holdSystem)
         #expect(!decision.holdLidClosed)
         #expect(decision.reason == "agents waiting for you")
     }
-    // Callers that observe no input default to releasing.
+    // Callers that read no processes default to releasing.
     #expect(!decide(
         sessions: [waiting()], now: now, settings: Settings(), power: plugged
     ).holdSystem)
 }
 
-@Test func inputAfterAWaitBeganHoldsUntilTheNextHook() {
+@Test func anApprovedCommandHoldsOnlyWhileItRuns() {
     let since = now.addingTimeInterval(-60)
-    let sessions = [waiting(SessionWaitDetail.approval, since: since)]
-    let answered = decide(
+    let sessions = [waiting(since: since)]
+    let command = child(startedAt: since.addingTimeInterval(30))
+    let running = decide(
         sessions: sessions, now: now, settings: Settings(), power: plugged,
-        waitAnswers: answers(sessions, input: .lastInput(at: since.addingTimeInterval(30)))
+        runningApprovals: approvals(sessions, [command])
     )
-    #expect(answered.holdSystem)
-    #expect(answered.holdLidClosed)
-    #expect(answered.reason == "1 working")
+    #expect(running.holdSystem)
+    #expect(running.holdLidClosed)
+    #expect(running.reason == "1 working")
+    // Nothing is remembered: once the command exits, the wait releases.
+    #expect(!holds(sessions, []))
 }
 
-@Test func inputJustBeforeAClaudePermissionNotificationStillCounts() {
+@Test func strayInputCanNoLongerHoldAWait() {
+    // Clicks and key presses are not an input to the decision at all; a wait
+    // with no command running releases however recently someone clicked.
+    let sessions = [waiting(since: now.addingTimeInterval(-5))]
+    #expect(!holds(sessions, []))
+}
+
+@Test func theAgentsOwnHelpersNeverCount() {
+    // `caffeinate`, MCP servers, and update checks stay in the agent's group.
     let since = now.addingTimeInterval(-60)
-    let tolerance = WaitAnswerLatch.answerLeadTolerance
+    let sessions = [waiting(since: since)]
+    #expect(!holds(sessions, [child(startedAt: since.addingTimeInterval(5), ownGroup: false)]))
+}
+
+@Test func shortLivedHooksNeverCount() {
+    // Hooks also lead their own groups but finish well within the minimum run time.
+    let sessions = [waiting(since: now.addingTimeInterval(-60))]
+    let minimum = RunningApprovals.minimumRunTime
+    #expect(!holds(sessions, [child(startedAt: now.addingTimeInterval(-minimum + 0.5))]))
+    #expect(holds(sessions, [child(startedAt: now.addingTimeInterval(-minimum))]))
+}
+
+@Test func aCommandStartedJustBeforeAClaudePermissionNotificationStillCounts() {
+    let since = now.addingTimeInterval(-60)
+    let tolerance = RunningApprovals.answerLeadTolerance
     var notified = waiting(SessionWaitDetail.approval, since: since)
     notified.lastEvent = "Notification"
-    let sessions = [notified]
-    #expect(decide(
-        sessions: sessions, now: now, settings: Settings(), power: plugged,
-        waitAnswers: answers(sessions, input: .lastInput(at: since.addingTimeInterval(-tolerance)))
-    ).holdSystem)
-    #expect(!decide(
-        sessions: sessions, now: now, settings: Settings(), power: plugged,
-        waitAnswers: answers(
-            sessions, input: .lastInput(at: since.addingTimeInterval(-tolerance - 1))
-        )
-    ).holdSystem)
+    #expect(holds([notified], [child(startedAt: since.addingTimeInterval(-tolerance))]))
+    // A command that was already running, such as a background task, does not.
+    #expect(!holds([notified], [child(startedAt: since.addingTimeInterval(-tolerance - 1))]))
 }
 
 @Test func copilotPromptsKeepOnlyASmallLeadForHookDelivery() {
@@ -349,21 +386,21 @@ private func answers(
     wait.lastEvent = "Notification"
     wait.eventObservedAt = since.timeIntervalSince1970 + 0.8
     let notified = Date(timeIntervalSince1970: wait.eventObservedAt!)
-    let lead = WaitAnswerLatch.copilotAnswerLeadTolerance
-    func holds(_ input: Date) -> Bool {
-        decide(
-            sessions: [wait], now: now, settings: Settings(), power: plugged,
-            waitAnswers: answers([wait], input: .lastInput(at: input))
-        ).holdSystem
-    }
-    // An answer just before the hook landed still counts.
-    #expect(holds(notified.addingTimeInterval(-lead)))
-    // The Enter that submitted the turn seconds earlier does not.
-    #expect(!holds(notified.addingTimeInterval(-lead - 0.5)))
-    #expect(holds(since.addingTimeInterval(2)))
+    let lead = RunningApprovals.copilotAnswerLeadTolerance
+    #expect(holds([wait], [child(startedAt: notified.addingTimeInterval(-lead))]))
+    #expect(!holds([wait], [child(startedAt: notified.addingTimeInterval(-lead - 0.5))]))
+    #expect(holds([wait], [child(startedAt: since.addingTimeInterval(2))]))
 }
 
-@Test func waitsWhoseAnswerSendsAHookNeverConsultInput() {
+@Test func aCommandFromAnEarlierApprovalDoesNotAnswerANewerOne() {
+    // A parallel tool call approved earlier keeps running while the next
+    // approval waits; the newer wait still needs the person.
+    let since = now.addingTimeInterval(-30)
+    let sessions = [waiting(since: since, transition: "wait-2")]
+    #expect(!holds(sessions, [child(startedAt: since.addingTimeInterval(-20))]))
+}
+
+@Test func waitsWhoseAnswerSendsAHookNeverConsultProcesses() {
     let since = now.addingTimeInterval(-60)
     let reported: [(AgentID, String)] = [
         (.claude, SessionWaitDetail.question), (.codex, SessionWaitDetail.question),
@@ -372,99 +409,65 @@ private func answers(
     ]
     for (tool, detail) in reported {
         let sessions = [waiting(detail, tool: tool, since: since)]
-        for input in [UserInputObservation.unavailable, .lastInput(at: since.addingTimeInterval(5))] {
-            let latch = answers(sessions, input: input)
-            #expect(!latch.mayHaveBeenAnswered(sessions[0]), "\(tool) \(detail)")
-            #expect(!decide(
-                sessions: sessions, now: now, settings: Settings(), power: plugged,
-                waitAnswers: latch
-            ).holdSystem)
-        }
+        let running = approvals(sessions, [child(startedAt: since.addingTimeInterval(5))])
+        #expect(!running.isRunning(sessions[0]), "\(tool) \(detail)")
+        #expect(!decide(
+            sessions: sessions, now: now, settings: Settings(), power: plugged,
+            runningApprovals: running
+        ).holdSystem)
     }
-    for tool in [AgentID.claude, .copilot] {
-        #expect(WaitAnswerLatch.answerIsSilent(waiting(tool: tool)))
+    for tool in [AgentID.claude, .copilot, .gemini, .qwen] {
+        #expect(RunningApprovals.answerIsSilent(waiting(tool: tool)))
     }
 }
 
-@Test func eachSilentWaitConsultsItsOwnInput() {
+@Test func eachWaitConsultsOnlyItsOwnAgentsChildren() {
     let since = now.addingTimeInterval(-60)
-    let inTerminal = waiting(since: since, id: "terminal")
-    let inEditor = waiting(since: since, id: "editor")
-    var latch = WaitAnswerLatch()
-    latch.observe([inTerminal, inEditor]) { wait in
-        wait.id == "terminal" ? .lastInput(at: since.addingTimeInterval(5)) : .none
-    }
-    #expect(latch.holdsAwake(inTerminal))
-    #expect(!latch.holdsAwake(inEditor))
+    var terminal = waiting(since: since, id: "terminal")
+    terminal.pid = 10
+    var editor = waiting(since: since, id: "editor")
+    editor.pid = 20
+    let running = approvals(
+        [terminal, editor], [child(startedAt: since.addingTimeInterval(5), agent: 10)]
+    )
+    #expect(running.holdsAwake(terminal))
+    #expect(!running.holdsAwake(editor))
+    #expect(RunningApprovals.agentsToRead([terminal, editor, session(.working)]) == [10, 20])
 }
 
-@Test func anUnreadableInputCounterKeepsWaitsHeld() {
-    let sessions = [waiting()]
-    #expect(decide(
-        sessions: sessions, now: now, settings: Settings(), power: plugged,
-        waitAnswers: answers(sessions, input: .unavailable)
-    ).holdSystem)
+@Test func aWaitWithoutAKnownAgentProcessReleases() {
+    let since = now.addingTimeInterval(-60)
+    var wait = waiting(since: since)
+    wait.pid = nil
+    #expect(!holds([wait], [child(startedAt: since.addingTimeInterval(5))]))
+    #expect(RunningApprovals.agentsToRead([wait]).isEmpty)
 }
 
-@Test func answeredWaitsStillYieldToSafetyGates() {
+@Test func runningApprovalsStillYieldToSafetyGates() {
     let lowBattery = PowerState(onBattery: true, batteryPercent: 5, thermal: .nominal)
-    let sessions = [waiting()]
+    let since = now.addingTimeInterval(-60)
+    let sessions = [waiting(since: since)]
     #expect(!decide(
         sessions: sessions, now: now, settings: Settings(), power: lowBattery,
-        waitAnswers: answers(sessions, input: .unavailable)
+        runningApprovals: approvals(sessions, [child(startedAt: since.addingTimeInterval(5))])
     ).holdSystem)
 }
 
-@Test func workingSessionsHoldRegardlessOfInput() {
+@Test func workingSessionsHoldRegardlessOfProcesses() {
     let sessions = [session(.working), waiting()]
     let decision = decide(
         sessions: sessions, now: now, settings: Settings(), power: plugged,
-        waitAnswers: answers(sessions, input: .none)
+        runningApprovals: approvals(sessions, [])
     )
     #expect(decision.holdSystem)
     #expect(decision.reason == "1 working")
 }
 
-@Test func theLatchKeepsAnAnswerAfterLaterInputIsDiscarded() {
-    let since = now.addingTimeInterval(-60)
-    let sessions = [waiting(since: since)]
-    var latch = WaitAnswerLatch()
-    latch.observe(sessions, input: .lastInput(at: since.addingTimeInterval(5)))
-    // The next poll's only input was discarded, so it reports none.
-    latch.observe(sessions, input: .none)
-    #expect(latch.holdsAwake(sessions[0]))
-}
-
-@Test func theLatchForgetsEndedWaitsAndTreatsANewWaitAsUnanswered() {
-    let since = now.addingTimeInterval(-60)
-    let first = waiting(since: since, id: "s", transition: "wait-1")
-    var latch = WaitAnswerLatch()
-    latch.observe([first], input: .lastInput(at: since.addingTimeInterval(5)))
-    #expect(latch.mayHaveBeenAnswered(first))
-
-    let second = waiting(since: since.addingTimeInterval(30), id: "s", transition: "wait-2")
-    latch.observe([second], input: .lastInput(at: since.addingTimeInterval(5)))
-    #expect(!latch.mayHaveBeenAnswered(second))
-
-    // The first wait's key was forgotten, so its return is not pre-answered.
-    latch.observe([first], input: .none)
-    #expect(!latch.mayHaveBeenAnswered(first))
-}
-
-@Test func anUnavailableReadingRecoversWhenTheCounterReturns() {
-    let sessions = [waiting()]
-    var latch = WaitAnswerLatch()
-    latch.observe(sessions, input: .unavailable)
-    #expect(latch.holdsAwake(sessions[0]))
-    latch.observe(sessions, input: .none)
-    #expect(!latch.holdsAwake(sessions[0]))
-}
-
-@Test func theLatchNeverChangesWorkingOrIdleSessions() {
-    let latch = WaitAnswerLatch.observing([], input: .unavailable)
-    #expect(latch.holdsAwake(session(.working)))
-    #expect(!latch.holdsAwake(session(.idle)))
-    #expect(!latch.mayHaveBeenAnswered(session(.working)))
+@Test func runningApprovalsNeverChangeWorkingOrIdleSessions() {
+    let running = RunningApprovals()
+    #expect(running.holdsAwake(session(.working)))
+    #expect(!running.holdsAwake(session(.idle)))
+    #expect(!running.isRunning(session(.working)))
 }
 
 // MARK: - The monitoring lease
