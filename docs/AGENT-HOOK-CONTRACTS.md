@@ -13,9 +13,8 @@ see [GitHub Copilot CLI](#github-copilot-cli).
 
 Every adapter reduces to Working, Waiting, and Idle. A Waiting session releases
 the hold. Waits whose answer sends a hook resume through that hook; Claude,
-Copilot, Gemini, and Qwen approvals, which send none, hold again once a local key press or click
-reaches the session's own app; see [ARCHITECTURE.md](ARCHITECTURE.md) for that
-rule.
+Copilot, Gemini, and Qwen approvals, which send none, hold while the approved
+command runs; see [ARCHITECTURE.md](ARCHITECTURE.md) for that rule.
 
 ## Claude Code
 
@@ -98,7 +97,7 @@ rule.
   also sends `permission_prompt` for the question dialog itself, about six
   seconds in; while a session is Waiting (question) that notification keeps
   the question, because the answer arrives as a hook and an approval wait
-  would be latched as answered by any local input. `idle_prompt` is Idle,
+  would instead be judged by a running command. `idle_prompt` is Idle,
   except for a session in the monitoring sub-state: observed on Claude Code
   2.1.x, it arrives about 60 seconds after every `Stop`, including while that
   work still runs, so it keeps the record and does not renew the family's
@@ -112,10 +111,12 @@ rule.
   turn stays Working until the next prompt's `Stop`, a manual `/compact`,
   `SessionEnd`, Stop Tracking, or the 12-hour expiry.
   Permission approval has no matching immediate hook to resume a hold before
-  the tool executes. A Waiting approval therefore releases the hold only until
-  a local key press or click in the session's own app follows the prompt;
-  after that it holds as Working until the next hook. An approval from another device with
-  the lid open has no local input and can still sleep mid-tool.
+  the tool executes. A Waiting approval therefore holds as Working only while
+  the approved command runs: observed on Claude Code 2.1.325, it starts within
+  0.2 s of the approval as Claude's `zsh -c` command shell, a direct child of
+  `claude` that leads its own process group, while Claude's hooks (also their
+  own groups, under a second), `caffeinate`, and MCP servers do not qualify.
+  An approved MCP tool or web fetch starts no process and does not hold.
   Without a later authoritative event, interrupted turns and stopped parents
   with unreported agent-class background completion can remain Working until
   the existing 12-hour expiry, but stop holding once their session family has
@@ -197,10 +198,11 @@ rule.
   Working. Notification becomes Waiting (approval) for `permission_prompt` and
   `elicitation_dialog`, except while the session is already Waiting (question),
   which those notifications keep: Copilot announces its question dialog the
-  same way. Copilot fires no hook when an approval is granted, so
-  a local key press or click in the session's own app after the wait holds it
-  as Working until the next
-  hook.
+  same way. Copilot fires no hook when an approval is granted, so the wait
+  holds as Working only while the approved command runs. Observed on Copilot
+  1.0.105: it starts as `/bin/bash --norc --noprofile -c`, a direct child of
+  `copilot` that leads its own process group, and keeps that group when bash
+  replaces itself with a single program.
 - Observed on Copilot 1.0.103 and 1.0.105, where it takes Esc twice: interrupting
   fires no hook and writes an `abort` event to
   `session-state/<session>/events.jsonl` under Copilot's home. While a turn is
@@ -291,8 +293,11 @@ rule.
   that name while a hook runs.
 - `BeforeTool` fires before the prompt. A `ToolPermission` notification then sets
   Waiting (approval), and approving sends no hook until `AfterTool`. As with
-  Claude, a local key press or click holds again until the next hook, and Esc at
-  the prompt counts as that input. `ask_user` is Waiting (question) from
+  Claude, the wait holds only while the approved command runs: observed on
+  Gemini CLI 0.68.0, `bash -c` starts as a direct child of Gemini's inner `node`
+  process, detached into its own process group (its code also uses a
+  pseudo-terminal, which leads its own session). Esc at the prompt starts
+  nothing and keeps the wait. `ask_user` is Waiting (question) from
   `BeforeTool`; its code was read, not run.
 - Esc while text streams fires `AfterAgent`, which is Idle. Esc during a tool fires
   only `AfterTool`. As with Claude, that turn stays Working until the next prompt's
@@ -307,8 +312,10 @@ rule.
   `PostToolUseFailure`, `Notification`, `Stop`, `StopFailure`, and `SessionEnd` are
   installed.
 - `PreToolUse` fires before the prompt. `permission_prompt` then sets Waiting
-  (approval), and approving sends no hook until `PostToolUse`, so local input
-  latches the answer as with Claude. `PermissionRequest` runs before Qwen decides,
+  (approval), and approving sends no hook until `PostToolUse`, so the wait holds
+  only while the approved command runs, as with Claude: observed on Qwen Code
+  0.27.3, node-pty's `spawn-helper` becomes `bash -c`, a direct child of Qwen's
+  `node` process leading its own session. `PermissionRequest` runs before Qwen decides,
   so it is not installed. `ask_user_question` is Waiting (question) from
   `PreToolUse`; its code was read, not run.
 - `idle_prompt` also fires as every tool starts, within milliseconds of

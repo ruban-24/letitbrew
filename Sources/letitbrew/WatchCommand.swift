@@ -23,10 +23,13 @@ func runStatus(json: Bool) -> Int32 {
     let settings = Settings()
     let now = Date()
     let sessions = recentSessions(storage: SessionStorage(), settings: settings, now: now)
-    let input = UserInputObservation(CGUserAnswerInput().current(now: now))
+    let children = AgentChildProcesses().current(
+        of: RunningApprovals.agentsToRead(sessions)
+    ) ?? []
+    let runningApprovals = RunningApprovals.observing(sessions, children: children, now: now)
     let decision = decide(sessions: sessions, now: now, settings: settings,
                           power: IOKitPowerSource().current(),
-                          waitAnswers: .observing(sessions, input: input))
+                          runningApprovals: runningApprovals)
 
     if json {
         var payload: [String: Any] = [
@@ -42,6 +45,7 @@ func runStatus(json: Bool) -> Int32 {
                 "seconds_in_state": age,
             ]
             if let detail = session.detail { entry["detail"] = detail }
+            if runningApprovals.isRunning(session) { entry["approved_command_running"] = true }
             if let event = session.lastEvent { entry["last_event"] = event }
             if let activity = session.workingActivity(
                 at: now,
@@ -150,17 +154,19 @@ func runWatch(lidClosed: Bool) -> Int32 {
     // would add a path that cannot run on SIGKILL anyway, so the two mechanisms
     // that do survive a kill are the only ones worth relying on.
     print("Watching for agent sessions. Ctrl-C to stop.")
-    let answerInput = CGUserAnswerInput()
-    var waitAnswers = WaitAnswerLatch()
+    let agentChildren = AgentChildProcesses()
 
     while true {
         let now = Date()
         let sessions = recentSessions(storage: storage, settings: settings, now: now)
-        waitAnswers.observe(
-            sessions, input: UserInputObservation(answerInput.current(now: now))
+        let children = agentChildren.current(
+            of: RunningApprovals.agentsToRead(sessions)
+        ) ?? []
+        let decision = decide(
+            sessions: sessions, now: now, settings: settings,
+            power: powerSource.current(),
+            runningApprovals: .observing(sessions, children: children, now: now)
         )
-        let decision = decide(sessions: sessions, now: now, settings: settings,
-                              power: powerSource.current(), waitAnswers: waitAnswers)
 
         assertion.setSystemHold(decision.holdSystem, reason: decision.reason)
 

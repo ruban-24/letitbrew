@@ -19,7 +19,7 @@ agents work. It lets your Mac sleep as soon as the work stops.
 
 <br>
 
-Version 1.0.0 (build 45) &middot;
+Version 1.0.1 (build 46) &middot;
 [Release notes and SHA-256](https://github.com/ruban-24/letitbrew/releases/latest) &middot;
 [letitbrew.app](https://letitbrew.app)
 

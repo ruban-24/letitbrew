@@ -12,13 +12,13 @@ public enum MenuSessionState: Equatable, Sendable {
     case waitingForApproval
     case idle
 
-    /// Maps a record's state for presentation. A wait that local input may
-    /// have answered holds as Working, so it is shown as Working too. Without
+    /// Maps a record's state for presentation. A wait whose approved command
+    /// is running holds as Working, so it is shown as Working too. Without
     /// `now`, a lease is never treated as ended. `decide()` judges the lease
     /// with the same family edges and limit.
     public static func resolve(
         _ record: SessionRecord,
-        waitAnswers: WaitAnswerLatch,
+        runningApprovals: RunningApprovals,
         now: Date? = nil,
         familyEdges: [String: Date] = [:],
         monitoringHoldLimit: TimeInterval = LetItBrewCore.Settings().monitoringHoldLimit
@@ -34,7 +34,7 @@ public enum MenuSessionState: Equatable, Sendable {
         case .idle:
             return .idle
         case .waiting:
-            if waitAnswers.mayHaveBeenAnswered(record) {
+            if runningApprovals.isRunning(record) {
                 return .working
             }
             return record.detail == SessionWaitDetail.approval

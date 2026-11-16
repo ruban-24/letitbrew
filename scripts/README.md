@@ -275,6 +275,20 @@ are attended procedures and are out of scope here. A no-op helper stub
 confirmed the hook-presence and malformed-refusal checks fail when nothing is
 installed.
 
+## `check-approval-hold.py <claude|copilot|gemini|qwen> [cli]`
+
+Runs a real, signed-in agent in a hidden tmux window in a new temporary folder
+and checks the approval hold with `letitbrew status --json` (default
+`.build/debug/letitbrew`): an unanswered approval holds nothing, an approved
+`ping` holds while it runs, and a denied one holds nothing. The agent must be
+connected in Settings → Agents. Each run costs three short model turns. Re-run it
+when an agent updates, because the hold depends on the agent starting approved
+commands in their own process group.
+
+```bash
+swift build && scripts/check-approval-hold.py claude
+```
+
 ## Isolated shell tests
 
 `scripts/tests/upgrade-transaction-tests.sh` sources the transaction and replaces its

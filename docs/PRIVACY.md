@@ -32,13 +32,11 @@ outputs, other tool details, or final assistant text. Only `tool_name` is reduce
 to the semantic activity token. Question text and approval details are never
 read; a Waiting record says only whether it waits for an answer or an approval.
 
-To tell whether you may have approved a Claude, Copilot, Gemini, or Qwen prompt,
-the app reads
-how long ago a key was last pressed and a mouse button or trackpad last
-clicked, from the macOS HID system's per-event idle counters. It notes which
-app was in front at the time, from macOS's own record of the frontmost app, so
-only input in the waiting session's own app counts. It reads no keys or
-positions, needs no permission, and stores nothing.
+To tell whether a Claude, Copilot, Gemini, or Qwen prompt you approved is
+running, the app reads which processes that agent started, with each one's
+process group and start time, from the macOS process table. It reads no
+command lines, keys, clicks, or positions, needs no permission, and stores
+nothing. It does this only while such a prompt is waiting.
 
 GitHub Copilot CLI records Esc in its session log but sends no hook for it. While
 a Copilot turn is active, the app therefore reads the last 256 KB of that

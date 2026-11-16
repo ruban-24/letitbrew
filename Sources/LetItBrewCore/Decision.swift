@@ -66,103 +66,89 @@ public struct Decision: Equatable, Sendable {
     }
 }
 
-/// Remembers which Waiting sessions local input may have answered.
+/// Which approval waits have an approved command running.
 ///
 /// A Waiting session is blocked on the person, so it releases the hold. But
-/// approving a Claude, Copilot, Gemini, or Qwen prompt fires no hook before the
-/// approved tool finishes, and a skipped question may not fire one either. A key press or click
-/// after the wait began is therefore treated as a possible answer: the session
-/// holds again, as Working, until its next hook. The worst case is the hold a
-/// Claude approval kept before Waiting existed.
+/// approving a Claude, Copilot, Gemini, or Qwen prompt fires no hook until the
+/// approved tool finishes. Each of these agents runs an approved command as a
+/// child process that leads its own process group, so cancelling can stop the
+/// command's whole tree; the agent's own helpers, such as `caffeinate` and MCP
+/// servers, stay in the agent's group. A wait therefore holds, and shows as
+/// Working, while its agent has such a child that started with the wait and
+/// has outlived the hooks, which also lead their own groups but finish fast.
 ///
-/// The latch keeps that evidence for the life of the wait, so a later input
-/// the caller discards (such as a click in Let It Brew's own menu) cannot
-/// erase an earlier answer.
-public struct WaitAnswerLatch: Equatable, Sendable {
-    /// Input this long before a Claude permission notification still counts:
-    /// Claude sends it about six seconds after the prompt appears, so it can
-    /// land just after the keystroke that answered.
+/// Nothing is remembered between polls: the hold lasts only while the
+/// command runs. Clicks and key presses never count, because they cannot tell
+/// an answer from a stray click, and a stray click must not keep a Mac awake.
+public struct RunningApprovals: Equatable, Sendable {
+    /// A command started this long before a Claude permission notification
+    /// still counts: Claude sends it about six seconds after the prompt
+    /// appears, so it can land just after the approval.
     public static let answerLeadTolerance: TimeInterval = 3
-    /// Copilot's notification timing is unverified, so a fast answer keeps a
-    /// margin for hook delivery without counting the Enter that submitted a
-    /// turn seconds earlier. Gemini and Qwen use the same margin.
+    /// Copilot's notification timing is unverified, so a fast approval keeps
+    /// a margin for hook delivery. Gemini and Qwen use the same margin.
     public static let copilotAnswerLeadTolerance: TimeInterval = 1
+    /// Hooks finish well within this; an approved command still running this
+    /// long after it started counts.
+    public static let minimumRunTime: TimeInterval = 2
 
-    /// For callers that observe no input: every wait releases.
-    public static let none = WaitAnswerLatch()
+    /// For callers that read no processes: every wait releases.
+    public static let none = RunningApprovals()
 
-    private var answered: Set<String> = []
-    private var unreadable: Set<String> = []
+    private var running: Set<String> = []
 
     public init() {}
 
     /// Approving a Claude, Copilot, Gemini, or Qwen prompt sends no hook until
-    /// the approved tool finishes, so only local input can suggest it was
-    /// answered. Every other wait reports its answer with a hook and never
-    /// consults input.
+    /// the approved tool finishes, so only its running command can show it was
+    /// approved. Every other wait reports its answer with a hook.
     public static func answerIsSilent(_ session: SessionRecord) -> Bool {
         session.state == .waiting && session.detail == SessionWaitDetail.approval
             && [AgentID.claude, .copilot, .gemini, .qwen]
                 .contains { $0.rawValue == session.tool }
     }
 
-    /// A latch built from one observation, for one-shot callers.
+    /// The agent processes whose children `observing` needs.
+    public static func agentsToRead(_ sessions: [SessionRecord]) -> Set<Int32> {
+        Set(sessions.filter(answerIsSilent).compactMap(\.pid))
+    }
+
+    /// Marks every silent wait whose agent is running a command started for
+    /// it. A wait whose agent process is unknown releases.
     public static func observing(
         _ sessions: [SessionRecord],
-        input: UserInputObservation
-    ) -> WaitAnswerLatch {
-        var latch = WaitAnswerLatch()
-        latch.observe(sessions, input: input)
-        return latch
-    }
-
-    /// Latches every silent wait that the input followed, and forgets waits
-    /// that have ended or been replaced by a newer wait.
-    public mutating func observe(_ sessions: [SessionRecord], input: UserInputObservation) {
-        observe(sessions) { _ in input }
-    }
-
-    /// As above, with the input that could have answered each wait, such as
-    /// only the input that went to that session's own app.
-    public mutating func observe(
-        _ sessions: [SessionRecord],
-        input: (SessionRecord) -> UserInputObservation
-    ) {
-        let waits = sessions.filter(Self.answerIsSilent)
-        answered.formIntersection(waits.map(Self.key))
-        unreadable = []
-        for wait in waits {
-            switch input(wait) {
-            case .unavailable:
-                unreadable.insert(Self.key(wait))
-            case .lastInput(let lastInput):
-                if lastInput >= Self.earliestAnswer(to: wait) {
-                    answered.insert(Self.key(wait))
-                }
+        children: [AgentChildProcess],
+        now: Date
+    ) -> RunningApprovals {
+        var result = RunningApprovals()
+        for wait in sessions.filter(answerIsSilent) {
+            guard let agent = wait.pid else { continue }
+            let earliest = earliestStart(for: wait)
+            let latest = now.addingTimeInterval(-minimumRunTime)
+            if children.contains(where: {
+                $0.parentPID == agent && $0.processGroup == $0.pid
+                    && $0.startedAt >= earliest && $0.startedAt <= latest
+            }) {
+                result.running.insert(key(wait))
             }
         }
+        return result
     }
 
     /// True when a Waiting session should be held and presented as Working.
-    public func mayHaveBeenAnswered(_ session: SessionRecord) -> Bool {
-        guard Self.answerIsSilent(session) else { return false }
-        let key = Self.key(session)
-        return unreadable.contains(key) || answered.contains(key)
+    public func isRunning(_ session: SessionRecord) -> Bool {
+        Self.answerIsSilent(session) && running.contains(Self.key(session))
     }
 
     public func holdsAwake(_ session: SessionRecord) -> Bool {
         switch session.state {
         case .working: true
         case .idle: false
-        case .waiting: mayHaveBeenAnswered(session)
+        case .waiting: isRunning(session)
         }
     }
 
-    private static func waitingSince(_ session: SessionRecord) -> Date {
-        session.stateChangedAt ?? session.updatedAt
-    }
-
-    private static func earliestAnswer(to wait: SessionRecord) -> Date {
+    private static func earliestStart(for wait: SessionRecord) -> Date {
         let lead = wait.tool == AgentID.claude.rawValue
             ? answerLeadTolerance : copilotAnswerLeadTolerance
         return waitStart(wait).addingTimeInterval(-lead)
@@ -176,12 +162,12 @@ public struct WaitAnswerLatch: Equatable, Sendable {
            observed.rounded(.down) == changed.timeIntervalSince1970.rounded(.down) {
             return Date(timeIntervalSince1970: observed)
         }
-        return waitingSince(wait)
+        return wait.stateChangedAt ?? wait.updatedAt
     }
 
     /// One wait: a new wait on the same session has a new transition.
     private static func key(_ session: SessionRecord) -> String {
-        let since = waitingSince(session).timeIntervalSince1970
+        let since = (session.stateChangedAt ?? session.updatedAt).timeIntervalSince1970
         return "\(session.id)\u{1F}\(session.stateTransitionID ?? "")\u{1F}\(since)"
     }
 }
@@ -199,7 +185,7 @@ public func decide(
     now: Date,
     settings: Settings,
     power: PowerState,
-    waitAnswers: WaitAnswerLatch = .none,
+    runningApprovals: RunningApprovals = .none,
     lowPowerModeOwnedByLetItBrew: Bool = false
 ) -> Decision {
     // 0. IMPORTANT 4: an untrusted reading must never be treated as a
@@ -237,7 +223,7 @@ public func decide(
                         reason: "thermal pressure")
     }
 
-    // 5. Working sessions hold, as do waits that local input may have answered.
+    // 5. Working sessions hold, as do waits whose approved command is running.
     // Monitoring, and a subagent's own record, end once the session family
     // has been silent for its limit; see `MonitoringLease`.
     let familyEdges = MonitoringLease.latestEdges(sessions)
@@ -247,7 +233,7 @@ public func decide(
         )
     }
     let working = sessions.count {
-        waitAnswers.holdsAwake($0) && !expiredLeases.contains($0)
+        runningApprovals.holdsAwake($0) && !expiredLeases.contains($0)
     }
     if working > 0 {
         return Decision(
