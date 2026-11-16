@@ -23,7 +23,7 @@ Version 1.0.1 (build 46) &middot;
 [Release notes and SHA-256](https://github.com/ruban-24/letitbrew/releases/latest) &middot;
 [letitbrew.app](https://letitbrew.app)
 
-<img src=".github/assets/hero-macbook.png" width="760" alt="Let It Brew's current menu showing an enabled awake hold, battery controls, and working Codex and Claude Code sessions">
+<img src=".github/assets/hero-macbook.png" width="760" alt="Let It Brew's 1.0 menu on a MacBook: Claude Code needs your approval, and Codex and Cursor are working">
 
 </div>
 
