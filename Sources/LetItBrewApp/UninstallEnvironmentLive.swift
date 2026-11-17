@@ -218,6 +218,8 @@ extension LetItBrewAppModel: UninstallEnvironment {
         // immediately after this. The attended UAT reads the domain back,
         // which is the only place that re-flush is observable.
         defaults.removePersistentDomain(forName: domain)
+        // The ntfy access token is the one setting kept outside defaults.
+        NtfyTokenKeychain().delete()
         // DaemonRecoveryIntegration.swift already treats synchronize()
         // returning false as an explicit failure; discarding it here would
         // be inconsistent with that discipline for the exact same API.

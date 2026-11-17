@@ -441,7 +441,13 @@ throwaway topic; never paste a real topic into an issue.
    - At the Mac, typing: no phone alert (desktop banner only, if on).
    - Lock the screen (Ctrl-Cmd-Q): the phone gets "Claude Code needs you ·
      <folder>" / "Waiting for your approval".
-   - Close the lid with closed-lid support on: the phone gets the alert.
+   - Close the lid with closed-lid support on while something keeps the Mac
+     awake (a second agent Working, or `letitbrew hold -- sleep 600`; a lone
+     Waiting agent releases the hold and the Mac sleeps): the phone gets the
+     alert.
+   - Docked with the lid closed and an external display, typing: record
+     whether the phone gets the alert. The clamshell reading counts this as
+     away; report it if that is unwanted.
    - Leave the Mac untouched for 5 minutes, then let an approval wait: the
      phone gets the alert.
    Turn on Always send to phone and repeat at the Mac: the phone gets it.
@@ -463,7 +469,11 @@ throwaway topic; never paste a real topic into an issue.
    `ntfyTestReceivedAt`, `alwaysSendToPhone`). Quit and relaunch: still
    Working and the token still works. Turn Off removes the Keychain item and
    the topic, and the section returns to Set Up.
-9. Check the section in light and dark appearance, in all three states.
+9. Never set up: with Desktop alerts on and no Set Up, lock the screen and
+   let an approval wait. Confirm no request leaves the Mac (Little Snitch or
+   `nettop`).
+10. Uninstall from Settings: confirm the Keychain item is removed.
+11. Check the section in light and dark appearance, in all three states.
 
 ## v1.0.1 release scope
 
