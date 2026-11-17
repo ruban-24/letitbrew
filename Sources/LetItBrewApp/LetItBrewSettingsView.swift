@@ -25,6 +25,8 @@ struct LetItBrewSettingsView: View {
                 .settingsPane(.agents)
             power
                 .settingsPane(.power)
+            alerts
+                .settingsPane(.alerts)
             closedLid
                 .settingsPane(.closedLid)
             about
@@ -255,6 +257,62 @@ struct LetItBrewSettingsView: View {
             get: { Int(model.batteryFloor) },
             set: { model.batteryFloor = Double($0) }
         )
+    }
+
+    // MARK: Alerts
+
+    private var alerts: some View {
+        Form {
+            Section {
+                Toggle(isOn: Binding(
+                    get: { model.desktopAlerts },
+                    set: { model.setDesktopAlerts($0) }
+                )) {
+                    Text("Desktop alerts")
+                    Text("Shows a notification on this Mac when an agent needs you.")
+                }
+
+                if model.desktopAlerts, model.desktopAlertAuthorization == .denied {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                            .accessibilityHidden(true)
+                        Text("Notifications for Let It Brew are turned off in System Settings.")
+                            .font(.callout)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 8)
+                        Button("Open Settings…") { DesktopAlerts.openNotificationSettings() }
+                            .controlSize(.small)
+                    }
+                }
+            } header: {
+                Text("Desktop")
+            }
+
+            Section("Alert me when") {
+                Toggle(isOn: $model.needsYouAlerts) {
+                    Text("An agent needs you")
+                    Text("After an agent has waited on you for 30 seconds.")
+                }
+            }
+            .disabled(!model.desktopAlerts)
+
+            Section {
+                Toggle(isOn: $model.hideProjectNamesInAlerts) {
+                    Text("Hide project names")
+                    Text("Alerts name only the agent, not the project folder.")
+                }
+            } header: {
+                Text("Privacy")
+            } footer: {
+                Text("Alerts say which agent and project folder, never your prompts, questions, or commands.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            .disabled(!model.desktopAlerts)
+        }
+        .formStyle(.grouped)
+        .onAppear { model.refreshDesktopAlertAuthorization() }
     }
 
     // MARK: Closed Lid
@@ -741,6 +799,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     case general = "General"
     case agents = "Agents"
     case power = "Power"
+    case alerts = "Alerts"
     case closedLid = "Closed Lid"
     case about = "About"
 
@@ -752,6 +811,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .general: "gearshape"
         case .agents: "terminal"
         case .power: "bolt"
+        case .alerts: "bell.badge"
         case .closedLid: "laptopcomputer"
         case .about: "info.circle"
         }
@@ -764,6 +824,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .general: 240
         case .agents: 430
         case .power: 380
+        case .alerts: 380
         case .closedLid: 360
         case .about: 360
         }

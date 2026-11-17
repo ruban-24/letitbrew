@@ -16,6 +16,14 @@ final class LetItBrewBootstrap: NSObject, NSApplicationDelegate, @unchecked Send
     private var designPreviewWindow: NSWindow?
 #endif
 
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // Before launch finishes, so clicking an alert that launched the app
+        // still brings the session's app forward.
+        if LetItBrewRuntimeLaunchMode.current == .ordinary {
+            MainActor.assumeIsolated { DesktopAlerts.shared.install() }
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
 #if DEBUG
         if ProcessInfo.processInfo.environment["LETITBREW_DESIGN_PREVIEW_APPEARANCE"] == "dark" {

@@ -44,6 +44,35 @@ Appearance**):
 7. With VoiceOver on, focus the status item: it reads "Let It Brew," then the
    tooltip text.
 
+### Needs-you desktop alerts (#63)
+
+`AlertPolicy` tests cover the 30-second rule, one alert per Waiting episode,
+wording, and hidden project names. These steps cover what they cannot:
+notification permission, delivery, and click-through.
+
+1. Update from 1.0.1 with no alert settings saved. Confirm Settings → Alerts
+   sits between Power and Closed Lid, Desktop alerts is off, and the menu shows
+   "Get alerts when an agent needs you?" once at the bottom. Choose Not Now,
+   quit and relaunch: the tip does not return. On a clean install, confirm the
+   tip shows and Turn On enables Desktop alerts and removes it.
+2. Turn on Desktop alerts. Confirm macOS asks for notification permission
+   exactly once, with no sound option offered.
+3. Leave a Claude Code approval unanswered in Terminal. After 30 seconds
+   confirm one banner, "Claude Code needs you · <folder>" with "Waiting for
+   your approval", and no second banner while it keeps waiting. Repeat with a
+   question: "Waiting for your answer".
+4. Answer an approval within 20 seconds: no banner. Approve a command that runs
+   for a minute: no banner while it runs.
+5. Switch to another app, then click the banner. Confirm Terminal (or the
+   session's host app: iTerm2, Ghostty, VS Code, Orca) comes forward.
+6. Turn on Hide project names and repeat step 3: the title is "Claude Code needs
+   you" with no folder. Check the banner and Notification Center never show the
+   prompt, question, or command.
+7. Deny notifications in System Settings → Notifications. Confirm the Alerts
+   tab shows the warning and Open Settings… opens Let It Brew's notification
+   page.
+8. Check the Alerts tab and the menu tip in light and dark appearance.
+
 ## v1.0.1 release scope
 
 This release replaces the input check for Claude, Copilot, Gemini, and Qwen

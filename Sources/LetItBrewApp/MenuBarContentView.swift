@@ -198,6 +198,12 @@ struct MenuBarContentView: View {
                 .padding(6)
             }
 
+            if model.showsAlertsTip {
+                menuDivider
+                alertsTip
+                    .padding(6)
+            }
+
             menuDivider
             footer
                 .padding(6)
@@ -380,6 +386,37 @@ struct MenuBarContentView: View {
         }
         .buttonStyle(.plain)
         .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    /// Offered once after updating; dismissing or turning alerts on ends it.
+    private var alertsTip: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "bell.badge")
+                .font(.system(size: 15))
+                .foregroundStyle(Color(.brewPurple))
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(AlertsTipPolicy.title)
+                    .fontWeight(.medium)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(AlertsTipPolicy.detail)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8) {
+                    Button("Turn On") { model.setDesktopAlerts(true) }
+                        .buttonStyle(.borderedProminent)
+                    Button("Not Now") { model.dismissAlertsTip() }
+                }
+                .controlSize(.small)
+                .padding(.top, 2)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .background(Color(.brewPurple).opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
     }
 
     private var sessionBoard: some View {
