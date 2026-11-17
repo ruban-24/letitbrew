@@ -32,6 +32,9 @@ no owner, and your Mac may keep a modified sleep setting.
 
 7. Move `/Applications/Let It Brew.app` to the Trash.
 8. Optionally remove `~/Library/Application Support/LetItBrew/`.
+9. If you set an access token for your own ntfy server, delete the
+   "Let It Brew ntfy access token" item in Keychain Access. The in-app
+   uninstaller deletes it for you.
 
 ## Do not force the sleep setting
 

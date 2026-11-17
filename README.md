@@ -50,6 +50,7 @@ An awake hold prevents the Mac from sleeping while that work continues.
   battery floor, use Low Power Mode, and decide whether displays can sleep.
 - **Stays out of the way.** It has no Dock icon, main window, or notifications.
 - **Keeps session data local.** There is no account, cloud service, or telemetry.
+  Phone alerts, once you set them up, send only their alert text off the Mac.
 
 ## Let It Brew vs Caffeine vs Amphetamine
 
@@ -148,8 +149,8 @@ alert you when:
 - your Mac stops keeping awake because of the battery floor, connected power
   only, Low Power Mode, or heat; or
 - Wi-Fi drops for a minute while the lid is closed and the Mac is held awake.
-  This one is off by default. It shows only as a desktop alert, because a
-  phone alert needs the network that just dropped.
+  This one is off by default. It goes to the same places as the other alerts,
+  but while the network is down its phone alert usually fails and is dropped.
 
 Desktop alerts show as notifications on this Mac. Phone alerts go through
 [ntfy](https://ntfy.sh).
@@ -194,7 +195,9 @@ If you decline approval for this service, open-lid operation still works.
 See the [architecture document](docs/ARCHITECTURE.md) for the service and its safety rules.
 
 Session content never leaves the Mac. Let It Brew does not record prompts,
-responses, reasoning, tool inputs, tool outputs, or final assistant text. See
+responses, reasoning, tool inputs, tool outputs, or final assistant text.
+Phone alerts, once you set them up, send only the alert text, which can name the
+agent, the project folder, or a held command. See
 [Privacy and local data](docs/PRIVACY.md) for the structural metadata and local
 paths it uses.
 

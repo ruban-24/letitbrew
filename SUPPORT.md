@@ -88,7 +88,9 @@ privileged background service after you approve it in System Settings. Declining
 that approval leaves ordinary open-lid holding available.
 
 Let It Brew has no account, cloud service, or telemetry. It never uploads agent
-sessions or project data. Automatic and manual update checks contact GitHub for
+sessions or project files. Phone alerts, once you set them up, send their text
+through ntfy. The text can name the agent, the project folder, or a held command.
+Automatic and manual update checks contact GitHub for
 release metadata and, after confirmation, download the DMG and checksum. See
 [Privacy and local data](docs/PRIVACY.md) and the
 [architecture document](docs/ARCHITECTURE.md) for details.
