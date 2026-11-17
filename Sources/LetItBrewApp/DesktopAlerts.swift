@@ -99,7 +99,7 @@ final class DesktopAlerts: NSObject, AlertDelivering, UNUserNotificationCenterDe
 
 /// Whether the person is at the Mac, for the alert policy.
 enum AlertPresenceReader {
-    static func current(lidClosed: Bool) -> AlertPresence {
+    static func current(lidClosed: Bool, externalDisplay: Bool) -> AlertPresence {
         let session = CGSessionCopyCurrentDictionary() as? [String: Any]
         let locked = session?["CGSSessionScreenIsLocked"] as? Bool ?? false
         let anyInput = CGEventType(rawValue: ~0)!
@@ -108,7 +108,8 @@ enum AlertPresenceReader {
             screenLocked: locked,
             secondsSinceLastInput: CGEventSource.secondsSinceLastEventType(
                 .combinedSessionState, eventType: anyInput
-            )
+            ),
+            externalDisplay: externalDisplay
         )
     }
 }

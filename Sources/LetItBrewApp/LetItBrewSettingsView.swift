@@ -295,6 +295,8 @@ struct LetItBrewSettingsView: View {
                 Text("On this Mac")
             }
 
+            PhoneAlertsSettingsSection(phone: model.phoneAlerts)
+
             Section {
                 Toggle(isOn: $model.needsYouAlerts) {
                     Text("An agent needs you")
@@ -844,7 +846,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .general: 576
         case .agents: 430
         case .power: 380
-        case .alerts: 520
+        case .alerts: 590
         case .closedLid: 360
         case .about: 360
         }

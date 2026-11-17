@@ -15,6 +15,10 @@ public struct AlertSettings: Equatable, Sendable {
     /// something was held.
     public var wifiDropped: Bool
     public var hideProjectNames: Bool
+    /// ntfy is set up and a test has reached the server.
+    public var phoneAlerts: Bool
+    /// Send to the phone even while the person is at the Mac.
+    public var alwaysSendToPhone: Bool
 
     public init(
         desktopAlerts: Bool = false,
@@ -22,7 +26,9 @@ public struct AlertSettings: Equatable, Sendable {
         finished: Bool = true,
         stoppedForPower: Bool = true,
         wifiDropped: Bool = false,
-        hideProjectNames: Bool = false
+        hideProjectNames: Bool = false,
+        phoneAlerts: Bool = false,
+        alwaysSendToPhone: Bool = false
     ) {
         self.desktopAlerts = desktopAlerts
         self.needsYou = needsYou
@@ -30,20 +36,40 @@ public struct AlertSettings: Equatable, Sendable {
         self.stoppedForPower = stoppedForPower
         self.wifiDropped = wifiDropped
         self.hideProjectNames = hideProjectNames
+        self.phoneAlerts = phoneAlerts
+        self.alwaysSendToPhone = alwaysSendToPhone
     }
 }
 
-/// Whether the person is at the Mac. The needs-you rule does not use it;
-/// phone alerts go out only when the person is away.
+/// Whether the person is at the Mac. Desktop alerts ignore it; phone
+/// alerts go out only when the person is away.
 public struct AlertPresence: Equatable, Sendable {
     public let lidClosed: Bool
     public let screenLocked: Bool
     public let secondsSinceLastInput: TimeInterval
+    /// An external display is active, so a closed lid may be a docked Mac.
+    public let externalDisplay: Bool
 
-    public init(lidClosed: Bool, screenLocked: Bool, secondsSinceLastInput: TimeInterval) {
+    public init(
+        lidClosed: Bool,
+        screenLocked: Bool,
+        secondsSinceLastInput: TimeInterval,
+        externalDisplay: Bool = false
+    ) {
         self.lidClosed = lidClosed
         self.screenLocked = screenLocked
         self.secondsSinceLastInput = secondsSinceLastInput
+        self.externalDisplay = externalDisplay
+    }
+
+    public static let awayAfterNoInput: TimeInterval = 5 * 60
+
+    /// Lid closed, screen locked, or five minutes with no keyboard or mouse.
+    /// A closed lid with an external display is a docked Mac someone may be
+    /// using, so there only the lock and the idle time count.
+    public var isAway: Bool {
+        (lidClosed && !externalDisplay) || screenLocked
+            || secondsSinceLastInput >= Self.awayAfterNoInput
     }
 }
 
@@ -102,6 +128,9 @@ public struct AlertSessionState: Equatable, Sendable {
     public let waitingSince: Date?
     /// Start of the current unbroken Working stretch, as seen by polling.
     public let workingSince: Date?
+    /// This wait passed 30 seconds while the person was at the Mac, and the
+    /// phone has not had its alert yet.
+    var phoneOwed = false
 }
 
 /// One `letitbrew hold` as alerts see it.
@@ -179,7 +208,7 @@ public struct AlertMachineState: Equatable, Sendable {
 /// Waiting or Working.
 public struct AlertSnapshot: Equatable, Sendable {
     public let observedAt: Date
-    public let sessions: [AlertSessionState]
+    public internal(set) var sessions: [AlertSessionState]
     /// Holds whose process is running.
     public let holds: [AlertHold]
     /// Held commands that have exited since the results were last read.
@@ -242,7 +271,12 @@ public struct AlertSnapshot: Equatable, Sendable {
             if let before,
                let since = before.waitingSince,
                before.observation.stateChangedAt == session.stateChangedAt {
-                return AlertSessionState(observation: session, waitingSince: since, workingSince: nil)
+                return AlertSessionState(
+                    observation: session,
+                    waitingSince: since,
+                    workingSince: nil,
+                    phoneOwed: before.phoneOwed
+                )
             }
             return AlertSessionState(observation: session, waitingSince: firstSeen, workingSince: nil)
         }
@@ -258,6 +292,7 @@ public enum AlertKind: Equatable, Sendable {
 
 public enum AlertDestination: Hashable, Sendable {
     case desktop
+    case phone
 }
 
 public struct Alert: Equatable, Sendable, Identifiable {
@@ -282,20 +317,25 @@ public enum AlertPolicy {
     /// alert fires on the poll that crosses its threshold, so reapplying a
     /// snapshot repeats nothing. Without a previous snapshot there is no
     /// crossing: launching never alerts for a wait already under way.
+    ///
+    /// A wait that crosses while the person is at the Mac goes to the phone
+    /// once, later, if they become away while it is still waiting. `current`
+    /// records that, so keep it as the next poll's `previous`.
     public static func alerts(
         previous: AlertSnapshot?,
-        current: AlertSnapshot,
+        current: inout AlertSnapshot,
         presence: AlertPresence,
         settings: AlertSettings
     ) -> [Alert] {
         guard let previous else { return [] }
         let destinations = destinations(presence: presence, settings: settings)
-        guard !destinations.isEmpty else { return [] }
         var alerts: [Alert] = []
         if settings.needsYou {
-            alerts += needsYouAlerts(previous: previous, current: current,
+            alerts += needsYouAlerts(previous: previous, current: &current, presence: presence,
                                      destinations: destinations, settings: settings)
         }
+        // Only the needs-you follow-up has to track anything with no channel.
+        guard !destinations.isEmpty else { return alerts }
         if settings.finished {
             alerts += finishedSessionAlerts(previous: previous, current: current,
                                             destinations: destinations, settings: settings)
@@ -369,37 +409,58 @@ public enum AlertPolicy {
         )
     }
 
-    /// Where an alert goes. Every kind shares the same channels.
+    /// Where an alert goes. Every kind shares the same channels: desktop
+    /// whenever desktop alerts are on; the phone only once ntfy is set up,
+    /// and then only while the person is away unless they chose "Always
+    /// send to phone".
     private static func destinations(
         presence: AlertPresence,
         settings: AlertSettings
     ) -> Set<AlertDestination> {
         var destinations: Set<AlertDestination> = []
         if settings.desktopAlerts { destinations.insert(.desktop) }
+        if settings.phoneAlerts, settings.alwaysSendToPhone || presence.isAway {
+            destinations.insert(.phone)
+        }
         return destinations
     }
 
+    /// A wait that crosses while the person is at the Mac is owed to the
+    /// phone, which gets it once if they become away while it still waits.
     private static func needsYouAlerts(
         previous: AlertSnapshot,
-        current: AlertSnapshot,
+        current: inout AlertSnapshot,
+        presence: AlertPresence,
         destinations: Set<AlertDestination>,
         settings: AlertSettings
     ) -> [Alert] {
-        current.sessions.compactMap { state in
+        var alerts: [Alert] = []
+        for index in current.sessions.indices {
+            let state = current.sessions[index]
             guard let since = state.waitingSince,
                   let wait = state.observation.wait,
                   current.observedAt.timeIntervalSince(since) >= needsYouDelay
-            else { return nil }
+            else { continue }
             let before = previous.sessions.first {
                 $0.observation.id == state.observation.id && $0.waitingSince == since
             }
-            if before != nil,
-               previous.observedAt.timeIntervalSince(since) >= needsYouDelay {
-                return nil
+            let crossedBefore = before != nil
+                && previous.observedAt.timeIntervalSince(since) >= needsYouDelay
+
+            if !crossedBefore {
+                if !destinations.isEmpty {
+                    alerts.append(needsYou(state.observation, wait: wait, since: since,
+                                           destinations: destinations, settings: settings))
+                }
+                current.sessions[index].phoneOwed =
+                    !presence.isAway && !destinations.contains(.phone)
+            } else if state.phoneOwed, settings.phoneAlerts, presence.isAway {
+                alerts.append(needsYou(state.observation, wait: wait, since: since,
+                                       destinations: [.phone], settings: settings))
+                current.sessions[index].phoneOwed = false
             }
-            return needsYou(state.observation, wait: wait, since: since,
-                            destinations: destinations, settings: settings)
         }
+        return alerts
     }
 
     /// A session that was Working at the previous poll and is now Idle or

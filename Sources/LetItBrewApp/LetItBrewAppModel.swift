@@ -402,6 +402,8 @@ final class LetItBrewAppModel: ObservableObject {
     private var automaticUpdateTask: Task<Void, Never>?
     private var latestSnapshot: LetItBrewSnapshot?
     private let alertDelivery: any AlertDelivering
+    let phoneAlerts: PhoneAlerts
+    private var phoneAlertsChanges: AnyCancellable?
     private var previousAlertSnapshot: AlertSnapshot?
     private let networkReachability = NetworkReachability()
     private var latestAppliedSnapshotAt: Date?
@@ -452,6 +454,7 @@ final class LetItBrewAppModel: ObservableObject {
         self.defaults = defaults
         self.alertDelivery = alertDelivery
             ?? (startsPolling ? DesktopAlerts.shared : NoAlertDelivery())
+        phoneAlerts = PhoneAlerts(defaults: defaults)
         daemonRecoveryPersistence = UserDefaultsDaemonRecoveryPersistence(
             defaults: defaults
         )
@@ -546,6 +549,9 @@ final class LetItBrewAppModel: ObservableObject {
             defaults, key: Keys.hideProjectNamesInAlerts, fallback: alertDefaults.hideProjectNames
         )
         alertsTipDismissed = defaults.bool(forKey: Keys.alertsTipDismissed)
+        phoneAlertsChanges = phoneAlerts.objectWillChange.sink { [weak self] in
+            self?.objectWillChange.send()
+        }
         launchAtLoginChoiceWasSaved = defaults.object(forKey: Keys.launchAtLogin) != nil
         launchAtLogin = defaults.bool(forKey: Keys.launchAtLogin)
         showLaunchAtLoginOnboarding = !launchAtLoginChoiceWasSaved
@@ -1307,7 +1313,8 @@ final class LetItBrewAppModel: ObservableObject {
     }
 
     /// Whether any alert channel is on, so the per-type choices matter.
-    var hasAlertChannel: Bool { desktopAlerts }
+    /// Phone alerts count once a test has reached the server.
+    var hasAlertChannel: Bool { desktopAlerts || phoneAlerts.isWorking }
 
     /// Turning desktop alerts on asks for notification permission.
     func setDesktopAlerts(_ enabled: Bool) {
@@ -2791,7 +2798,7 @@ final class LetItBrewAppModel: ObservableObject {
             AlertSessionObservation(id: $0, agent: "", project: "", wait: nil,
                                     stateChangedAt: snapshot.now, agentPID: nil)
         }
-        let current = AlertSnapshot(
+        var current = AlertSnapshot(
             observedAt: snapshot.now,
             sessions: observations + hidden,
             holds: snapshot.holds.map(AlertHold.init),
@@ -2807,18 +2814,25 @@ final class LetItBrewAppModel: ObservableObject {
             finished: finishedAlerts,
             stoppedForPower: stoppedForPowerAlerts,
             wifiDropped: wifiDroppedAlerts,
-            hideProjectNames: hideProjectNamesInAlerts
+            hideProjectNames: hideProjectNamesInAlerts,
+            phoneAlerts: phoneAlerts.isWorking,
+            alwaysSendToPhone: phoneAlerts.alwaysSendToPhone
         )
         let alerts = AlertPolicy.alerts(
             previous: previousAlertSnapshot,
-            current: current,
+            current: &current,
             presence: readsLiveState
-                ? AlertPresenceReader.current(lidClosed: snapshot.clamshell == .closed)
+                ? AlertPresenceReader.current(
+                    lidClosed: snapshot.clamshell == .closed,
+                    // An unreadable topology counts as no external display.
+                    externalDisplay: snapshot.displays == .externalDisplayActive
+                )
                 : AlertPresence(lidClosed: false, screenLocked: false, secondsSinceLastInput: 0),
             settings: settings
         )
         previousAlertSnapshot = current
         if !alerts.isEmpty { alertDelivery.deliver(alerts) }
+        if !alerts.isEmpty, readsLiveState { phoneAlerts.deliver(alerts) }
     }
 
     private static func menuInput(
