@@ -442,12 +442,13 @@ throwaway topic; never paste a real topic into an issue.
    Copy button (it copies the bare topic), the iPhone line, Send Test,
    "Always send to phone" (off), and a collapsed Advanced showing
    "ntfy.sh". The "Alert me when" and Privacy groups are no longer dimmed,
-   even with Desktop alerts off.
+   and the "Turn on desktop or phone alerts…" footer is gone, even with
+   Desktop alerts off.
 4. Away rule, with Always send to phone off and an approval left waiting 30
    seconds each time:
    - At the Mac, typing: no phone alert (desktop banner only, if on).
-   - Lock the screen (Ctrl-Cmd-Q): the phone gets "Claude Code needs you ·
-     <folder>" / "Waiting for your approval".
+   - Lock the screen (Ctrl-Cmd-Q): the phone gets "Claude Code needs you" /
+     "<folder> · Waiting for your approval", the desktop banner's words.
    - Close the lid with closed-lid support on while something keeps the Mac
      awake (a second agent Working, or `letitbrew hold -- sleep 600`; a lone
      Waiting agent releases the hold and the Mac sleeps): the phone gets the
@@ -463,19 +464,35 @@ throwaway topic; never paste a real topic into an issue.
      arrives for that wait. Repeat with Desktop alerts off: the phone still
      gets it once on locking. Answer a wait before locking: nothing arrives.
    Turn on Always send to phone and repeat at the Mac: the phone gets it.
-5. Turn on Hide project names: the phone title has no folder. Confirm no
-   phone alert ever contains a prompt, question, or command, and has no emoji.
-6. Turn Wi-Fi off, lock the screen, and let an approval wait 30 seconds.
+5. The other alert types follow the same away rule, with the desktop's
+   words, and are never resent on becoming away. With the screen locked
+   and Always send to phone off:
+   - `letitbrew hold -- sh -c 'sleep 200'` ends: the phone gets "sh -c
+     sleep 200 finished" / "Succeeded after 3 min". An agent turn of over 3
+     minutes ending sends "<Agent> finished" / "<folder> · Worked for N min".
+   - With Connected power only on, hold the Mac with work while plugged in,
+     then unplug: the phone gets "Your Mac stopped keeping awake" / "It
+     switched to battery power." (the #64 section covers the other rules).
+   - At the Mac, let one of these alert on the desktop only, then lock the
+     screen: nothing follows on the phone.
+   - The Wi-Fi alert fires only while the network is down, so its phone send
+     fails, is retried once, and is dropped. Expect no Wi-Fi alert on the
+     phone; it still shows on the desktop.
+6. Turn on Hide project names: the phone body is only the state ("Waiting
+   for your approval", "Worked for N min") and a held command is "A held
+   command". Confirm no phone alert ever contains a prompt, question, or
+   command, and has no emoji.
+7. Turn Wi-Fi off, lock the screen, and let an approval wait 30 seconds.
    Confirm the menu shows no error, the hold is unchanged, and nothing arrives
    later when Wi-Fi returns (the send was retried once, then dropped).
    With Wi-Fi off, Send Test shows "The test didn't reach ntfy.sh. Check your
    connection and try again." in Settings only.
-7. Custom server and token (needs a self-hosted ntfy with auth, or an ntfy.sh
+8. Custom server and token (needs a self-hosted ntfy with auth, or an ntfy.sh
    account token): open Advanced, enter the https server and an access token,
    press Return. Status drops back to "Waiting for a test to arrive…".
    Subscribe the phone to the topic on that server, press Send Test, and
    confirm it arrives. An `http://` server is rejected and the field reverts.
-8. End to end on the maintainer's self-hosted ntfy server: open Advanced
+9. End to end on the maintainer's self-hosted ntfy server: open Advanced
    and enter the server's https URL and an access token (press Return after
    each). Status drops back to "Waiting for a test to arrive…" with Turn Off
    (not Cancel, since a test has been sent). Scan the QR code with the phone, or
@@ -485,7 +502,7 @@ throwaway topic; never paste a real topic into an issue.
    approval wait 30 seconds: the real alert arrives on the phone through the
    self-hosted server. Check the server's log shows the request carried the
    token and nothing but the topic, title and message.
-9. Keychain: in Keychain Access, find "Let It Brew ntfy access token"
+10. Keychain: in Keychain Access, find "Let It Brew ntfy access token"
    (service ending `.ntfy`). Confirm the token is not in
    `defaults read com.ruban24.letitbrew` (only `ntfyTopic`, `ntfyServer`,
    `ntfyTestSentAt`, `ntfyTestSent`, `phoneAlertsOn`,
@@ -497,15 +514,15 @@ throwaway topic; never paste a real topic into an issue.
    the phone needs no new scan and the next alert arrives. Cancel on a fresh
    setup (step 1, before any test) is the only thing that removes the
    Keychain item and the topic.
-10. Never set up: with Desktop alerts on and no Set Up, lock the screen and
+11. Never set up: with Desktop alerts on and no Set Up, lock the screen and
    let an approval wait. Confirm no request leaves the Mac (Little Snitch or
    `nettop`).
-11. Uninstall from Settings: confirm the Keychain item is removed.
-12. Check the section in light and dark appearance, in all three states.
+12. Uninstall from Settings: confirm the Keychain item is removed.
+13. Check the section in light and dark appearance, in all three states.
    With Set Up pressed (the tallest state), and again in Working with
-   Advanced expanded, the whole "On your phone" group shows below Desktop
-   without scrolling or clipping; "Alert me when" and Privacy are reached by
-   scrolling.
+   Advanced expanded, the whole "On your phone" group shows below "On this
+   Mac" without scrolling or clipping; "Alert me when" and Privacy are reached
+   by scrolling.
 
 ## v1.0.1 release scope
 

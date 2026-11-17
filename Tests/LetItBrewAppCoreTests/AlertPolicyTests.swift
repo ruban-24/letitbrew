@@ -56,6 +56,8 @@ private struct Poll {
     var holds: [AlertHold] = []
     var ended: [AlertHoldResult] = []
     var machine = AlertMachineState()
+    /// Overrides the run's presence for this poll.
+    var presence: AlertPresence?
 }
 
 /// Held awake with work wanting it, lid closed, network up.
@@ -104,7 +106,7 @@ private func run(
         alerts += AlertPolicy.alerts(
             previous: previous,
             current: &current,
-            presence: presence,
+            presence: poll.presence ?? presence,
             settings: settings
         )
         previous = current
@@ -968,4 +970,62 @@ private let lidClosed = AlertPresence(lidClosed: true, screenLocked: false, seco
         (0, [session()], present), (30, [session()], present), (40, [session()], locked),
     ])
     #expect(alerts.map(\.destinations) == [[.desktop], [.phone]])
+}
+
+// MARK: Every alert type on the phone
+
+private let screenLocked = AlertPresence(lidClosed: false, screenLocked: true, secondsSinceLastInput: 0)
+
+/// Polls that send exactly one alert of each type other than needs-you.
+private let eachOtherKind: [(AlertKind, [Poll])] = [
+    (.finished, [Poll(at: 0, sessions: [working()]), Poll(at: 200, sessions: [idle(since: 200)])]),
+    (.finished, [Poll(at: 0, holds: [hold()]), Poll(at: 1321, ended: [ended(after: 22, status: 1)])]),
+    (.stoppedForPower, [Poll(at: 0, machine: heldClosed), Poll(at: 1, machine: released(.thermal))]),
+    (.wifiDropped, [
+        Poll(at: 0, machine: heldClosed),
+        Poll(at: 10, machine: offline()),
+        Poll(at: 70, machine: offline()),
+    ]),
+]
+
+private let everyType = AlertSettings(desktopAlerts: true, wifiDropped: true, phoneAlerts: true)
+
+@Test func everyAlertTypeGoesToThePhoneOnlyWhenAway() {
+    for (kind, polls) in eachOtherKind {
+        let atTheMac = run(polls, settings: everyType)
+        let away = run(polls, settings: everyType, presence: screenLocked)
+        #expect(atTheMac.map(\.kind) == [kind])
+        #expect(atTheMac.map(\.destinations) == [[.desktop]])
+        #expect(away.map(\.destinations) == [[.desktop, .phone]])
+        // The phone gets the desktop's words.
+        #expect(away.map(\.title) == atTheMac.map(\.title))
+        #expect(away.map(\.body) == atTheMac.map(\.body))
+    }
+}
+
+@Test func everyAlertTypeFollowsAlwaysSendAndPhoneOnly() {
+    var always = everyType
+    always.alwaysSendToPhone = true
+    var phoneOnly = everyType
+    phoneOnly.desktopAlerts = false
+    let docked = AlertPresence(lidClosed: true, screenLocked: false,
+                               secondsSinceLastInput: 0, externalDisplay: true)
+    for (_, polls) in eachOtherKind {
+        #expect(run(polls, settings: always).map(\.destinations) == [[.desktop, .phone]])
+        #expect(run(polls, settings: phoneOnly).isEmpty)
+        #expect(run(polls, settings: phoneOnly, presence: screenLocked).map(\.destinations) == [[.phone]])
+        #expect(run(polls, settings: phoneOnly, presence: lidClosed).map(\.destinations) == [[.phone]])
+        #expect(run(polls, settings: phoneOnly, presence: docked).isEmpty)
+    }
+}
+
+@Test func onlyANeedsYouWaitGetsALaterPhoneFollowUp() {
+    // An event that alerted at the Mac is not resent on becoming away.
+    for (_, polls) in eachOtherKind {
+        var later = polls.last!
+        later.at += 60
+        later.ended = []
+        later.presence = screenLocked
+        #expect(run(polls + [later], settings: everyType).map(\.destinations) == [[.desktop]])
+    }
 }
