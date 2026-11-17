@@ -336,6 +336,13 @@ and a MacBook:
     update): the row resumes with the original Until time. Start an
     Indefinitely session and restart the Mac: after login the buttons show
     and no session runs.
+12. With closed-lid Low Power Mode on, a 1h session, and nothing else
+    holding, close the lid for a minute and open it: the row read "Awake",
+    never "Held back", while Let It Brew's own Low Power Mode was on.
+13. Start a 1h session, then begin Settings → About → Uninstall Let It Brew…
+    and leave the confirmation open: the session has ended and the duration
+    buttons do nothing. Cancel the uninstall: Let It Brew turns back on with
+    no session.
 
 ## v1.0.1 release scope
 

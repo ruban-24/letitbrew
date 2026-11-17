@@ -2401,6 +2401,9 @@ final class LetItBrewAppModel: ObservableObject {
     ) {
         let formatTime: (Date) -> String = { $0.formatted(date: .omitted, time: .shortened) }
         let session = pauseController.manualSession
+        // A session just started is newer than the snapshot re-applied for it;
+        // without this a fresh 30m session would read 0:31 until the next poll.
+        let now = max(now, session?.startedAt ?? now)
         keepAwakeRow = session.map {
             MenuKeepAwakePresentationPolicy.running(
                 $0, now: now, isHeldBack: isHeldBack, formatTime: formatTime
