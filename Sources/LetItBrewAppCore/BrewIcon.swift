@@ -35,14 +35,11 @@ public enum BrewIcon: String, Equatable, Sendable, CaseIterable {
     case kettle
     case cauldron
 
-    /// The saved choice, or the flask when nothing (or nothing known) was
-    /// saved: installs from before the picker never saved one.
+    /// The saved choice (its `rawValue`), or the flask when nothing (or
+    /// nothing known) was saved: installs from before the picker never saved one.
     public init(storedValue: String?) {
         self = storedValue.flatMap(Self.init(rawValue:)) ?? .flask
     }
-
-    /// What is written to preferences for this choice.
-    public var storedValue: String { rawValue }
 
     /// The name under the icon's tile in Settings.
     public var displayName: String {
@@ -98,13 +95,13 @@ public enum BrewIcon: String, Equatable, Sendable, CaseIterable {
         case .flask:
             FlaskIcon.draw(in: context, state: state, frame: frame, scale: scale, ink: ink, dot: dot)
         case .beerMug:
-            VesselIcons.draw(frames: awakeFrameCount, VesselIcons.beerMug, in: context, state: state, frame: frame, scale: scale, ink: ink, dot: dot)
+            VesselIcons.draw(frameCount: awakeFrameCount, VesselIcons.beerMug, in: context, state: state, frame: frame, scale: scale, ink: ink, dot: dot)
         case .coffee:
-            VesselIcons.draw(frames: awakeFrameCount, VesselIcons.coffee, in: context, state: state, frame: frame, scale: scale, ink: ink, dot: dot)
+            VesselIcons.draw(frameCount: awakeFrameCount, VesselIcons.coffee, in: context, state: state, frame: frame, scale: scale, ink: ink, dot: dot)
         case .kettle:
-            VesselIcons.draw(frames: awakeFrameCount, VesselIcons.kettle, in: context, state: state, frame: frame, scale: scale, ink: ink, dot: dot)
+            VesselIcons.draw(frameCount: awakeFrameCount, VesselIcons.kettle, in: context, state: state, frame: frame, scale: scale, ink: ink, dot: dot)
         case .cauldron:
-            VesselIcons.draw(frames: awakeFrameCount, VesselIcons.cauldron, in: context, state: state, frame: frame, scale: scale, ink: ink, dot: dot)
+            VesselIcons.draw(frameCount: awakeFrameCount, VesselIcons.cauldron, in: context, state: state, frame: frame, scale: scale, ink: ink, dot: dot)
         }
     }
 }

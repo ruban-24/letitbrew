@@ -186,7 +186,7 @@ func everyFrameOfEveryStateFitsInsideItsCanvas(icon: BrewIcon) {
 
 @Test(arguments: BrewIcon.allCases)
 func aSavedChoiceComesBackAfterRelaunch(icon: BrewIcon) {
-    #expect(BrewIcon(storedValue: icon.storedValue) == icon)
+    #expect(BrewIcon(storedValue: icon.rawValue) == icon)
 }
 
 // MARK: - State resolution

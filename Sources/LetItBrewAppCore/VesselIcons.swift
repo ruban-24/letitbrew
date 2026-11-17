@@ -19,7 +19,7 @@ enum VesselIcons {
     typealias Vessel = (_ context: CGContext, _ filled: Bool, _ step: Int?) -> Void
 
     static func draw(
-        frames: Int,
+        frameCount: Int,
         _ vessel: Vessel,
         in context: CGContext,
         state: BrewIconState,
@@ -38,7 +38,7 @@ enum VesselIcons {
         context.setLineJoin(.round)
 
         let step = state == .awake
-            ? ((frame % frames) + frames) % frames
+            ? ((frame % frameCount) + frameCount) % frameCount
             : nil
         vessel(context, state == .awake || state == .needsYou, step)
 

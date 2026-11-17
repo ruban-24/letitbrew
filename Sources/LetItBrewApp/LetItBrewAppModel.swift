@@ -229,7 +229,7 @@ final class LetItBrewAppModel: ObservableObject {
     @Published private(set) var menuBarToolTip = "Watching for agents"
     /// The icon family member shown in the menu bar, chosen in Settings.
     @Published var menuBarIcon: BrewIcon {
-        didSet { defaults.set(menuBarIcon.storedValue, forKey: Keys.menuBarIcon) }
+        didSet { defaults.set(menuBarIcon.rawValue, forKey: Keys.menuBarIcon) }
     }
     @Published private(set) var daemonAvailable = false
     @Published private(set) var daemonRecoveryState: DaemonRecoveryState = .checking

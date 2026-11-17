@@ -52,9 +52,9 @@ struct MenuBarStatusIcon: View {
     }
 }
 
-/// Pre-rendered menu-bar frames. Every state but needs-you is a template
-/// image: macOS recolours it for the current menu-bar appearance and inverts
-/// it on highlight, keying entirely off the alpha channel. Needs-you carries
+/// Pre-rendered icon frames, for the menu bar and the Settings previews.
+/// Every state but needs-you is a template image: macOS recolours it for the
+/// current menu-bar appearance and inverts it on highlight, keying entirely off the alpha channel. Needs-you carries
 /// the orange dot, which a template would flatten, so it draws its glyph in
 /// the label colour resolved for the appearance it is drawn in.
 @MainActor
