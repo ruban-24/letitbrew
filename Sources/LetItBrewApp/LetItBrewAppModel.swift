@@ -222,6 +222,8 @@ final class LetItBrewAppModel: ObservableObject {
     @Published private(set) var sessionGroups: [MenuRepositoryPresentation] = []
     @Published private(set) var presentationState: LetItBrewPresentationState = .idle
     @Published private(set) var reason = "Your Mac can sleep"
+    @Published private(set) var iconState: BrewIconState = .idle
+    @Published private(set) var menuBarToolTip = "Watching for agents"
     @Published private(set) var daemonAvailable = false
     @Published private(set) var daemonRecoveryState: DaemonRecoveryState = .checking
     @Published private(set) var ownsHold = false
@@ -507,7 +509,7 @@ final class LetItBrewAppModel: ObservableObject {
     }
 
     var menuBarAccessibilityLabel: String {
-        "Let It Brew, \(presentationState.rawValue.lowercased()), \(reason)"
+        "Let It Brew, \(menuBarToolTip)"
     }
 
     var isHolding: Bool {
@@ -2242,6 +2244,19 @@ final class LetItBrewAppModel: ObservableObject {
             isKeepingAwake: isKeepingAwake,
             releaseConstraint: releaseConstraint,
             isWaitingForYou: sessions.contains(where: \.isWaiting)
+        )
+        let waitingCount = sessions.count(where: \.isWaiting)
+        iconState = BrewIconState.resolve(
+            isPaused: isPaused,
+            isKeepingAwake: isKeepingAwake,
+            isWaitingForYou: waitingCount > 0
+        )
+        menuBarToolTip = MenuBarToolTipCopy.resolve(
+            state: iconState,
+            workingCount: sessions.count(where: \.isWorking),
+            waitingCount: waitingCount,
+            isKeepingAwake: isKeepingAwake,
+            idleReason: reason
         )
 
     }
