@@ -83,7 +83,7 @@ public struct NtfyPublisher: Sendable {
 
     public init(
         configuration: NtfyConfiguration,
-        transport: @escaping NtfyTransport = NtfyPublisher.urlSession,
+        transport: @escaping NtfyTransport,
         retryDelay: TimeInterval = 2
     ) {
         self.configuration = configuration
@@ -122,18 +122,5 @@ public struct NtfyPublisher: Sendable {
             "message": body,
         ])
         return request
-    }
-
-    /// A short timeout, no cookies, no cache.
-    public static let urlSession: NtfyTransport = { request in
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 10
-        configuration.timeoutIntervalForResource = 15
-        configuration.httpCookieStorage = nil
-        configuration.urlCache = nil
-        let session = URLSession(configuration: configuration)
-        defer { session.finishTasksAndInvalidate() }
-        let (_, response) = try await session.data(for: request)
-        return (response as? HTTPURLResponse)?.statusCode ?? 0
     }
 }

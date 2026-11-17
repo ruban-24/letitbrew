@@ -104,24 +104,43 @@ final class PhoneAlerts: ObservableObject, AlertDelivering {
         guard let configuration, testState != .sending else { return }
         testState = .sending
         Task { [weak self] in
-            let sent = await NtfyPublisher(configuration: configuration).publish(
+            let sent = await Self.publisher(configuration).publish(
                 title: NtfyPublisher.testTitle,
                 body: NtfyPublisher.testBody
             )
-            guard let self, self.configuration == configuration else { return }
-            self.testState = sent ? .idle : .failed
-            if sent { self.setTestReceived(Date()) }
+            guard let self else { return }
+            // A test of a server or token since replaced proves nothing.
+            let current = self.configuration == configuration
+            self.testState = sent || !current ? .idle : .failed
+            if sent, current { self.setTestReceived(Date()) }
         }
     }
 
     func deliver(_ alerts: [Alert]) {
         guard isWorking, let configuration else { return }
-        let publisher = NtfyPublisher(configuration: configuration)
+        let publisher = Self.publisher(configuration)
         for alert in alerts where alert.destinations.contains(.phone) {
             let title = alert.title
             let body = alert.body
             Task.detached { await publisher.publish(title: title, body: body) }
         }
+    }
+
+    private static func publisher(_ configuration: NtfyConfiguration) -> NtfyPublisher {
+        NtfyPublisher(configuration: configuration, transport: urlSession)
+    }
+
+    /// A short timeout, no cookies, no cache.
+    private static let urlSession: NtfyTransport = { request in
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 10
+        configuration.timeoutIntervalForResource = 15
+        configuration.httpCookieStorage = nil
+        configuration.urlCache = nil
+        let session = URLSession(configuration: configuration)
+        defer { session.finishTasksAndInvalidate() }
+        let (_, response) = try await session.data(for: request)
+        return (response as? HTTPURLResponse)?.statusCode ?? 0
     }
 
     private func setTestReceived(_ date: Date?) {
