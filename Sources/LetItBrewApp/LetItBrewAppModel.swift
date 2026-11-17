@@ -2770,23 +2770,17 @@ final class LetItBrewAppModel: ObservableObject {
                 project: record.repoName,
                 wait: wait,
                 working: !isSubagent && (state == .working || state == .monitoring),
+                idle: state == .idle,
                 stateChangedAt: record.stateChangedAt ?? record.updatedAt,
                 agentPID: record.pid
-            )
-        }
-        func alertHold(_ hold: HoldRecord) -> AlertHold {
-            AlertHold(
-                id: "\(hold.pid).\(hold.startedAt.timeIntervalSince1970)",
-                label: hold.label,
-                startedAt: hold.startedAt
             )
         }
         let current = AlertSnapshot(
             observedAt: snapshot.now,
             sessions: observations,
-            holds: snapshot.holds.map(alertHold),
+            holds: snapshot.holds.map(AlertHold.init),
             endedHolds: snapshot.holdResults.map {
-                AlertHoldResult(hold: alertHold($0.hold), endedAt: $0.endedAt, exitStatus: $0.exitStatus)
+                AlertHoldResult(hold: AlertHold($0.hold), endedAt: $0.endedAt, exitStatus: $0.exitStatus)
             },
             machine: machine,
             previous: previousAlertSnapshot

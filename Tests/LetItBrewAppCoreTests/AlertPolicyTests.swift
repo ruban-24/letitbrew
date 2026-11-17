@@ -13,6 +13,7 @@ private func session(
     project: String = "letitbrew",
     wait: AlertWaitKind? = .approval,
     working: Bool = false,
+    idle: Bool = false,
     stateChangedAt: Date = start,
     pid: Int32? = 4182
 ) -> AlertSessionObservation {
@@ -22,6 +23,7 @@ private func session(
         project: project,
         wait: wait,
         working: working,
+        idle: idle,
         stateChangedAt: stateChangedAt,
         agentPID: pid
     )
@@ -43,7 +45,7 @@ private func idle(
     project: String = "letitbrew",
     since: TimeInterval
 ) -> AlertSessionObservation {
-    session(id, agent: agent, project: project, wait: nil,
+    session(id, agent: agent, project: project, wait: nil, idle: true,
             stateChangedAt: start.addingTimeInterval(since))
 }
 
@@ -580,4 +582,29 @@ private func run(
 @Test func wifiDroppedIsOffByDefault() {
     #expect(AlertSettings().wifiDropped == false)
     #expect(run([Poll(at: 0, machine: heldClosed), Poll(at: 1, machine: offline())]).isEmpty)
+}
+
+@Test func aReusedPIDIsADifferentHold() {
+    // The first hold's process exited and its PID now runs a second hold.
+    let first = AlertHold(HoldRecord(pid: 4182, label: "npm run build", startedAt: start))
+    let second = AlertHold(HoldRecord(pid: 4182, label: "make",
+                                      startedAt: start.addingTimeInterval(1320.5)))
+    #expect(first.id != second.id)
+    let alerts = run([
+        Poll(at: 0, holds: [first]),
+        Poll(at: 1320, holds: [first]),
+        Poll(at: 1321, holds: [second]),
+    ])
+    #expect(alerts.map(\.title) == ["npm run build finished"])
+}
+
+@Test func aMonitoringLeaseRunningOutIsNotFinishing() {
+    // Listed but no longer holding: neither Working, Waiting, nor Idle.
+    let leaseEnded = session(wait: nil, stateChangedAt: start)
+    #expect(run([
+        Poll(at: 0, sessions: [working()]),
+        Poll(at: 7200, sessions: [working()]),
+        Poll(at: 7201, sessions: [leaseEnded]),
+        Poll(at: 7300, sessions: [idle(since: 7300)]),
+    ]).isEmpty)
 }

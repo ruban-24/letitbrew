@@ -65,6 +65,10 @@ public struct AlertSessionObservation: Equatable, Sendable {
     /// Whether the session is Working (or monitoring work it started) as the
     /// menu shows it. Never true while `wait` is set.
     public let working: Bool
+    /// Whether the session is Idle: its turn is over. A session that is
+    /// none of Working, Waiting, or Idle (a lapsed monitoring lease) has not
+    /// finished.
+    public let idle: Bool
     /// When the record last changed state.
     public let stateChangedAt: Date
     /// Brings the session's app forward when the alert is clicked.
@@ -76,6 +80,7 @@ public struct AlertSessionObservation: Equatable, Sendable {
         project: String,
         wait: AlertWaitKind?,
         working: Bool = false,
+        idle: Bool = false,
         stateChangedAt: Date,
         agentPID: Int32?
     ) {
@@ -84,6 +89,7 @@ public struct AlertSessionObservation: Equatable, Sendable {
         self.project = project
         self.wait = wait
         self.working = wait == nil && working
+        self.idle = wait == nil && !self.working && idle
         self.stateChangedAt = stateChangedAt
         self.agentPID = agentPID
     }
@@ -109,6 +115,15 @@ public struct AlertHold: Equatable, Sendable {
         self.id = id
         self.label = label
         self.startedAt = startedAt
+    }
+
+    /// A hold is its PID plus its start time, so a reused PID is a new hold.
+    public init(_ record: HoldRecord) {
+        self.init(
+            id: "\(record.pid).\(record.startedAt.timeIntervalSince1970)",
+            label: record.label,
+            startedAt: record.startedAt
+        )
     }
 }
 
@@ -354,8 +369,9 @@ public enum AlertPolicy {
     }
 
     /// A session that was Working at the previous poll and is now Idle or
-    /// gone. Going Waiting is not finishing. The work ends at the Idle edge,
-    /// or at the last poll that saw it Working if the session is gone.
+    /// gone. Going Waiting, or a lapsed lease, is not finishing. The work
+    /// ends at the Idle edge, or at the last poll that saw it Working if the
+    /// session is gone.
     private static func finishedSessionAlerts(
         previous: AlertSnapshot,
         current: AlertSnapshot,
@@ -364,11 +380,11 @@ public enum AlertPolicy {
     ) -> [Alert] {
         previous.sessions.compactMap { before in
             guard let since = before.workingSince else { return nil }
-            let now = current.sessions.first { $0.observation.id == before.observation.id }
+            let after = current.sessions.first { $0.observation.id == before.observation.id }
             var end = previous.observedAt
-            if let now {
-                guard !now.observation.working, now.observation.wait == nil else { return nil }
-                end = min(max(now.observation.stateChangedAt, previous.observedAt), current.observedAt)
+            if let after {
+                guard after.observation.idle else { return nil }
+                end = min(max(after.observation.stateChangedAt, previous.observedAt), current.observedAt)
             }
             let worked = end.timeIntervalSince(since)
             guard worked >= finishedMinimum else { return nil }
