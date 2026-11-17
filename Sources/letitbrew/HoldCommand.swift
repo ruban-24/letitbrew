@@ -2,7 +2,117 @@ import Darwin
 import Foundation
 import LetItBrewCore
 
-let holdUsage = "Usage: letitbrew hold -- <command> [args...]\n"
+let holdUsage = """
+Usage: letitbrew hold -- <command> [args...]
+       letitbrew hold --pid <pid>
+       letitbrew hold
+
+"""
+
+/// `letitbrew hold`, in three forms:
+///
+/// - `hold -- <command> [args...]` holds while the command runs and exits
+///   with its status.
+/// - `hold --pid <pid>` holds until that process exits, then exits 0. Stopped
+///   first by Ctrl-C, SIGTERM, or SIGHUP, it exits 128 + signal, so
+///   `hold --pid N && next` runs `next` only after N is done.
+/// - bare `hold` holds until Ctrl-C, SIGTERM, or SIGHUP, which is how it is
+///   meant to end, so it exits 0.
+func runHold(arguments: [String], storage: HoldStorage = HoldStorage()) -> Int32 {
+    switch arguments.first {
+    case "--" where arguments.count > 1:
+        return runHold(command: Array(arguments.dropFirst()), storage: storage)
+    case "--pid" where arguments.count == 2:
+        // 0 and negative PIDs name process groups, not a process.
+        guard let pid = Int32(arguments[1]), pid > 0 else { break }
+        // EPERM: the process exists but belongs to another user.
+        guard kill(pid, 0) == 0 || errno == EPERM else {
+            FileHandle.standardError.write(Data("letitbrew: no process with PID \(pid)\n".utf8))
+            return 1
+        }
+        printHoldWarning(anyway: "Holding anyway.")
+        return holdUntilStopped(exitOf: pid, label: HoldRecord.processLabel(pid: pid), storage: storage)
+    case nil:
+        printHoldWarning(anyway: "Holding anyway.")
+        return holdUntilStopped(exitOf: nil, label: HoldRecord.terminalLabel, storage: storage)
+    default:
+        break
+    }
+    FileHandle.standardError.write(Data(holdUsage.utf8))
+    return 2
+}
+
+/// Prints the one-line warning when Let It Brew cannot hold the Mac awake.
+private func printHoldWarning(anyway: String) {
+    if let warning = HoldWarning.message(
+        appRunning: HoldAppState.isAppRunning(),
+        paused: HoldAppState.isPaused(),
+        anyway: anyway
+    ) {
+        FileHandle.standardError.write(Data((warning + "\n").utf8))
+    }
+}
+
+/// Holds for this process's own life, so a killed CLI's record is pruned
+/// like any other, until `pid` exits or a stop signal arrives.
+private func holdUntilStopped(exitOf pid: pid_t?, label: String, storage: HoldStorage) -> Int32 {
+    let queue = kqueue()
+    guard queue >= 0 else {
+        FileHandle.standardError.write(Data("letitbrew: \(String(cString: strerror(errno)))\n".utf8))
+        return 1
+    }
+    defer { close(queue) }
+
+    // Signals and the exit watch are armed before the record is written, so
+    // a stop that comes as soon as the hold shows up is never missed. Each
+    // signal is watched before it is ignored, so one that arrives during
+    // setup still ends the CLI; an ignored signal is still reported here.
+    let stopSignals = [SIGINT, SIGTERM, SIGHUP]
+    for sig in stopSignals {
+        var change = kevent(
+            ident: UInt(sig), filter: Int16(EVFILT_SIGNAL), flags: UInt16(EV_ADD),
+            fflags: 0, data: 0, udata: nil
+        )
+        guard kevent(queue, &change, 1, nil, 0, nil) == 0 else {
+            FileHandle.standardError.write(Data("letitbrew: \(String(cString: strerror(errno)))\n".utf8))
+            return 1
+        }
+        signal(sig, SIG_IGN)
+    }
+    if let pid {
+        var change = kevent(
+            ident: UInt(pid), filter: Int16(EVFILT_PROC), flags: UInt16(EV_ADD | EV_ONESHOT),
+            fflags: NOTE_EXIT, data: 0, udata: nil
+        )
+        if kevent(queue, &change, 1, nil, 0, nil) == -1 {
+            // ESRCH: it exited after the existence check, or is an unreaped
+            // zombie, so the wait is over.
+            guard errno == ESRCH else {
+                FileHandle.standardError.write(Data(
+                    "letitbrew: can't watch PID \(pid): \(String(cString: strerror(errno)))\n".utf8
+                ))
+                return 1
+            }
+            return 0
+        }
+    }
+
+    try? storage.write(HoldRecord(pid: getpid(), label: label, startedAt: Date()))
+    defer { storage.remove(pid: getpid()) }
+
+    var event = kevent()
+    while true {
+        switch kevent(queue, nil, 0, &event, 1, nil) {
+        case 1:
+            if event.filter == Int16(EVFILT_PROC) { return 0 }
+            return pid == nil ? 0 : 128 + Int32(event.ident)
+        case -1 where errno != EINTR:
+            return 1
+        default:
+            continue
+        }
+    }
+}
 
 /// `letitbrew hold -- <command> [args...]`: keeps the Mac awake while the
 /// command runs.
@@ -12,19 +122,8 @@ let holdUsage = "Usage: letitbrew hold -- <command> [args...]\n"
 /// ignores Ctrl-C itself and outlives the command to remove its hold record,
 /// forwards termination signals, and exits with the command's status, or
 /// 128 + signal when a signal ended it.
-func runHold(arguments: [String], storage: HoldStorage = HoldStorage()) -> Int32 {
-    guard arguments.first == "--", arguments.count > 1 else {
-        FileHandle.standardError.write(Data(holdUsage.utf8))
-        return 2
-    }
-    let command = Array(arguments.dropFirst())
-
-    if let warning = HoldWarning.message(
-        appRunning: HoldAppState.isAppRunning(),
-        paused: HoldAppState.isPaused()
-    ) {
-        FileHandle.standardError.write(Data((warning + "\n").utf8))
-    }
+private func runHold(command: [String], storage: HoldStorage) -> Int32 {
+    printHoldWarning(anyway: "Running your command anyway.")
 
     // Ignore the terminal's interrupt and quit here before spawning, so the
     // command alone decides what they do. The child gets default handlers.
