@@ -352,7 +352,7 @@ struct LetItBrewSettingsView: View {
                     set: { model.setKeepWorkingWithLidClosed($0) }
                 )) {
                     Text("Keep agents working when the lid is closed")
-                    Text("Uses a local background helper only when enabled. Let It Brew never sends your agent data off this Mac.")
+                    Text("Uses a local background helper only when enabled. Agent data stays on this Mac unless you turn on phone alerts.")
                 }
 
                 Toggle(isOn: $model.useLowPowerModeWithLidClosed) {
