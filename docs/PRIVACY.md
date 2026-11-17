@@ -63,8 +63,8 @@ is sent until you choose Set Up under **Settings → Alerts → On your phone** 
 press Send Test. Set Up generates a private random topic on the Mac,
 `letitbrew-` followed by 16 random lowercase letters and digits, and draws its
 QR code locally. Requests go only to the server you chose, `https://ntfy.sh` by
-default, and only over HTTPS. On a public server such as ntfy.sh, anyone who knows the topic can read its
-alerts, so keep the topic private.
+default, and only over HTTPS. On a public server such as ntfy.sh, anyone who
+knows the topic can read its alerts, so keep the topic private.
 
 Each alert, and each Send Test, is one HTTPS `POST` to the server root with a
 JSON body:
