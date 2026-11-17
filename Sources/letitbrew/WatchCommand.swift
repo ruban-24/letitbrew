@@ -27,7 +27,11 @@ func runStatus(json: Bool) -> Int32 {
         of: RunningApprovals.agentsToRead(sessions)
     ) ?? []
     let runningApprovals = RunningApprovals.observing(sessions, children: children, now: now)
-    let decision = decide(sessions: sessions, now: now, settings: settings,
+    let manualSession = ManualSessionRecord.live(
+        in: ManualSessionStorage(), now: now, bootSessionID: BootSession.currentID()
+    )
+    let decision = decide(sessions: sessions, demands: manualSession.map { [$0.demand] } ?? [],
+                          now: now, settings: settings,
                           power: IOKitPowerSource().current(),
                           runningApprovals: runningApprovals)
 
@@ -37,6 +41,14 @@ func runStatus(json: Bool) -> Int32 {
             "lid_closed": decision.holdLidClosed,
             "reason": decision.reason,
         ]
+        if let manualSession {
+            var entry: [String: Any] = ["indefinite": manualSession.deadline == nil]
+            if let deadline = manualSession.deadline {
+                entry["deadline"] = ISO8601DateFormatter().string(from: deadline)
+                entry["seconds_remaining"] = max(0, Int(deadline.timeIntervalSince(now).rounded(.up)))
+            }
+            payload["manual_session"] = entry
+        }
         payload["sessions"] = sessions.map { session -> [String: Any] in
             let age = max(0, Int(now.timeIntervalSince(session.updatedAt)))
             var entry: [String: Any] = [
@@ -61,6 +73,14 @@ func runStatus(json: Bool) -> Int32 {
         print(String(decoding: data ?? Data("{}".utf8), as: UTF8.self))
     } else {
         print(decision.holdSystem ? "awake — \(decision.reason)" : "sleeping — \(decision.reason)")
+        if let manualSession {
+            if let deadline = manualSession.deadline, let left = manualSession.timeLeft(at: now) {
+                print("  manual session: until "
+                      + "\(deadline.formatted(date: .omitted, time: .shortened)) (\(left) left)")
+            } else {
+                print("  manual session: no time limit")
+            }
+        }
         for session in sessions {
             let age = max(0, Int(now.timeIntervalSince(session.updatedAt)))
             let activity = session.workingActivity(

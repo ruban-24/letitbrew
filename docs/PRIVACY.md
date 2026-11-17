@@ -58,6 +58,7 @@ records. Downloads begin only after you confirm an available update.
 |---|---|
 | `~/Library/Application Support/LetItBrew/sessions/` | Records for observed local sessions. |
 | `~/Library/Application Support/LetItBrew/holds/` | One record per running `letitbrew hold`: the process ID, the command line (shortened) or the PID it waits for, and its start time. Removed when the hold ends. |
+| `~/Library/Application Support/LetItBrew/manual-session.json` | The running manual keep-awake session: when it started, its deadline, and the boot it belongs to. Removed when it ends. |
 | `~/Library/Application Support/LetItBrew/` | Connection registry, lease, and recovery state. |
 | `/Library/Application Support/LetItBrew/` | Background-service recovery state for the system-wide sleep setting, and the per-source energy mode recorded before closed-lid Low Power Mode. |
 | macOS user defaults | Pause, battery threshold, connected-power-only, Low Power Mode, closed-lid Low Power Mode, display-sleep, closed-lid, and Launch at Login preferences. |

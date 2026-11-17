@@ -276,6 +276,74 @@ signed app:
 7. With VoiceOver, move through the tiles: each reads its name and the chosen
    one reads as selected.
 
+### Manual keep-awake sessions (#62)
+
+`swift test` covers the session state machine (start, +1h, End, deadline
+expiry), last-action-wins with Pause, resume on the same boot and discard
+after a reboot or once expired, every power rule releasing a session, the
+row and header wording, and `letitbrew status` (+ `--json`). These need the
+signed app, light and dark appearance (**System Settings → Appearance**),
+and a MacBook:
+
+1. Idle, open the menu. Under the header (title, detail, switch, battery
+   line) and a divider, the Keep awake row shows a timer glyph and
+   "Keep awake", then bordered buttons "30m" "1h" "2h" "4h" "Until…"
+   "Indefinitely", wrapping inside the 344 pt menu. The session list, the
+   alerts tip, and Settings…/Quit follow below their dividers. Check both
+   appearances.
+2. Click 1h. The row becomes "Awake · 1:00 left" (time in bold, tabular
+   digits) with "Until <time>" below and "+1h" and "End" on the right. The
+   header reads "Keeping your Mac awake" / "You asked to keep it awake until
+   <time>", the icon animates, and `pmset -g assertions` shows the hold.
+   Leave the menu open for two minutes: the countdown ticks down by the
+   minute. Click +1h: "1:58 left" becomes "2:58 left" and the Until time
+   moves an hour. Click End: the buttons return and the hold is released.
+3. Click Until…: it highlights in the accent colour and a line opens under
+   the buttons: "Until [time] <word> [Start]". Pick a time later today
+   before 6 PM ("today"), from 6 PM ("tonight"), and earlier than now
+   ("tomorrow"). Start: the row counts down to that time. Click Until… again
+   to close the line without starting.
+4. Click Indefinitely. The row reads "Awake · No time limit" / "Until you
+   end it" with End only, and the header detail is "You asked to keep it
+   awake". (Indefinite is not in the mockup; wording is the coordinator's.)
+5. With a session running, start a Claude turn: the header detail reads
+   "You asked to keep it awake until <time> · 1 agent is working". End the
+   turn: the session still holds. End the session while the turn runs: the
+   agent still holds.
+6. Turn the switch off (Pause). The session ends at once, the header reads
+   "Let It Brew is paused" / "Agents will not keep your Mac awake", and the
+   buttons show with "Starting one turns Let It Brew back on." under them.
+   Click 30m: the switch turns back on and the session runs. A
+   `letitbrew hold` running during the Pause is unaffected by the session.
+7. Start a 30m session on battery with closed-lid operation on, run
+   `sh -c 'for i in $(seq 24); do date +%T | tee -a session.log; sleep 5; done'`,
+   and close the lid. After two minutes open it: no gap in the timestamps,
+   and with closed-lid Low Power Mode on, the Mac switched to Low Power Mode
+   while closed. Repeat with the closed-lid switch off: the Mac sleeps.
+8. Start a 30m session, then use `letitbrew status` and `letitbrew status
+   --json`: they report "manual session: until <time> (0:30 left)" and
+   `manual_session` with `deadline` and `seconds_remaining`. With an
+   Indefinitely session: "manual session: no time limit" and
+   `"indefinite": true`.
+9. Let a 30m session run out with the lid closed: within a few seconds of the
+   deadline the Mac sleeps, and on opening the menu the buttons are back.
+10. On battery below the battery floor, start a session. No assertion is
+    taken; the header shows "Battery limit reached" and "Your keep-awake
+    session is held back", and the row reads "Held back · 0:30 left". Repeat
+    for connected-power-only on battery and for Low Power Mode with "Respect
+    Low Power Mode" on.
+11. Start a 2h session, quit Let It Brew and relaunch it (or install an
+    update): the row resumes with the original Until time. Start an
+    Indefinitely session and restart the Mac: after login the buttons show
+    and no session runs.
+12. With closed-lid Low Power Mode on, a 1h session, and nothing else
+    holding, close the lid for a minute and open it: the row read "Awake",
+    never "Held back", while Let It Brew's own Low Power Mode was on.
+13. Start a 1h session, then begin Settings → About → Uninstall Let It Brew…
+    and leave the confirmation open: the session has ended and the duration
+    buttons do nothing. Cancel the uninstall: Let It Brew turns back on with
+    no session.
+
 ## v1.0.1 release scope
 
 This release replaces the input check for Claude, Copilot, Gemini, and Qwen

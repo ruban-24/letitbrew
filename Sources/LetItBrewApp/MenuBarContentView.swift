@@ -179,6 +179,11 @@ struct MenuBarContentView: View {
                 .padding(.top, 14)
                 .padding(.bottom, 12)
 
+            menuDivider
+            KeepAwakeRowView()
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+
             if !boardItems.isEmpty {
                 menuDivider
                 sessionBoard
@@ -598,6 +603,9 @@ struct MenuBarContentView: View {
     }
 
     private var headerDetail: String {
+        if let manualSessionHeaderDetail = model.manualSessionHeaderDetail {
+            return manualSessionHeaderDetail
+        }
         let context: MenuHeaderDetailContext = switch model.presentationState {
         case .awake: .awake
         case .idle: .idle
