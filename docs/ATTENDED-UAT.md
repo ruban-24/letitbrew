@@ -109,6 +109,27 @@ once it is on the PATH).
    `~/Library/Application Support/LetItBrew/holds/` is empty.
 >>>>>>> 8ff372d (Add letitbrew hold -- <cmd>, the manual keep-awake tracer)
 
+### Homebrew cask (#68)
+
+`brew audit --cask --strict --online` and install/uninstall with a scratch
+`--appdir` were checked before the cask merged. These need a Mac without
+Let It Brew installed and a real release newer than the cask:
+
+1. `brew install ruban-24/tap/letitbrew` puts `Let It Brew.app` in
+   `/Applications` and `which letitbrew` prints the Homebrew `bin` link.
+   Launch the app, connect an agent, and confirm the hook command points
+   at `/Applications/Let It Brew.app/Contents/Helpers/letitbrew`, not the
+   Homebrew link.
+2. With the cask at release N and release N+1 published, update in the app
+   (Settings → General → Check for Updates…). Afterwards bump the cask to
+   N+1: `brew outdated --cask` does not list letitbrew and `brew upgrade`
+   does not touch the app.
+3. Open Settings → About → Uninstall Let It Brew…, then run
+   `brew uninstall letitbrew`. The CLI link and
+   `$(brew --prefix)/Caskroom/letitbrew` are gone and
+   `sudo launchctl print system/com.ruban24.letitbrew.daemon` reports no
+   such service.
+
 ## v1.0.1 release scope
 
 This release replaces the input check for Claude, Copilot, Gemini, and Qwen

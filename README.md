@@ -111,9 +111,17 @@ Its SHA-256 is a fingerprint of the downloaded file.
 4. Launch the app.
 5. In Settings → Agents, turn on each agent that you want Let It Brew to follow.
 
+Or install it with [Homebrew](https://brew.sh):
+
+```sh
+brew install ruban-24/tap/letitbrew
+```
+
+The cask installs the same signed DMG to `/Applications` and puts the
+`letitbrew` CLI on your PATH.
+
 Requires macOS 14 or later. The universal app supports Apple silicon and Intel.
-The signed DMG is the only install channel; Let It Brew is not distributed
-through Homebrew or the App Store.
+Let It Brew is not distributed through the App Store.
 
 Fresh installs begin with every agent disconnected. Launch at Login is off until
 you enable it, and Let It Brew observes sessions only while it is running.
@@ -161,11 +169,18 @@ agent connections, and session records stay in place.
 If you use v0.7.0 or earlier, quit the app and replace it with the new DMG.
 Do not uninstall first. See [Support](SUPPORT.md) for the steps.
 
+A Homebrew install updates itself the same way. `brew upgrade` skips Let It
+Brew once the app has updated itself, so the two never fight.
+
 To remove the app, open **Settings → About → Uninstall Let It Brew…**. Let It
 Brew releases its holds, disconnects its agent integrations, unregisters its
 background service, removes its local data, and moves itself to the Trash. If
 the app will not launch, follow the [manual uninstall procedure](docs/UNINSTALL.md)
 in the documented order.
+
+If you installed with Homebrew, use the in-app uninstaller first, then run
+`brew uninstall letitbrew` to remove the CLI link. Running `brew uninstall`
+alone deletes the app before it can unregister its background service.
 
 ## Documentation
 
