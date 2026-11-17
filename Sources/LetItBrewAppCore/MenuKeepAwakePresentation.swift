@@ -47,15 +47,16 @@ public enum MenuKeepAwakePresentationPolicy {
         now: Date,
         formatTime: (Date) -> String
     ) -> String? {
-        guard let session, session.deadline.map({ $0 > now }) ?? true else { return nil }
+        guard let session, !session.isExpired(at: now) else { return nil }
         if isHeldBack { return "Your keep-awake session is held back" }
         guard isKeepingAwake else { return nil }
         var parts = [session.deadline.map {
             "You asked to keep it awake until \(formatTime($0))"
         } ?? "You asked to keep it awake"]
+        let waiting = rows.count(where: \.isWaiting)
         if rows.contains(where: \.isWorking) || holdCount > 0 {
             parts.append(MenuHeaderDetailCopy.resolve(context: .awake, rows: rows, holdCount: holdCount))
-        } else if case let waiting = rows.count(where: \.isWaiting), waiting > 0 {
+        } else if waiting > 0 {
             parts.append("\(waiting) waiting")
         }
         return parts.joined(separator: " · ")

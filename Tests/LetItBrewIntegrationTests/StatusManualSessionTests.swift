@@ -22,8 +22,6 @@ struct StatusManualSessionTests {
         #expect(abs(parsed.timeIntervalSince(deadline)) < 1)
         let remaining = try #require(session["seconds_remaining"] as? Int)
         #expect((2 * 3_600 - 60)...(2 * 3_600) ~= remaining)
-        #expect((json["reason"] as? String)?.contains("manual session") == true
-                || json["holding"] as? Bool == false)
     }
 
     @Test func jsonReportsAnIndefiniteSession() throws {

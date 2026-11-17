@@ -6,7 +6,7 @@ import SwiftUI
 struct KeepAwakeRowView: View {
     @EnvironmentObject private var model: LetItBrewAppModel
     @State private var showsUntil = false
-    @State private var untilTime = KeepAwakeRowView.defaultUntilTime()
+    @State private var untilTime = ManualSessionUntil.defaultTime(now: Date())
 
     var body: some View {
         Group {
@@ -85,7 +85,7 @@ struct KeepAwakeRowView: View {
                 .buttonStyle(.borderedProminent)
         } else {
             Button("Until…") {
-                untilTime = Self.defaultUntilTime()
+                untilTime = ManualSessionUntil.defaultTime(now: Date())
                 showsUntil = true
             }
             .buttonStyle(.bordered)
@@ -93,16 +93,16 @@ struct KeepAwakeRowView: View {
     }
 
     private var untilLine: some View {
-        HStack(spacing: 8) {
+        let now = Date()
+        let deadline = ManualSessionUntil.deadline(for: untilTime, now: now)
+        return HStack(spacing: 8) {
             Text("Until")
             DatePicker("Keep awake until", selection: $untilTime, displayedComponents: .hourAndMinute)
                 .labelsHidden()
                 .datePickerStyle(.field)
                 .fixedSize()
-            Text(ManualSessionUntil.dayWord(
-                for: ManualSessionUntil.deadline(for: untilTime, now: Date()), now: Date()
-            ))
-            .foregroundStyle(.secondary)
+            Text(ManualSessionUntil.dayWord(for: deadline, now: now))
+                .foregroundStyle(.secondary)
             Spacer(minLength: 8)
             Button("Start") {
                 model.startManualSession(.until(
@@ -122,13 +122,6 @@ struct KeepAwakeRowView: View {
             .accessibilityHidden(true)
     }
 
-    /// Two hours from now, on the next half hour.
-    private static func defaultUntilTime(now: Date = Date()) -> Date {
-        let halfHour: TimeInterval = 30 * 60
-        let later = now.addingTimeInterval(2 * 3_600)
-        return Date(timeIntervalSinceReferenceDate:
-            (later.timeIntervalSinceReferenceDate / halfHour).rounded(.up) * halfHour)
-    }
 }
 
 /// Lays children out left to right, wrapping onto a new line when the row is

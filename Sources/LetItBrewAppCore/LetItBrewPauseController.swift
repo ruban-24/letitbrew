@@ -22,11 +22,6 @@ public struct NoManualSessionPersistence: ManualSessionPersisting {
     public func saveManualSession(_ record: ManualSessionRecord?) {}
 }
 
-extension ManualSessionStorage: ManualSessionPersisting {
-    public func loadManualSession() -> ManualSessionRecord? { load() }
-    public func saveManualSession(_ record: ManualSessionRecord?) { try? save(record) }
-}
-
 /// How long a manual session lasts.
 public enum ManualSessionLength: Equatable, Sendable {
     case duration(TimeInterval)
@@ -61,6 +56,14 @@ public enum ManualSessionUntil {
     public static func dayWord(for deadline: Date, now: Date, calendar: Calendar = .current) -> String {
         guard calendar.isDate(deadline, inSameDayAs: now) else { return "tomorrow" }
         return calendar.component(.hour, from: deadline) < 18 ? "today" : "tonight"
+    }
+
+    /// The time the field opens at: two hours from now, on the next half hour.
+    public static func defaultTime(now: Date) -> Date {
+        let halfHour: TimeInterval = 30 * 60
+        let later = now.addingTimeInterval(2 * 3_600)
+        return Date(timeIntervalSinceReferenceDate:
+            (later.timeIntervalSinceReferenceDate / halfHour).rounded(.up) * halfHour)
     }
 }
 
@@ -143,7 +146,8 @@ public struct LetItBrewPauseController: Sendable {
 
     /// Adds an hour to a running timed session's deadline.
     public mutating func extendManualSession(now: Date) {
-        guard var session = manualSession, let deadline = session.deadline, deadline > now
+        guard var session = manualSession, let deadline = session.deadline,
+              !session.isExpired(at: now)
         else { return }
         session.deadline = deadline.addingTimeInterval(3_600)
         setManualSession(session)
@@ -156,14 +160,13 @@ public struct LetItBrewPauseController: Sendable {
 
     /// Ends a session whose deadline has come.
     public mutating func expireManualSession(at now: Date) {
-        guard let deadline = manualSession?.deadline, deadline <= now else { return }
+        guard manualSession?.isExpired(at: now) == true else { return }
         setManualSession(nil)
     }
 
     /// The running session as a `decide()` input, if it still holds at `now`.
     public func manualSessionDemand(at now: Date) -> KeepAwakeDemand? {
-        guard let manualSession else { return nil }
-        if let deadline = manualSession.deadline, deadline <= now { return nil }
+        guard let manualSession, !manualSession.isExpired(at: now) else { return nil }
         return manualSession.demand
     }
 

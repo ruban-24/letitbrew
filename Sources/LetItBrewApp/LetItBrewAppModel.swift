@@ -117,6 +117,13 @@ private enum HoldSettingsPreferenceKey {
     static let legacyClosedLidMode = "lidClosedMode"
 }
 
+private struct FileManualSessionPersistence: ManualSessionPersisting {
+    let storage = ManualSessionStorage()
+
+    func loadManualSession() -> ManualSessionRecord? { storage.load() }
+    func saveManualSession(_ record: ManualSessionRecord?) { try? storage.save(record) }
+}
+
 private struct UserDefaultsLetItBrewPausePersistence: LetItBrewPausePersisting, @unchecked Sendable {
     let defaults: UserDefaults
 
@@ -489,7 +496,7 @@ final class LetItBrewAppModel: ObservableObject {
         let loadedPauseController = LetItBrewPauseController(
             persistence: UserDefaultsLetItBrewPausePersistence(defaults: defaults),
             manualSessions: startsPolling
-                ? ManualSessionStorage() as any ManualSessionPersisting
+                ? FileManualSessionPersistence() as any ManualSessionPersisting
                 : NoManualSessionPersistence(),
             bootSessionID: BootSession.currentID()
         )
@@ -965,6 +972,8 @@ final class LetItBrewAppModel: ObservableObject {
     /// Starts a manual session, replacing any running one. Starting one turns
     /// Let It Brew back on if it was paused.
     func startManualSession(_ length: ManualSessionLength) {
+        // Uninstall has released every hold; a session must not take one back.
+        guard !uninstallInProgress, uninstallState == .idle else { return }
         pauseController.startManualSession(length, now: Date())
         if isPaused, !pauseController.isPaused {
             isPaused = false
@@ -2361,7 +2370,7 @@ final class LetItBrewAppModel: ObservableObject {
         updateKeepAwakePresentation(
             now: snapshot.now,
             isKeepingAwake: isKeepingAwake,
-            isHeldBack: releaseConstraint != nil && decision.wantedBy.manualSessions > 0
+            isHeldBack: !decision.holdSystem && decision.wantedBy.manualSessions > 0
         )
         reason = MenuHeaderCopy.resolve(
             isPaused: isPaused,

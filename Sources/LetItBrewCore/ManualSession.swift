@@ -18,8 +18,12 @@ public struct ManualSessionRecord: Codable, Equatable, Sendable {
     }
 
     public func isLive(at now: Date, bootSessionID: String) -> Bool {
-        guard bootSessionID == self.bootSessionID else { return false }
-        return deadline.map { $0 > now } ?? true
+        bootSessionID == self.bootSessionID && !isExpired(at: now)
+    }
+
+    /// Whether the deadline has come. A session with no deadline never expires.
+    public func isExpired(at now: Date) -> Bool {
+        deadline.map { $0 <= now } ?? false
     }
 
     public var demand: KeepAwakeDemand { .manualSession(deadline: deadline) }
@@ -85,11 +89,11 @@ public enum BootSession {
         guard sysctlbyname("kern.bootsessionuuid", nil, &size, nil, 0) == 0, size > 1 else {
             return nil
         }
-        var buffer = [CChar](repeating: 0, count: size)
+        var buffer = [UInt8](repeating: 0, count: size)
         guard sysctlbyname("kern.bootsessionuuid", &buffer, &size, nil, 0) == 0 else {
             return nil
         }
-        let id = String(cString: buffer)
+        let id = String(decoding: buffer.prefix { $0 != 0 }, as: UTF8.self)
         return id.isEmpty ? nil : id
     }
 }

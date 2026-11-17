@@ -229,3 +229,15 @@ private func controller(
         .duration(30 * 60), .duration(hour), .duration(2 * hour), .duration(4 * hour),
     ])
 }
+
+@Test func untilFieldOpensTwoHoursAheadOnTheNextHalfHour() {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "Australia/Sydney")!
+    func at(_ hour: Int, _ minute: Int, _ second: Int = 0) -> Date {
+        calendar.date(from: DateComponents(year: 2026, month: 11, day: 17,
+                                           hour: hour, minute: minute, second: second))!
+    }
+    #expect(ManualSessionUntil.defaultTime(now: at(21, 5)) == at(23, 30))
+    #expect(ManualSessionUntil.defaultTime(now: at(21, 30)) == at(23, 30))
+    #expect(ManualSessionUntil.defaultTime(now: at(21, 30, 1)) == at(0, 0).addingTimeInterval(86_400))
+}
