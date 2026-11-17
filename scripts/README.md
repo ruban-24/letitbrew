@@ -168,7 +168,8 @@ scripts/update-homebrew-tap.sh "$letitbrew_version"
 Updates `Casks/letitbrew.rb` in `ruban-24/homebrew-tap` after GitHub release
 `v<version>` is published. Unlike the direct-distribution scripts it does
 publish, but only to the tap; it never creates, edits, uploads to, or deletes a
-GitHub release. Needs `gh` signed in and push access to the tap.
+GitHub release. Needs `gh` signed in, and git able to push to the tap over
+HTTPS (for example after `gh auth setup-git`).
 
 The script:
 

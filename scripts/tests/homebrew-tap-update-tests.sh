@@ -122,6 +122,7 @@ expect_equal "$(run_update 2.0.0)" 1 "rejected push fails"
 expect_contains "$OUT" "failed while pushing to $TAP_REMOTE" "rejected push names the failed step"
 expect_contains "$OUT" "GitHub release v2.0.0 is published and was not changed" "rejected push says the release is untouched"
 expect_contains "$OUT" "push origin HEAD" "rejected push prints the manual push command"
+expect_contains "$OUT" "rerun scripts/update-homebrew-tap.sh 2.0.0" "rejected push also offers a rerun"
 kept="$(/usr/bin/sed -n "s/^  git -C '\\(.*\\)' push origin HEAD.*/\\1/p" "$OUT")"
 /bin/rm "$TAP_REMOTE/hooks/pre-receive"
 case "$kept" in
@@ -136,6 +137,8 @@ setup mismatch
 printf '%s  LetItBrew-2.0.0.dmg\n' "$(printf '0%.0s' {1..64})" >"$FAKE_SUMS"
 expect_equal "$(run_update 2.0.0)" 1 "checksum mismatch fails"
 expect_contains "$OUT" "does not match LetItBrew-2.0.0-SHA256SUMS" "checksum mismatch is reported"
+TESTS=$((TESTS + 1))
+if /usr/bin/grep -Fq "sha256 \"$FAKE_SHA\"" "$OUT"; then record_failure "checksum mismatch never suggests the unverified hash"; else printf 'ok: %s\n' "checksum mismatch never suggests the unverified hash"; fi
 expect_equal "$(remote_head)" "$SEED_HEAD" "checksum mismatch leaves the tap unchanged"
 
 setup draft

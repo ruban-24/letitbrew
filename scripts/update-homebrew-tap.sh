@@ -5,6 +5,9 @@
 # script never creates, edits, uploads to, or deletes a GitHub release.
 set -uo pipefail
 
+# shellcheck source=lib-direct-distribution.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && /bin/pwd -P)/lib-direct-distribution.sh"
+
 HOMEBREW_TAP_RELEASE_REPO="ruban-24/letitbrew"
 HOMEBREW_TAP_CASK="Casks/letitbrew.rb"
 HOMEBREW_TAP_WORK=""
@@ -21,7 +24,7 @@ homebrew_tap_gh() {
 }
 
 homebrew_tap_git() {
-    git "$@"
+    /usr/bin/git "$@"
 }
 
 homebrew_tap_usage() {
@@ -45,6 +48,7 @@ homebrew_tap_fail() {
         printf 'To finish the tap update by hand:\n'
         if [ -n "$manual" ]; then
             printf '  %s\n' "$manual"
+            printf '  or, if the tap moved on since the clone, rerun scripts/update-homebrew-tap.sh %s\n' "$HOMEBREW_TAP_VERSION"
         else
             printf '  scripts/update-homebrew-tap.sh %s\n' "$HOMEBREW_TAP_VERSION"
             printf '  or, in a clone of ruban-24/homebrew-tap, set %s to\n' "$HOMEBREW_TAP_CASK"
@@ -83,7 +87,7 @@ homebrew_tap_cask_value() {
 }
 
 homebrew_tap_run() {
-    local version="" dry_run=0 arg tag dmg_name sums_name json facts download dmg sums
+    local version="" dry_run=0 arg asset tag dmg_name sums_name json facts download dmg sums
     local sha published_sha tap cask current_version current_sha tmp
 
     for arg in "$@"; do
@@ -96,7 +100,7 @@ homebrew_tap_run() {
                 ;;
         esac
     done
-    if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    if ! release_version_is_canonical "$version"; then
         homebrew_tap_usage
         return 2
     fi
@@ -118,11 +122,11 @@ homebrew_tap_run() {
         || homebrew_tap_fail "reading GitHub release $tag (unexpected release metadata)" || return 1
     case "$(printf '%s\n' "$facts" | /usr/bin/head -n 1)" in
         "false false") ;;
-        *) homebrew_tap_fail "checking GitHub release $tag: it is a draft or pre-release; publish it as the latest release first" || return 1 ;;
+        *) homebrew_tap_fail "checking GitHub release $tag: it is a draft or pre-release; publish it as a full release first" || return 1 ;;
     esac
-    for arg in "$dmg_name" "$sums_name"; do
-        printf '%s\n' "$facts" | /usr/bin/tail -n +2 | /usr/bin/grep -Fxq "$arg" \
-            || homebrew_tap_fail "checking GitHub release $tag: asset $arg is missing" || return 1
+    for asset in "$dmg_name" "$sums_name"; do
+        printf '%s\n' "$facts" | /usr/bin/tail -n +2 | /usr/bin/grep -Fxq "$asset" \
+            || homebrew_tap_fail "checking GitHub release $tag: asset $asset is missing" || return 1
     done
 
     /bin/mkdir "$download" || homebrew_tap_fail "creating a download directory" || return 1
@@ -134,13 +138,13 @@ homebrew_tap_run() {
     [ -f "$dmg" ] && [ -f "$sums" ] \
         || homebrew_tap_fail "downloading $dmg_name from GitHub release $tag" || return 1
 
-    sha="$(/usr/bin/shasum -a 256 "$dmg" | /usr/bin/awk '{ print $1 }')"
+    sha="$(release_sha256 "$dmg")"
     [[ "$sha" =~ ^[0-9a-f]{64}$ ]] || homebrew_tap_fail "hashing the downloaded $dmg_name" || return 1
-    HOMEBREW_TAP_SHA="$sha"
     published_sha="$(/usr/bin/awk -v name="$dmg_name" '$2 == name || $2 == "*" name { print $1 }' "$sums")"
     [ "$published_sha" = "$sha" ] \
         || homebrew_tap_fail "checking the downloaded $dmg_name: SHA-256 $sha does not match $sums_name ('$published_sha')" \
         || return 1
+    HOMEBREW_TAP_SHA="$sha"
     printf 'Release %s: %s SHA-256 %s\n' "$tag" "$dmg_name" "$sha"
 
     homebrew_tap_git clone --quiet "$(homebrew_tap_remote_url)" "$tap" \
