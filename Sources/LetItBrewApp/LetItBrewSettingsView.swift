@@ -74,6 +74,8 @@ struct LetItBrewSettingsView: View {
                 openLoginItems: { model.openLoginItemSettings() }
             )
 
+            AppearanceSettingsSection(selection: $model.menuBarIcon)
+
             CommandLineToolSettingsSection(
                 actionsBlocked: model.updateBlocksOtherActions || model.uninstallInProgress
             )

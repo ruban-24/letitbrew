@@ -4,9 +4,9 @@ import LetItBrewCore
 import SwiftUI
 
 struct MenuBarStatusIcon: View {
+    let icon: BrewIcon
     let state: BrewIconState
     let toolTip: String
-    private let icon = BrewIcon.flask
     private static let size: CGFloat = 18
 
     @State private var frame = 0
@@ -58,7 +58,7 @@ struct MenuBarStatusIcon: View {
 /// the orange dot, which a template would flatten, so it draws its glyph in
 /// the label colour resolved for the appearance it is drawn in.
 @MainActor
-private enum BrewIconImages {
+enum BrewIconImages {
     private struct Key: Hashable {
         let icon: BrewIcon
         let state: BrewIconState

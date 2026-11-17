@@ -241,6 +241,41 @@ Before starting, record `ls -l /usr/local/bin/letitbrew /opt/homebrew/bin/letitb
 11. Restore anything changed so the `ls -l` output matches the record from the
     start.
 
+### Menu-bar icon picker (#67)
+
+`swift test` proves the beer mug, coffee cup, kettle and cauldron each draw
+distinct idle, awake, needs-you and paused frames inside the canvas, that their
+awake sequences loop (the kettle's in four frames, the others in eight), that
+Reduce Motion and Low Power Mode leave one frame, and that a missing or unknown
+saved choice is the flask. It cannot see the status item or Settings. With the
+signed app:
+
+1. Update from a build without the picker. Confirm the menu bar still shows the
+   flask and Settings → General → Appearance has Flask selected, directly under
+   the launch-at-login group and above Updates.
+2. Confirm the Appearance group reads "Menu bar icon" with "Changes right away.
+   It moves while your Mac is kept awake." under it, then five tiles in one row:
+   Flask, Beer mug, Coffee, Kettle, Cauldron. Each tile's icon (about 30 pt)
+   plays its awake loop; the selected tile has an accent border and a soft
+   accent fill.
+3. With an agent Working, click each tile in turn. The menu-bar icon changes at
+   once without a relaunch and keeps animating: the mug's fizz rises and its
+   foam bobs, the coffee steams, the kettle puffs from its spout, the cauldron
+   bubbles.
+4. For each new icon, at true size on a light menu bar and then a dark one
+   (change the wallpaper or **System Settings → Appearance**), check the
+   1.8 pt stroke reads cleanly next to other status items in all four states:
+   idle (empty, still); awake; needs-you (filled and still, no steam, puffs or
+   bubbles, with the orange dot at the top right in a cleared ring); paused
+   (empty with a slash and a cleared gap either side). Open the menu: the icon
+   stays legible on the highlighted button.
+5. Turn on **Reduce motion**, then separately Low Power Mode. The menu-bar icon
+   and every Settings preview stop on one frame, and resume when switched off.
+6. Choose Cauldron, quit Let It Brew and relaunch it: the cauldron is still in
+   the menu bar and selected in Settings.
+7. With VoiceOver, move through the tiles: each reads its name and the chosen
+   one reads as selected.
+
 ## v1.0.1 release scope
 
 This release replaces the input check for Claude, Copilot, Gemini, and Qwen

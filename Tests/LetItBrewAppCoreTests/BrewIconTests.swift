@@ -118,6 +118,77 @@ func onlyAwakeAnimates(icon: BrewIcon) {
     }
 }
 
+@Test func theNewIconsLoopOverEightAwakeFramesExceptTheKettleWhosePuffsRepeatAfterFour() {
+    for icon in [BrewIcon.beerMug, .coffee, .cauldron] {
+        #expect(icon.frameCount(for: .awake, reduceMotion: false, lowPowerMode: false) == 8)
+    }
+    #expect(BrewIcon.kettle.frameCount(for: .awake, reduceMotion: false, lowPowerMode: false) == 4)
+}
+
+/// The icon rendered at menu-bar size in the middle of a bitmap three times
+/// as wide, so ink drawn past the 24-unit canvas lands somewhere visible.
+private func inkOutsideTheCanvas(_ icon: BrewIcon, _ state: BrewIconState, frame: Int) -> Int {
+    let side = 36
+    let bitmap = side * 3
+    var pixels = [UInt8](repeating: 0, count: bitmap * bitmap * 4)
+    pixels.withUnsafeMutableBytes { buffer in
+        let context = CGContext(
+            data: buffer.baseAddress,
+            width: bitmap,
+            height: bitmap,
+            bitsPerComponent: 8,
+            bytesPerRow: bitmap * 4,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )!
+        context.translateBy(x: CGFloat(side), y: CGFloat(side * 2))
+        context.scaleBy(x: 1, y: -1)
+        icon.draw(
+            in: context,
+            state: state,
+            frame: frame,
+            scale: CGFloat(side) / FlaskGeometry.canvas,
+            ink: ink,
+            dot: orange
+        )
+    }
+    var outside = 0
+    for y in 0..<bitmap {
+        for x in 0..<bitmap where pixels[(y * bitmap + x) * 4 + 3] > 0 {
+            if !(side..<side * 2).contains(x) || !(side..<side * 2).contains(y) { outside += 1 }
+        }
+    }
+    return outside
+}
+
+@Test(arguments: BrewIcon.allCases)
+func everyFrameOfEveryStateFitsInsideItsCanvas(icon: BrewIcon) {
+    for state in BrewIconState.allCases {
+        let count = icon.frameCount(for: state, reduceMotion: false, lowPowerMode: false)
+        for frame in 0..<count {
+            #expect(inkOutsideTheCanvas(icon, state, frame: frame) == 0, "\(state) frame \(frame)")
+        }
+    }
+}
+
+// MARK: - Choosing an icon
+
+@Test func thePickerOffersTheFamilyInOrderWithTheirNames() {
+    #expect(BrewIcon.allCases.map(\.displayName) == ["Flask", "Beer mug", "Coffee", "Kettle", "Cauldron"])
+}
+
+@Test func withNoSavedChoiceOrAnUnknownOneTheIconIsTheFlask() {
+    // Existing installs have never saved a choice, so they stay on the flask.
+    #expect(BrewIcon(storedValue: nil) == .flask)
+    #expect(BrewIcon(storedValue: "") == .flask)
+    #expect(BrewIcon(storedValue: "pint") == .flask)
+}
+
+@Test(arguments: BrewIcon.allCases)
+func aSavedChoiceComesBackAfterRelaunch(icon: BrewIcon) {
+    #expect(BrewIcon(storedValue: icon.storedValue) == icon)
+}
+
 // MARK: - State resolution
 
 @Test func pausedBeatsAWaitingAgentWhichBeatsKeepingAwake() {
