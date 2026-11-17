@@ -209,8 +209,9 @@ Before starting, record `ls -l /usr/local/bin/letitbrew /opt/homebrew/bin/letitb
    Install…, with the footer "Lets you run `letitbrew hold` in any terminal.
    Adds a link in /usr/local/bin and asks for your password."
 2. Click Install… and choose Cancel in the password prompt. Confirm the prompt
-   is the standard macOS administrator prompt naming Let It Brew, no error is
-   shown, the row still reads "Not installed", and `ls -l /usr/local/bin/letitbrew`
+   is the standard macOS administrator password prompt (macOS may name
+   osascript as the requester; record what it shows), no error is shown,
+   the row still reads "Not installed", and `ls -l /usr/local/bin/letitbrew`
    reports no such file.
 3. Click Install… and enter your password. The row reads "● Installed in
    /usr/local/bin" with a green dot and Remove…, and the footer is gone.

@@ -7,7 +7,7 @@ import SwiftUI
 /// never use this link; they keep the absolute path inside the bundle.
 struct CommandLineToolSettingsSection: View {
     var actionsBlocked: Bool
-    @State private var state: CommandLineToolState?
+    @State private var state = CommandLineTool.state(at: locations)
     @State private var isWorking = false
     @State private var failureMessage: String?
 
@@ -16,7 +16,7 @@ struct CommandLineToolSettingsSection: View {
     )
 
     var body: some View {
-        let presentation = CommandLineToolPresentation(state: state ?? .notInstalled)
+        let presentation = CommandLineToolPresentation(state: state)
         Section {
             LabeledContent {
                 if isWorking {
@@ -30,6 +30,7 @@ struct CommandLineToolSettingsSection: View {
                 Text("\(Text("letitbrew").monospaced()) command")
                 detail(presentation)
             }
+            .onAppear(perform: refresh)
         } header: {
             Text("Command-line tool")
         } footer: {
@@ -39,7 +40,6 @@ struct CommandLineToolSettingsSection: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .onAppear(perform: refresh)
         .alert(
             "Couldn’t change the command-line tool",
             isPresented: Binding(
