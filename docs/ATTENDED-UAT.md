@@ -72,6 +72,7 @@ notification permission, delivery, and click-through.
    tab shows the warning and Open Settings… opens Let It Brew's notification
    page.
 8. Check the Alerts tab and the menu tip in light and dark appearance.
+
 ### `letitbrew hold -- <command>`
 
 `swift test` covers exit codes, Ctrl-C, record cleanup, pruning, and the
@@ -136,8 +137,9 @@ cask:
    lists the helper, and `SleepDisabled` matches the recorded value.
 5. Repeat the install and enable steps from step 4, then run
    `brew reinstall letitbrew`. The helper is unregistered during the
-   reinstall. Launch the app: the helper registers again (approve it if
-   asked), and a closed-lid hold works.
+   reinstall. Launch the app: it asks you to set up closed-lid support again.
+   Choose Set Up (approve the helper if asked), and confirm `launchctl print`
+   finds the service and a closed-lid hold works.
 
 ## v1.0.1 release scope
 
