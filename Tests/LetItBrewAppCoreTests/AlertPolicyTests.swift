@@ -213,21 +213,26 @@ private func run(
 
 @Test func exactWordingNamesAgentProjectAndWait() {
     let approval = run([(0, [session()]), (30, [session()])])
-    #expect(approval.map(\.title) == ["Claude Code needs you · letitbrew"])
-    #expect(approval.map(\.body) == ["Waiting for your approval"])
+    #expect(approval.map(\.title) == ["Claude Code needs you"])
+    #expect(approval.map(\.body) == ["letitbrew · Waiting for your approval"])
+
+    let question = run([(0, [session(wait: .answer)]), (30, [session(wait: .answer)])])
+    #expect(question.map(\.title) == ["Claude Code needs you"])
+    #expect(question.map(\.body) == ["letitbrew · Waiting for your answer"])
 
     let answer = run([
         (0, [session(agent: "codex", project: "api-server", wait: .answer)]),
         (30, [session(agent: "codex", project: "api-server", wait: .answer)]),
     ])
-    #expect(answer.map(\.title) == ["Codex needs you · api-server"])
-    #expect(answer.map(\.body) == ["Waiting for your answer"])
+    #expect(answer.map(\.title) == ["Codex needs you"])
+    #expect(answer.map(\.body) == ["api-server · Waiting for your answer"])
 
     let unknown = run([
         (0, [session(agent: "mystery", project: "")]),
         (30, [session(agent: "mystery", project: "")]),
     ])
     #expect(unknown.map(\.title) == ["An agent needs you"])
+    #expect(unknown.map(\.body) == ["Waiting for your approval"])
 }
 
 @Test func hiddenProjectNamesDropTheFolder() {
@@ -235,6 +240,9 @@ private func run(
     settings.hideProjectNames = true
     let alerts = run([(0, [session()]), (30, [session()])], settings: settings)
     #expect(alerts.map(\.title) == ["Claude Code needs you"])
+    #expect(alerts.map(\.body) == ["Waiting for your approval"])
+    let question = run([(0, [session(wait: .answer)]), (30, [session(wait: .answer)])], settings: settings)
+    #expect(question.map(\.body) == ["Waiting for your answer"])
     #expect(alerts.allSatisfy { !$0.title.contains("letitbrew") && !$0.body.contains("letitbrew") })
 }
 
@@ -263,7 +271,8 @@ private func run(
                     stateChangedAt: start.addingTimeInterval(10))
     let alerts = run([(0, [a, b]), (30, [a, b]), (40, [a, b])])
     #expect(alerts.map(\.sessionID) == ["a", "b"])
-    #expect(alerts.map(\.title) == ["Claude Code needs you · letitbrew", "Gemini CLI needs you · site"])
+    #expect(alerts.map(\.title) == ["Claude Code needs you", "Gemini CLI needs you"])
+    #expect(alerts.map(\.body) == ["letitbrew · Waiting for your approval", "site · Waiting for your answer"])
 }
 
 @Test func alertTextIsBuiltOnlyFromAgentFolderAndWaitKind() {
@@ -273,11 +282,11 @@ private func run(
         (0, [session(), session("x", agent: "codex", wait: .answer)]),
         (30, [session(), session("x", agent: "codex", wait: .answer)]),
     ])
-    let allowedBodies: Set = ["Waiting for your approval", "Waiting for your answer"]
+    let allowedBodies: Set = ["letitbrew · Waiting for your approval", "letitbrew · Waiting for your answer"]
     #expect(alerts.count == 2)
     for alert in alerts {
         #expect(allowedBodies.contains(alert.body))
-        #expect(alert.title.hasSuffix(" needs you · letitbrew"))
+        #expect(alert.title.hasSuffix(" needs you"))
     }
 }
 

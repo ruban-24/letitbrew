@@ -58,16 +58,16 @@ notification permission, delivery, and click-through.
 2. Turn on Desktop alerts. Confirm macOS asks for notification permission
    exactly once, with no sound option offered.
 3. Leave a Claude Code approval unanswered in Terminal. After 30 seconds
-   confirm one banner, "Claude Code needs you · <folder>" with "Waiting for
+   confirm one banner, "Claude Code needs you" with "<folder> · Waiting for
    your approval", and no second banner while it keeps waiting. Repeat with a
-   question: "Waiting for your answer".
+   question: "<folder> · Waiting for your answer".
 4. Answer an approval within 20 seconds: no banner. Approve a command that runs
    for a minute: no banner while it runs.
 5. Switch to another app, then click the banner. Confirm Terminal (or the
    session's host app: iTerm2, Ghostty, VS Code, Orca) comes forward.
-6. Turn on Hide project names and repeat step 3: the title is "Claude Code needs
-   you" with no folder. Check the banner and Notification Center never show the
-   prompt, question, or command.
+6. Turn on Hide project names and repeat step 3: the body is "Waiting for
+   your approval" with no folder. Check the banner and Notification Center
+   never show the prompt, question, or command.
 7. Deny notifications in System Settings → Notifications. Confirm the Alerts
    tab shows the warning and Open Settings… opens Let It Brew's notification
    page.

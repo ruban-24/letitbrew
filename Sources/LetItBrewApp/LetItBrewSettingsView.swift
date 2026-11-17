@@ -292,7 +292,7 @@ struct LetItBrewSettingsView: View {
                     }
                 }
             } header: {
-                Text("Desktop")
+                Text("On this Mac")
             }
 
             Section {

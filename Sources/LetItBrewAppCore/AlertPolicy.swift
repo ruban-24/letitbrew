@@ -490,19 +490,18 @@ public enum AlertPolicy {
         destinations: Set<AlertDestination>,
         settings: AlertSettings
     ) -> Alert {
-        var title = "\(agentName(session.agent)) needs you"
-        if !settings.hideProjectNames, !session.project.isEmpty {
-            title += " · \(session.project)"
-        }
-        let body = switch wait {
+        var body = switch wait {
         case .approval: "Waiting for your approval"
         case .answer: "Waiting for your answer"
+        }
+        if !settings.hideProjectNames, !session.project.isEmpty {
+            body = "\(session.project) · " + body
         }
         return Alert(
             id: "needs-you.\(session.id).\(since.timeIntervalSince1970)",
             kind: .needsYou,
             destinations: destinations,
-            title: title,
+            title: "\(agentName(session.agent)) needs you",
             body: body,
             sessionID: session.id,
             agentPID: session.agentPID
