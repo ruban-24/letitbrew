@@ -15,8 +15,11 @@ struct LetItBrewSnapshot: Sendable {
     let sessions: [SessionRecord]
     /// Live `letitbrew hold` records; not agent sessions.
     let holds: [HoldRecord]
-    /// Held commands that exited since the last poll, read once.
+    /// Held commands that exited and whose result alerts have not yet seen.
     var holdResults: [HoldResult] = []
+    /// Sessions hidden by disconnecting an agent or Stop Tracking: still
+    /// running, so alerts must not take them for ended.
+    var hiddenSessionIDs: Set<String> = []
     let power: PowerState
     let clamshell: ClamshellStateReading
     let displays: ActiveDisplayTopologyReading
@@ -2131,14 +2134,15 @@ final class LetItBrewAppModel: ObservableObject {
                 loadRecords: { CopilotCancellation.reconcile(storage.loadAll()) },
                 ttl: 12 * 3_600
             )
-            // Results first: a hold whose result is not yet written is
-            // still live, so no exit goes unseen between the two reads.
+            // Live holds first: the CLI writes a result before the hold
+            // stops counting as live, so a hold missing from this read has
+            // its result on disk for the next one.
             let holdStorage = HoldStorage()
-            let holdResults = holdStorage.takeResults()
+            let holds = holdStorage.loadLive()
             let snapshot = LetItBrewSnapshot(
                 sessions: sessions.sessions,
-                holds: holdStorage.loadLive(),
-                holdResults: holdResults,
+                holds: holds,
+                holdResults: holdStorage.loadResults(),
                 power: IOKitPowerSource().current(),
                 clamshell: clamshellMonitor.currentClamshellState(),
                 displays: activeDisplayMonitor.currentDisplayTopology(),
@@ -2155,6 +2159,10 @@ final class LetItBrewAppModel: ObservableObject {
         ) else { return }
         latestAppliedSnapshotAt = read.startedAt
         apply(read.snapshot)
+        // Only an applied read has shown its results to alerts; a read that
+        // lost the race leaves them for the next one.
+        let holdStorage = HoldStorage()
+        read.snapshot.holdResults.forEach(holdStorage.removeResult)
     }
 
     private func runDaemonRecovery(trigger: DaemonRecoveryTrigger) {
@@ -2242,6 +2250,8 @@ final class LetItBrewAppModel: ObservableObject {
             sessions: tracking.sessions,
             holds: snapshot.holds,
             holdResults: snapshot.holdResults,
+            hiddenSessionIDs: Set(snapshot.sessions.map(\.id))
+                .subtracting(tracking.sessions.map(\.id)),
             power: snapshot.power,
             clamshell: snapshot.clamshell,
             displays: snapshot.displays,
@@ -2775,9 +2785,15 @@ final class LetItBrewAppModel: ObservableObject {
                 agentPID: record.pid
             )
         }
+        // Hidden sessions are neither Working, Waiting, nor Idle, so hiding
+        // one never reads as its work finishing.
+        let hidden = snapshot.hiddenSessionIDs.sorted().map {
+            AlertSessionObservation(id: $0, agent: "", project: "", wait: nil,
+                                    stateChangedAt: snapshot.now, agentPID: nil)
+        }
         let current = AlertSnapshot(
             observedAt: snapshot.now,
-            sessions: observations,
+            sessions: observations + hidden,
             holds: snapshot.holds.map(AlertHold.init),
             endedHolds: snapshot.holdResults.map {
                 AlertHoldResult(hold: AlertHold($0.hold), endedAt: $0.endedAt, exitStatus: $0.exitStatus)

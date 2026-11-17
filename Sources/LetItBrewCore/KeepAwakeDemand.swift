@@ -149,18 +149,31 @@ public struct HoldStorage: Sendable {
         )
     }
 
-    /// Every result written since the last call, each returned once.
-    public func takeResults() -> [HoldResult] {
+    /// Every result not yet removed. Unreadable files are skipped: a result
+    /// mid-write must not be lost.
+    public func loadResults() -> [HoldResult] {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: resultsDirectory.path)) ?? []
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .secondsSince1970
         return names.filter { $0.hasSuffix(".json") }.compactMap { name in
-            let url = resultsDirectory.appendingPathComponent(name)
-            defer { try? FileManager.default.removeItem(at: url) }
-            guard let data = FileManager.default.contents(atPath: url.path) else { return nil }
+            guard let data = FileManager.default.contents(
+                atPath: resultsDirectory.appendingPathComponent(name).path
+            ) else { return nil }
             return try? decoder.decode(HoldResult.self, from: data)
         }
         .sorted { $0.endedAt < $1.endedAt }
+    }
+
+    /// Removes a result once it has been seen, unless a newer hold on the
+    /// same PID has replaced it.
+    public func removeResult(_ result: HoldResult) {
+        let url = resultsDirectory.appendingPathComponent("\(result.hold.pid).json")
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSince1970
+        guard let data = FileManager.default.contents(atPath: url.path),
+              (try? decoder.decode(HoldResult.self, from: data)) == result
+        else { return }
+        try? FileManager.default.removeItem(at: url)
     }
 
     /// Every readable record. Unreadable files are skipped, not deleted: a

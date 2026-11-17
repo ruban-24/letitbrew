@@ -72,15 +72,14 @@ struct HoldCommandTests {
         let run = try HoldRun(command: ["sh", "-c", "exit 7"])
         #expect(try run.wait() == 7)
         #expect(run.storage.loadAll().isEmpty)
-        let results = run.storage.takeResults()
+        let results = run.storage.loadResults()
         #expect(results.map(\.exitStatus) == [7])
         #expect(results.map(\.hold.label) == ["sh -c exit 7"])
         #expect(results.allSatisfy { $0.endedAt >= $0.hold.startedAt })
-        #expect(run.storage.takeResults().isEmpty)
 
         let signalled = try HoldRun(command: ["sh", "-c", "kill -TERM $$"])
         #expect(try signalled.wait() == 128 + SIGTERM)
-        #expect(signalled.storage.takeResults().map(\.exitStatus) == [128 + SIGTERM])
+        #expect(signalled.storage.loadResults().map(\.exitStatus) == [128 + SIGTERM])
     }
 
     @Test func killedCLIRecordIsPrunedOnceTheCommandIsGone() throws {
