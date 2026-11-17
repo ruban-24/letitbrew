@@ -39,6 +39,14 @@ public struct HoldRecord: Codable, Equatable, Sendable {
         return String(line.prefix(maxLabelLength - 1)) + "…"
     }
 
+    /// The label of a bare `letitbrew hold`, which lasts until Ctrl-C.
+    public static let terminalLabel = "Terminal"
+
+    /// The label of `letitbrew hold --pid N`.
+    public static func processLabel(pid: Int32) -> String {
+        "Process \(pid)"
+    }
+
     /// A process that started this long after the record's start time is a
     /// different process that reused the PID.
     public static let startTolerance: TimeInterval = 2
@@ -136,14 +144,18 @@ public struct HoldStorage: Sendable {
 }
 
 /// The one line `letitbrew hold` prints when Let It Brew cannot hold the Mac
-/// awake. The command runs either way.
+/// awake. The hold goes ahead either way; `anyway` says what happens next.
 public enum HoldWarning {
-    public static func message(appRunning: Bool, paused: Bool) -> String? {
+    public static func message(
+        appRunning: Bool,
+        paused: Bool,
+        anyway: String = "Running your command anyway."
+    ) -> String? {
         if !appRunning {
-            return "letitbrew: Let It Brew isn't running, so your Mac may still sleep. Running your command anyway."
+            return "letitbrew: Let It Brew isn't running, so your Mac may still sleep. \(anyway)"
         }
         if paused {
-            return "letitbrew: Let It Brew is paused, so your Mac may still sleep. Running your command anyway."
+            return "letitbrew: Let It Brew is paused, so your Mac may still sleep. \(anyway)"
         }
         return nil
     }

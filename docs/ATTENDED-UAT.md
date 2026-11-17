@@ -107,6 +107,38 @@ once it is on the PATH).
    process and the `sleep`. Within two seconds the row is gone and
    `~/Library/Application Support/LetItBrew/holds/` is empty.
 
+### `letitbrew hold --pid N` and bare `letitbrew hold` (#60)
+
+`swift test` covers `--pid` holding until another process exits (including a
+root-owned PID), bare `hold` ending on SIGINT with exit 0, record cleanup, the
+missing-PID error, usage errors, and the warnings with a stand-in app state.
+These need the signed app and a real terminal. Run the CLI from the installed
+bundle as in the section above.
+
+1. Run `sleep 120 &`, then `letitbrew hold --pid $!`. Within two seconds the
+   menu lists "Holding · Process <pid>" with the terminal glyph, "Command", and
+   an elapsed time; the header reads "Keeping your Mac awake" and
+   "1 command is holding"; `pmset -g assertions` shows the hold. When `sleep`
+   ends, the CLI exits, `echo $?` prints 0, and the row disappears.
+2. Run bare `letitbrew hold`. The menu lists "Holding · Terminal". Press
+   Ctrl-C: the CLI exits without printing anything, `echo $?` prints 0, and
+   the row disappears within two seconds.
+3. Start bare `letitbrew hold` in a Terminal window and close the window
+   (SIGHUP). The row disappears and `holds/` is empty.
+4. With a Claude session working and one `hold -- sleep 300` running, start
+   `letitbrew hold --pid 1`. The header reads
+   "1 agent is working · 2 commands are holding" and the row reads
+   "Holding · Process 1". Press Ctrl-C: `echo $?` prints 130.
+5. Run `letitbrew hold --pid 99999` (or any PID `ps -p` reports missing): one
+   line says there is no process with that PID, `echo $?` prints 1, and no row
+   appears.
+6. Start bare `letitbrew hold`, then `kill -9` the `letitbrew` process from
+   another terminal. Within two seconds the row is gone and `holds/` is empty.
+7. Pause Let It Brew and run bare `letitbrew hold`: one line warns that Let It
+   Brew is paused and ends "Holding anyway."; the row appears and the Mac is
+   held as soon as you resume. Quit Let It Brew and run
+   `letitbrew hold --pid 1`: the warning says it isn't running.
+
 ### Homebrew cask (#68)
 
 `brew audit --cask --strict --online` and install/uninstall with a scratch

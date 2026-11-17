@@ -33,6 +33,18 @@ private func agentRows(_ states: [MenuSessionState]) -> [MenuSessionPresentation
     #expect(row?.elapsedText == "2m")
 }
 
+@Test func pidAndBareHoldRowsNameWhatTheyHoldFor() {
+    let rows = MenuHoldPresentationPolicy.rows(
+        from: [
+            HoldRecord(pid: 900, label: HoldRecord.processLabel(pid: 4_182), startedAt: now),
+            HoldRecord(pid: 901, label: HoldRecord.terminalLabel, startedAt: now),
+        ],
+        now: now
+    )
+    #expect(rows.map(\.title) == ["Holding · Process 4182", "Holding · Terminal"])
+    #expect(rows.map(\.subtitle) == ["Command", "Command"])
+}
+
 @Test func holdsAreListedAfterAgentSessions() {
     let rows = agentRows([.working])
     let items = MenuBoardLayoutPolicy.items(

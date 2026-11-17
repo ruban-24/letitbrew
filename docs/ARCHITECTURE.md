@@ -169,8 +169,11 @@ no `AgentID`, never appear in hook install, uninstall, or doctor, and are not
 bounded by `MonitoringLease`. Today the only kind is a `letitbrew hold`: the
 CLI runs the command in the same terminal and process group and writes one
 record (PID, label, start time) to `~/Library/Application Support/LetItBrew/holds/`,
-removing it when the command exits. The app reads that folder on its poll and
-drops records whose process has exited, so a killed CLI leaves nothing behind.
+removing it when the command exits. `hold --pid N` and bare `hold` write the
+same record for the CLI's own PID and wait in a kqueue for N's exit or for
+SIGINT, SIGTERM, or SIGHUP; N may belong to another user. The app reads that
+folder on its poll and drops records whose process has exited, so a killed CLI
+leaves nothing behind.
 A live demand counts like a Working session and passes through the same power
 rules; `Decision.wantedBy` records what wanted the hold so the menu can explain
 a release.

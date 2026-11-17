@@ -3,7 +3,7 @@ import Foundation
 import LetItBrewCore
 import Testing
 
-/// End-to-end tests of `letitbrew hold -- <cmd>` against the built binary.
+/// End-to-end tests of `letitbrew hold` against the built binary.
 /// Each run gets its own home (holds folder) and its own process group, so a
 /// signal sent to the group stands in for Ctrl-C in a terminal.
 @Suite(.serialized)
@@ -110,6 +110,96 @@ struct HoldCommandTests {
         #expect(run.stderr.split(separator: "\n").count == 1)
     }
 
+    @Test func bareHoldHoldsUntilCtrlCThenExitsCleanly() throws {
+        let run = try HoldRun(holdArguments: [])
+        let record = try run.waitForRecord()
+        #expect(record.pid == run.pid)
+        #expect(record.label == "Terminal")
+        #expect(run.storage.loadLive().count == 1)
+        usleep(300_000)
+        #expect(try run.isRunning())
+
+        kill(-run.pid, SIGINT)
+        #expect(try run.wait() == 0)
+        #expect(run.storage.loadAll().isEmpty)
+        #expect(run.stderr.isEmpty)
+    }
+
+    @Test func pidHoldLastsUntilThatProcessExits() throws {
+        let target = Process()
+        target.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        target.arguments = ["30"]
+        try target.run()
+        defer { if target.isRunning { target.terminate() } }
+
+        let run = try HoldRun(holdArguments: ["--pid", "\(target.processIdentifier)"])
+        let record = try run.waitForRecord()
+        #expect(record.pid == run.pid)
+        #expect(record.label == "Process \(target.processIdentifier)")
+        #expect(run.storage.loadLive().count == 1)
+        usleep(300_000)
+        #expect(try run.isRunning())
+
+        target.terminate()
+        target.waitUntilExit()
+        #expect(try run.wait() == 0)
+        #expect(run.storage.loadAll().isEmpty)
+    }
+
+    @Test func pidOwnedByAnotherUserStillHolds() throws {
+        // launchd runs as root, so kill(1, 0) fails with EPERM.
+        let run = try HoldRun(holdArguments: ["--pid", "1"])
+        #expect(try run.waitForRecord().label == "Process 1")
+        usleep(300_000)
+        #expect(try run.isRunning())
+
+        // Stopped before the process exits, so a `&& next` does not run.
+        kill(-run.pid, SIGINT)
+        #expect(try run.wait() == 128 + SIGINT)
+        #expect(run.storage.loadAll().isEmpty)
+    }
+
+    @Test func missingPidIsOneClearErrorAndNonZeroExit() throws {
+        let gone = Process()
+        gone.executableURL = URL(fileURLWithPath: "/usr/bin/true")
+        try gone.run()
+        gone.waitUntilExit()
+
+        let run = try HoldRun(
+            holdArguments: ["--pid", "\(gone.processIdentifier)"],
+            appRunning: false
+        )
+        #expect(try run.wait() == 1)
+        #expect(run.stderr == "letitbrew: no process with PID \(gone.processIdentifier)\n")
+        #expect(run.storage.loadAll().isEmpty)
+    }
+
+    @Test(arguments: [["--pid"], ["--pid", "abc"], ["--pid", "0"], ["--pid", "-1"], ["--pid", "1", "2"], ["now"]])
+    func malformedHoldPrintsUsage(arguments: [String]) throws {
+        let run = try HoldRun(holdArguments: arguments)
+        #expect(try run.wait() == 2)
+        #expect(run.stderr.hasPrefix("Usage: letitbrew hold"))
+    }
+
+    @Test func pausedAppWarnsAndBareHoldStillHolds() throws {
+        let run = try HoldRun(holdArguments: [], appRunning: true, appPaused: true)
+        _ = try run.waitForRecord()
+        #expect(run.stderr.contains("Let It Brew is paused"))
+        #expect(run.stderr.contains("Holding anyway."))
+        #expect(run.stderr.split(separator: "\n").count == 1)
+        kill(-run.pid, SIGINT)
+        #expect(try run.wait() == 0)
+    }
+
+    @Test func appNotRunningWarnsAndPidHoldStillHolds() throws {
+        let run = try HoldRun(holdArguments: ["--pid", "1"], appRunning: false, appPaused: false)
+        _ = try run.waitForRecord()
+        #expect(run.stderr.contains("Let It Brew isn't running"))
+        #expect(run.stderr.split(separator: "\n").count == 1)
+        kill(run.pid, SIGTERM)
+        #expect(try run.wait() == 128 + SIGTERM)
+    }
+
     @Test func runningAppPrintsNoWarning() throws {
         let run = try HoldRun(command: ["true"])
         #expect(try run.wait() == 0)
@@ -135,7 +225,12 @@ private final class HoldRun {
     private let stderrPath: String
     private var exitStatus: Int32?
 
-    init(command: [String], appRunning: Bool = true, appPaused: Bool = false) throws {
+    convenience init(command: [String], appRunning: Bool = true, appPaused: Bool = false) throws {
+        try self.init(holdArguments: ["--"] + command, appRunning: appRunning, appPaused: appPaused)
+    }
+
+    /// Runs `letitbrew hold <holdArguments>`.
+    init(holdArguments: [String], appRunning: Bool = true, appPaused: Bool = false) throws {
         let home = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("letitbrew-hold-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
@@ -148,8 +243,8 @@ private final class HoldRun {
             .applicationSupportDirectory(in: home.appendingPathComponent("Library/Application Support"))
             .appendingPathComponent("holds", isDirectory: true))
 
-        let arguments = [try Self.binary(), "hold", "--"]
-            + command.map { $0 == Self.marker ? markerPath : $0 }
+        let arguments = [try Self.binary(), "hold"]
+            + holdArguments.map { $0 == Self.marker ? markerPath : $0 }
         var environment = ProcessInfo.processInfo.environment
         environment["CFFIXED_USER_HOME"] = home.path
         environment["LETITBREW_TEST_APP_RUNNING"] = appRunning ? "1" : "0"
@@ -205,6 +300,29 @@ private final class HoldRun {
         while !FileManager.default.fileExists(atPath: markerPath) {
             guard Date() < deadline else {
                 throw HoldTestError(description: "command never started; stderr: \(stderr)")
+            }
+            usleep(20_000)
+        }
+    }
+
+    /// Whether the CLI is still running.
+    func isRunning() throws -> Bool {
+        if exitStatus != nil { return false }
+        var status: Int32 = 0
+        let result = waitpid(pid, &status, WNOHANG)
+        guard result == pid else { return result == 0 }
+        let signalNumber = status & 0x7f
+        exitStatus = signalNumber == 0 ? (status >> 8) & 0xff : 128 + signalNumber
+        return false
+    }
+
+    /// Waits until the CLI has written its hold record.
+    func waitForRecord(timeout: TimeInterval = 10) throws -> HoldRecord {
+        let deadline = Date().addingTimeInterval(timeout)
+        while true {
+            if let record = storage.loadAll().first { return record }
+            guard Date() < deadline else {
+                throw HoldTestError(description: "no hold record appeared; stderr: \(stderr)")
             }
             usleep(20_000)
         }
