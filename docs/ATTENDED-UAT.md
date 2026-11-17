@@ -75,9 +75,9 @@ notification permission, delivery, and click-through.
 
 ### Finished, battery/heat and Wi-Fi alerts (#64)
 
-`AlertPolicy` tests cover the 3-minute rule at its edge, one alert per
-episode, exit-status wording, hidden names and the per-type defaults; the
-`hold` integration tests cover the exit-status result file. These steps cover
+`AlertPolicy` tests cover the 3-minute and 60-second rules at their edges,
+one alert per episode, exit-status wording, hidden names and the per-type
+defaults; the `hold` integration tests cover the exit-status result file. These steps cover
 real notifications, the real power and network triggers, and the Alerts tab.
 Turn on Desktop alerts first, and run the CLI from the installed bundle as in
 the `hold` section.
@@ -124,9 +124,10 @@ the `hold` section.
    this step as not reproduced.
 9. Wi-Fi: turn on "Wi-Fi drops while the lid is closed". With the closed-lid
    switch on, hold the Mac with a 10-minute `letitbrew hold -- sleep 600`,
-   close the lid, then turn the Wi-Fi router off (or leave its range) for a
-   minute. Open the lid: Notification Center shows one "Wi-Fi dropped while
-   your Mac was closed" / "Agents may be stuck until it reconnects." Repeat
+   close the lid, then turn the Wi-Fi router off (or leave its range) for
+   about two minutes. Open the lid: Notification Center shows one "Wi-Fi
+   dropped while your Mac was closed" / "Agents may be stuck until it
+   reconnects." Repeat with an outage of about 20 seconds: no banner. Repeat
    with the lid open, and with nothing held: no banner. Turn Wi-Fi off with the
    lid open, then close it: no banner.
 10. Check that no banner or Notification Center entry from steps 2–9 shows a

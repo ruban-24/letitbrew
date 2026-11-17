@@ -325,7 +325,7 @@ struct LetItBrewSettingsView: View {
             } header: {
                 Text("Privacy")
             } footer: {
-                Text("Alerts say which agent and project folder, never your prompts, questions, or commands.")
+                Text("Alerts never include your prompts or questions.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }

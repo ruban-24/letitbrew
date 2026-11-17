@@ -571,6 +571,32 @@ private func run(
 
 // MARK: Wi-Fi dropped
 
+@Test func wifiDroppedWaitsSixtySecondsOfContinuousOutage() {
+    var wifi = enabled
+    wifi.wifiDropped = true
+    #expect(AlertPolicy.wifiDroppedDelay == 60)
+    // First seen down at 10 s; 59.9 s later nothing, at 60 s exactly one.
+    #expect(run([
+        Poll(at: 0, machine: heldClosed),
+        Poll(at: 10, machine: offline()),
+        Poll(at: 69.9, machine: offline()),
+    ], settings: wifi).isEmpty)
+    #expect(run([
+        Poll(at: 0, machine: heldClosed),
+        Poll(at: 10, machine: offline()),
+        Poll(at: 69.9, machine: offline()),
+        Poll(at: 70, machine: offline()),
+    ], settings: wifi).map(\.kind) == [.wifiDropped])
+    // A drop that recovers within 60 s sends nothing.
+    #expect(run([
+        Poll(at: 0, machine: heldClosed),
+        Poll(at: 10, machine: offline()),
+        Poll(at: 69, machine: offline()),
+        Poll(at: 70, machine: heldClosed),
+        Poll(at: 300, machine: heldClosed),
+    ], settings: wifi).isEmpty)
+}
+
 @Test func wifiDroppedAlertsWhenTheNetworkGoesWhileClosedAndHeld() {
     var wifi = enabled
     wifi.wifiDropped = true
@@ -578,41 +604,58 @@ private func run(
         Poll(at: 0, machine: heldClosed),
         Poll(at: 1, machine: offline()),
         Poll(at: 2, machine: offline()),
+        Poll(at: 61, machine: offline()),
         Poll(at: 300, machine: offline()),
     ], settings: wifi)
     #expect(alerts.map(\.kind) == [.wifiDropped])
     #expect(alerts.map(\.title) == ["Wi-Fi dropped while your Mac was closed"])
     #expect(alerts.map(\.body) == ["Agents may be stuck until it reconnects."])
 
-    // Back, then gone again: a second episode.
+    // Back, then gone again for 60 s: a second episode.
     #expect(run([
         Poll(at: 0, machine: heldClosed), Poll(at: 1, machine: offline()),
-        Poll(at: 2, machine: heldClosed), Poll(at: 3, machine: offline()),
+        Poll(at: 61, machine: offline()), Poll(at: 62, machine: heldClosed),
+        Poll(at: 63, machine: offline()), Poll(at: 123, machine: offline()),
     ], settings: wifi).count == 2)
 }
 
 @Test func wifiDroppedNeedsTheLidClosedAndSomethingHeld() {
     var wifi = enabled
     wifi.wifiDropped = true
-    #expect(run([Poll(at: 0, machine: heldClosed), Poll(at: 1, machine: offline(lidClosed: false))],
+    #expect(run([Poll(at: 0, machine: heldClosed), Poll(at: 1, machine: offline(lidClosed: false)),
+                 Poll(at: 300, machine: offline(lidClosed: false))],
                 settings: wifi).isEmpty)
-    #expect(run([Poll(at: 0, machine: heldClosed), Poll(at: 1, machine: offline(held: false))],
+    #expect(run([Poll(at: 0, machine: heldClosed), Poll(at: 1, machine: offline(held: false)),
+                 Poll(at: 300, machine: offline(held: false))],
                 settings: wifi).isEmpty)
     // Already down when the lid closed: the drop happened with the person there.
     var openOffline = offline(lidClosed: false)
     openOffline.held = true
-    #expect(run([Poll(at: 0, machine: openOffline), Poll(at: 1, machine: offline())],
+    #expect(run([Poll(at: 0, machine: openOffline), Poll(at: 1, machine: offline()),
+                 Poll(at: 300, machine: offline())],
+                settings: wifi).isEmpty)
+    // The lid opening or the hold ending within the 60 s ends the episode,
+    // and closing again with the network still down does not start one.
+    #expect(run([Poll(at: 0, machine: heldClosed), Poll(at: 1, machine: offline()),
+                 Poll(at: 30, machine: offline(lidClosed: false)),
+                 Poll(at: 31, machine: offline()), Poll(at: 300, machine: offline())],
+                settings: wifi).isEmpty)
+    #expect(run([Poll(at: 0, machine: heldClosed), Poll(at: 1, machine: offline()),
+                 Poll(at: 30, machine: offline(held: false)),
+                 Poll(at: 31, machine: offline()), Poll(at: 300, machine: offline())],
                 settings: wifi).isEmpty)
     // The first reading after launch is a baseline, not a drop.
     var unknown = heldClosed
     unknown.networkReachable = nil
-    #expect(run([Poll(at: 0, machine: unknown), Poll(at: 1, machine: offline())],
+    #expect(run([Poll(at: 0, machine: unknown), Poll(at: 1, machine: offline()),
+                 Poll(at: 300, machine: offline())],
                 settings: wifi).isEmpty)
 }
 
 @Test func wifiDroppedIsOffByDefault() {
     #expect(AlertSettings().wifiDropped == false)
-    #expect(run([Poll(at: 0, machine: heldClosed), Poll(at: 1, machine: offline())]).isEmpty)
+    #expect(run([Poll(at: 0, machine: heldClosed), Poll(at: 1, machine: offline()),
+                 Poll(at: 300, machine: offline())]).isEmpty)
 }
 
 @Test func aReusedPIDIsADifferentHold() {

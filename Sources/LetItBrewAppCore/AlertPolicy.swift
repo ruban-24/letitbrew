@@ -188,6 +188,10 @@ public struct AlertSnapshot: Equatable, Sendable {
     /// reads as a second ending.
     public let reportedHolds: Set<String>
     public let machine: AlertMachineState
+    /// Start of the current network outage, as seen by polling: set by a
+    /// drop from reachable while the lid is closed and the Mac held, and
+    /// cleared when any of the three ends.
+    public let networkDownSince: Date?
 
     /// A record's state edge alone cannot time a wait: an approved command
     /// shows the session as Working while the record stays Waiting, and once
@@ -203,6 +207,17 @@ public struct AlertSnapshot: Equatable, Sendable {
     ) {
         self.machine = machine
         self.observedAt = observedAt
+        if machine.networkReachable == false, machine.lidClosed, machine.held {
+            if let since = previous?.networkDownSince {
+                networkDownSince = since
+            } else if previous?.machine.networkReachable == true {
+                networkDownSince = observedAt
+            } else {
+                networkDownSince = nil
+            }
+        } else {
+            networkDownSince = nil
+        }
         self.holds = holds
         self.endedHolds = endedHolds
         self.reportedHolds = Set(endedHolds.map(\.hold.id)).union(
@@ -259,6 +274,8 @@ public enum AlertPolicy {
     public static let needsYouDelay: TimeInterval = 30
     /// Shorter work never sends a finished alert.
     public static let finishedMinimum: TimeInterval = 3 * 60
+    /// A shorter network outage never sends a Wi-Fi alert.
+    public static let wifiDroppedDelay: TimeInterval = 60
 
     /// Alerts for what changed between two polls, with final wording. An
     /// alert fires on the poll that crosses its threshold, so reapplying a
@@ -325,19 +342,23 @@ public enum AlertPolicy {
         )
     }
 
-    /// The network went from reachable to unreachable while the lid was
-    /// closed and the Mac held. Staying down is the same episode.
+    /// The network has been unreachable for `wifiDroppedDelay`, with the
+    /// lid closed and the Mac held throughout. Staying down is the same
+    /// episode.
     private static func wifiAlert(
         previous: AlertSnapshot,
         current: AlertSnapshot,
         destinations: Set<AlertDestination>
     ) -> Alert? {
-        let machine = current.machine
-        guard previous.machine.networkReachable == true, machine.networkReachable == false,
-              machine.lidClosed, machine.held
+        guard let since = current.networkDownSince,
+              current.observedAt.timeIntervalSince(since) >= wifiDroppedDelay
         else { return nil }
+        if previous.networkDownSince == since,
+           previous.observedAt.timeIntervalSince(since) >= wifiDroppedDelay {
+            return nil
+        }
         return Alert(
-            id: "wifi.\(current.observedAt.timeIntervalSince1970)",
+            id: "wifi.\(since.timeIntervalSince1970)",
             kind: .wifiDropped,
             destinations: destinations,
             title: "Wi-Fi dropped while your Mac was closed",
