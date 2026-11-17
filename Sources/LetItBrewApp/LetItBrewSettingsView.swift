@@ -74,6 +74,8 @@ struct LetItBrewSettingsView: View {
                 openLoginItems: { model.openLoginItemSettings() }
             )
 
+            AppearanceSettingsSection(selection: $model.menuBarIcon)
+
             CommandLineToolSettingsSection(
                 actionsBlocked: model.updateBlocksOtherActions || model.uninstallInProgress
             )
@@ -825,7 +827,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     /// failure text scrolls inside the pane instead of growing the window.
     var height: CGFloat {
         switch self {
-        case .general: 240
+        case .general: 576
         case .agents: 430
         case .power: 380
         case .alerts: 380

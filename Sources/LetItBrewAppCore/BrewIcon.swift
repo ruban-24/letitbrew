@@ -25,10 +25,32 @@ public enum BrewIconState: Equatable, Sendable, CaseIterable {
     }
 }
 
-/// The family of menu-bar icons. Each one draws every state on the shared
-/// 24×24 y-down canvas; only `awake` has more than one frame.
-public enum BrewIcon: Equatable, Sendable, CaseIterable {
+/// The family of menu-bar icons, in the order Settings offers them. Each one
+/// draws every state on the shared 24×24 y-down canvas; only `awake` has more
+/// than one frame.
+public enum BrewIcon: String, Equatable, Sendable, CaseIterable {
     case flask
+    case beerMug
+    case coffee
+    case kettle
+    case cauldron
+
+    /// The saved choice (its `rawValue`), or the flask when nothing (or
+    /// nothing known) was saved: installs from before the picker never saved one.
+    public init(storedValue: String?) {
+        self = storedValue.flatMap(Self.init(rawValue:)) ?? .flask
+    }
+
+    /// The name under the icon's tile in Settings.
+    public var displayName: String {
+        switch self {
+        case .flask: "Flask"
+        case .beerMug: "Beer mug"
+        case .coffee: "Coffee"
+        case .kettle: "Kettle"
+        case .cauldron: "Cauldron"
+        }
+    }
 
     /// How often the menu-bar label swaps to the next awake frame.
     public static let frameInterval: Duration = .milliseconds(160)
@@ -53,6 +75,8 @@ public enum BrewIcon: Equatable, Sendable, CaseIterable {
     private var awakeFrameCount: Int {
         switch self {
         case .flask: FlaskIcon.awakeFrameCount
+        case .beerMug, .coffee, .cauldron: VesselIcons.awakeFrameCount
+        case .kettle: VesselIcons.kettleAwakeFrameCount
         }
     }
 
@@ -70,6 +94,14 @@ public enum BrewIcon: Equatable, Sendable, CaseIterable {
         switch self {
         case .flask:
             FlaskIcon.draw(in: context, state: state, frame: frame, scale: scale, ink: ink, dot: dot)
+        case .beerMug:
+            VesselIcons.draw(frameCount: awakeFrameCount, VesselIcons.beerMug, in: context, state: state, frame: frame, scale: scale, ink: ink, dot: dot)
+        case .coffee:
+            VesselIcons.draw(frameCount: awakeFrameCount, VesselIcons.coffee, in: context, state: state, frame: frame, scale: scale, ink: ink, dot: dot)
+        case .kettle:
+            VesselIcons.draw(frameCount: awakeFrameCount, VesselIcons.kettle, in: context, state: state, frame: frame, scale: scale, ink: ink, dot: dot)
+        case .cauldron:
+            VesselIcons.draw(frameCount: awakeFrameCount, VesselIcons.cauldron, in: context, state: state, frame: frame, scale: scale, ink: ink, dot: dot)
         }
     }
 }

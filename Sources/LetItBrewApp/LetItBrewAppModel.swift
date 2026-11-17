@@ -227,6 +227,10 @@ final class LetItBrewAppModel: ObservableObject {
     @Published private(set) var reason = "Your Mac can sleep"
     @Published private(set) var iconState: BrewIconState = .idle
     @Published private(set) var menuBarToolTip = "Watching for agents"
+    /// The icon family member shown in the menu bar, chosen in Settings.
+    @Published var menuBarIcon: BrewIcon {
+        didSet { defaults.set(menuBarIcon.rawValue, forKey: Keys.menuBarIcon) }
+    }
     @Published private(set) var daemonAvailable = false
     @Published private(set) var daemonRecoveryState: DaemonRecoveryState = .checking
     @Published private(set) var ownsHold = false
@@ -340,6 +344,7 @@ final class LetItBrewAppModel: ObservableObject {
         static let respectLowPowerMode = "respectLowPowerMode"
         static let allowDisplaysToSleep = "allowDisplaysToSleep"
         static let useLowPowerModeWithLidClosed = "useLowPowerModeWithLidClosed"
+        static let menuBarIcon = "menuBarIcon"
         static let automaticUpdateSnapshot = "automaticUpdateSnapshotV1"
         static let desktopAlerts = "desktopAlerts"
         static let needsYouAlerts = "needsYouAlerts"
@@ -462,6 +467,7 @@ final class LetItBrewAppModel: ObservableObject {
             key: Keys.useLowPowerModeWithLidClosed,
             fallback: true
         )
+        menuBarIcon = BrewIcon(storedValue: defaults.string(forKey: Keys.menuBarIcon))
         sessionTrackingSuppressions = Self.loadSessionTrackingSuppressions(
             from: defaults
         )
