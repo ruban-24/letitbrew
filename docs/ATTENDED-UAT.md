@@ -431,7 +431,7 @@ throwaway topic; never paste a real topic into an issue.
    subscribe, subscribe by hand to the topic shown (it is selectable) and
    report the result so the payload can change.
 3. Press Send Test. The phone shows "Let It Brew test" / "Phone alerts are
-   working." Settings shows "● Working · test received at <time>" (green dot,
+   working." Settings shows "● Working · test sent at <time>" (green dot,
    the real time), Turn Off, a smaller QR code with "ntfy.sh/<topic>", Send
    Test, "Always send to phone" (off), and a collapsed Advanced showing
    "ntfy.sh". The "Alert me when" and Privacy groups are no longer dimmed,
@@ -463,17 +463,26 @@ throwaway topic; never paste a real topic into an issue.
    press Return. Status drops back to "Waiting for a test to arrive…".
    Subscribe the phone to the topic on that server, press Send Test, and
    confirm it arrives. An `http://` server is rejected and the field reverts.
-8. Keychain: in Keychain Access, find "Let It Brew ntfy access token"
+8. End to end on the maintainer's self-hosted ntfy server: Turn Off, Set
+   Up, open Advanced, and enter the server's https URL and an access token
+   (press Return after each). Scan the QR code with the phone, or subscribe
+   the ntfy app to that server and topic, then press Send Test: it arrives on
+   the phone and Settings shows "● Working · test sent at <time>". Then close
+   the lid with something keeping the Mac awake (see step 4) and let an agent
+   approval wait 30 seconds: the real alert arrives on the phone through the
+   self-hosted server. Check the server's log shows the request carried the
+   token and nothing but the topic, title and message.
+9. Keychain: in Keychain Access, find "Let It Brew ntfy access token"
    (service ending `.ntfy`). Confirm the token is not in
    `defaults read com.ruban24.letitbrew` (only `ntfyTopic`, `ntfyServer`,
-   `ntfyTestReceivedAt`, `alwaysSendToPhone`). Quit and relaunch: still
+   `ntfyTestSentAt`, `alwaysSendToPhone`). Quit and relaunch: still
    Working and the token still works. Turn Off removes the Keychain item and
    the topic, and the section returns to Set Up.
-9. Never set up: with Desktop alerts on and no Set Up, lock the screen and
+10. Never set up: with Desktop alerts on and no Set Up, lock the screen and
    let an approval wait. Confirm no request leaves the Mac (Little Snitch or
    `nettop`).
-10. Uninstall from Settings: confirm the Keychain item is removed.
-11. Check the section in light and dark appearance, in all three states.
+11. Uninstall from Settings: confirm the Keychain item is removed.
+12. Check the section in light and dark appearance, in all three states.
 
 ## v1.0.1 release scope
 

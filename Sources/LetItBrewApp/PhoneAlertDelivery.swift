@@ -21,8 +21,8 @@ final class PhoneAlerts: ObservableObject, AlertDelivering {
     @Published private(set) var server: URL
     @Published private(set) var token: String?
     /// When the server last accepted a Send Test. The Mac cannot see the
-    /// phone, so a 2xx response counts as received.
-    @Published private(set) var testReceivedAt: Date?
+    /// phone, so a 2xx response is all "sent" can mean.
+    @Published private(set) var testSentAt: Date?
     @Published private(set) var testState: TestState = .idle
     @Published var alwaysSendToPhone: Bool {
         didSet { defaults.set(alwaysSendToPhone, forKey: Keys.alwaysSendToPhone) }
@@ -31,7 +31,7 @@ final class PhoneAlerts: ObservableObject, AlertDelivering {
     private enum Keys {
         static let topic = "ntfyTopic"
         static let server = "ntfyServer"
-        static let testReceivedAt = "ntfyTestReceivedAt"
+        static let testSentAt = "ntfyTestSentAt"
         static let alwaysSendToPhone = "alwaysSendToPhone"
     }
 
@@ -44,7 +44,7 @@ final class PhoneAlerts: ObservableObject, AlertDelivering {
         topic = defaults.string(forKey: Keys.topic)
         server = defaults.string(forKey: Keys.server).flatMap(NtfyServer.parse)
             ?? NtfyServer.default
-        testReceivedAt = defaults.object(forKey: Keys.testReceivedAt) as? Date
+        testSentAt = defaults.object(forKey: Keys.testSentAt) as? Date
         alwaysSendToPhone = defaults.bool(forKey: Keys.alwaysSendToPhone)
         // Read once while unlocked, so alerts sent with the screen locked
         // never need the Keychain.
@@ -52,7 +52,7 @@ final class PhoneAlerts: ObservableObject, AlertDelivering {
     }
 
     /// Set up and a test has reached the server.
-    var isWorking: Bool { topic != nil && testReceivedAt != nil }
+    var isWorking: Bool { topic != nil && testSentAt != nil }
 
     var configuration: NtfyConfiguration? {
         topic.map { NtfyConfiguration(server: server, topic: $0, token: token) }
@@ -63,7 +63,7 @@ final class PhoneAlerts: ObservableObject, AlertDelivering {
         let topic = NtfyTopic.generate()
         self.topic = topic
         defaults.set(topic, forKey: Keys.topic)
-        setTestReceived(nil)
+        setTestSent(nil)
     }
 
     /// Cancel and Turn Off both forget the topic, server and token.
@@ -75,7 +75,7 @@ final class PhoneAlerts: ObservableObject, AlertDelivering {
         token = nil
         keychain.delete()
         alwaysSendToPhone = false
-        setTestReceived(nil)
+        setTestSent(nil)
     }
 
     /// False, changing nothing, unless `text` is an https URL. A new server
@@ -86,7 +86,7 @@ final class PhoneAlerts: ObservableObject, AlertDelivering {
         guard url != server else { return true }
         server = url
         defaults.set(url.absoluteString, forKey: Keys.server)
-        setTestReceived(nil)
+        setTestSent(nil)
         return true
     }
 
@@ -97,7 +97,7 @@ final class PhoneAlerts: ObservableObject, AlertDelivering {
         guard newToken != token else { return }
         token = newToken
         if let newToken { keychain.save(newToken) } else { keychain.delete() }
-        setTestReceived(nil)
+        setTestSent(nil)
     }
 
     func sendTest() {
@@ -112,7 +112,7 @@ final class PhoneAlerts: ObservableObject, AlertDelivering {
             // A test of a server or token since replaced proves nothing.
             let current = self.configuration == configuration
             self.testState = sent || !current ? .idle : .failed
-            if sent, current { self.setTestReceived(Date()) }
+            if sent, current { self.setTestSent(Date()) }
         }
     }
 
@@ -143,9 +143,9 @@ final class PhoneAlerts: ObservableObject, AlertDelivering {
         return (response as? HTTPURLResponse)?.statusCode ?? 0
     }
 
-    private func setTestReceived(_ date: Date?) {
-        testReceivedAt = date
-        defaults.set(date, forKey: Keys.testReceivedAt)
+    private func setTestSent(_ date: Date?) {
+        testSentAt = date
+        defaults.set(date, forKey: Keys.testSentAt)
         if date == nil, testState == .failed { testState = .idle }
     }
 }

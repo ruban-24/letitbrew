@@ -138,9 +138,9 @@ struct PhoneAlertsSettingsSection: View {
     }
 
     private var workingStatus: Text {
-        let time = (phone.testReceivedAt ?? Date()).formatted(date: .omitted, time: .shortened)
+        let time = (phone.testSentAt ?? Date()).formatted(date: .omitted, time: .shortened)
         return Text(Image(systemName: "circle.fill")).font(.system(size: 7)).foregroundColor(.green)
-            + Text(" Working · test received at \(time)")
+            + Text(" Working · test sent at \(time)")
     }
 
     /// Settings only; a failed alert send is never surfaced anywhere.
