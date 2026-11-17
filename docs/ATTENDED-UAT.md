@@ -16,7 +16,6 @@ using the affected feature until it is understood.
 
 ## v2.0.0 release scope
 
-<<<<<<< HEAD
 ### Menu-bar flask
 
 `swift test` proves the flask draws distinct idle, awake, needs-you and paused
@@ -73,7 +72,6 @@ notification permission, delivery, and click-through.
    tab shows the warning and Open Settings… opens Let It Brew's notification
    page.
 8. Check the Alerts tab and the menu tip in light and dark appearance.
-=======
 ### `letitbrew hold -- <command>`
 
 `swift test` covers exit codes, Ctrl-C, record cleanup, pruning, and the
@@ -107,13 +105,13 @@ once it is on the PATH).
 7. Start `letitbrew hold -- sleep 600`, then `kill -9` the `letitbrew`
    process and the `sleep`. Within two seconds the row is gone and
    `~/Library/Application Support/LetItBrew/holds/` is empty.
->>>>>>> 8ff372d (Add letitbrew hold -- <cmd>, the manual keep-awake tracer)
 
 ### Homebrew cask (#68)
 
 `brew audit --cask --strict --online` and install/uninstall with a scratch
-`--appdir` were checked before the cask merged. These need a Mac without
-Let It Brew installed and a real release newer than the cask:
+`--appdir` were checked before the cask merged. These need a spare Mac or
+user account without Let It Brew installed and a real release newer than the
+cask:
 
 1. `brew install ruban-24/tap/letitbrew` puts `Let It Brew.app` in
    `/Applications` and `which letitbrew` prints the Homebrew `bin` link.
@@ -129,6 +127,17 @@ Let It Brew installed and a real release newer than the cask:
    `$(brew --prefix)/Caskroom/letitbrew` are gone and
    `sudo launchctl print system/com.ruban24.letitbrew.daemon` reports no
    such service.
+4. Reinstall with `brew install ruban-24/tap/letitbrew` and record
+   `pmset -g | grep SleepDisabled`. Launch the app, turn on closed-lid
+   operation, approve the helper, and start a Claude turn so a hold is active.
+   Run plain `brew uninstall letitbrew` without the in-app uninstaller. It
+   finishes without errors, the `launchctl print` check above reports no such
+   service, System Settings → General → Login Items & Extensions no longer
+   lists the helper, and `SleepDisabled` matches the recorded value.
+5. Repeat the install and enable steps from step 4, then run
+   `brew reinstall letitbrew`. The helper is unregistered during the
+   reinstall. Launch the app: the helper registers again (approve it if
+   asked), and a closed-lid hold works.
 
 ## v1.0.1 release scope
 

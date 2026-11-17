@@ -178,9 +178,10 @@ background service, removes its local data, and moves itself to the Trash. If
 the app will not launch, follow the [manual uninstall procedure](docs/UNINSTALL.md)
 in the documented order.
 
-If you installed with Homebrew, use the in-app uninstaller first, then run
-`brew uninstall letitbrew` to remove the CLI link. Running `brew uninstall`
-alone deletes the app before it can unregister its background service.
+If you installed with Homebrew, `brew uninstall letitbrew` quits the app,
+unregisters its background service, and removes the app and the CLI link. It
+does not disconnect agent integrations, so use the in-app uninstaller first if
+you want those removed.
 
 ## Documentation
 
