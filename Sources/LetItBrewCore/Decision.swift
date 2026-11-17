@@ -81,18 +81,23 @@ public struct HoldDemandCount: Equatable, Sendable {
     public var agents: Int
     /// Live `letitbrew hold` processes.
     public var holds: Int
+    /// Manual sessions started from the menu whose deadline has not passed.
+    public var manualSessions: Int
 
-    public init(agents: Int = 0, holds: Int = 0) {
+    public init(agents: Int = 0, holds: Int = 0, manualSessions: Int = 0) {
         self.agents = agents
         self.holds = holds
+        self.manualSessions = manualSessions
     }
 
-    public var isEmpty: Bool { agents == 0 && holds == 0 }
+    public var isEmpty: Bool { agents == 0 && holds == 0 && manualSessions == 0 }
 
-    /// "1 working", "1 hold", or "2 working, 1 hold".
+    /// "1 working", "1 hold", "manual session", or
+    /// "2 working, manual session, 1 hold".
     var reason: String {
         var parts: [String] = []
         if agents > 0 { parts.append("\(agents) working") }
+        if manualSessions > 0 { parts.append("manual session") }
         if holds > 0 { parts.append(holds == 1 ? "1 hold" : "\(holds) holds") }
         return parts.joined(separator: ", ")
     }
@@ -216,7 +221,8 @@ public struct RunningApprovals: Equatable, Sendable {
 /// `demands` are manual keep-awake requests such as `letitbrew hold`. The
 /// caller passes only live ones (see `HoldRecord.live`); each holds like a
 /// Working session, under the same power rules, and is never bounded by
-/// `MonitoringLease`.
+/// `MonitoringLease`. A manual session whose deadline is not after `now` is
+/// ignored.
 public func decide(
     sessions: [SessionRecord],
     demands: [KeepAwakeDemand] = [],
@@ -238,7 +244,10 @@ public func decide(
         agents: sessions.count {
             runningApprovals.holdsAwake($0) && !expiredLeases.contains($0)
         },
-        holds: demands.count { if case .hold = $0 { true } else { false } }
+        holds: demands.count { if case .hold = $0 { true } else { false } },
+        manualSessions: demands.count {
+            if case .manualSession(let deadline) = $0 { deadline.map { $0 > now } ?? true } else { false }
+        }
     )
     func release(_ reason: String) -> Decision {
         Decision(holdSystem: false, holdLidClosed: false, reason: reason, wantedBy: wanted)

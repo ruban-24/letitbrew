@@ -8,6 +8,9 @@ import Foundation
 public enum KeepAwakeDemand: Equatable, Sendable {
     /// `letitbrew hold`: held while its process runs.
     case hold(HoldRecord)
+    /// A session started from the menu: held until its deadline, or until
+    /// it is ended when the deadline is nil.
+    case manualSession(deadline: Date?)
 }
 
 /// One `letitbrew hold`, written by the CLI and read by the app.

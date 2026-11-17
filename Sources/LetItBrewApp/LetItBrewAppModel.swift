@@ -235,6 +235,11 @@ final class LetItBrewAppModel: ObservableObject {
     @Published private(set) var daemonRecoveryState: DaemonRecoveryState = .checking
     @Published private(set) var ownsHold = false
     @Published private(set) var isPaused: Bool
+    /// The Keep awake row while a manual session runs; nil shows the
+    /// duration buttons.
+    @Published private(set) var keepAwakeRow: MenuKeepAwakeRunningPresentation?
+    /// Replaces the header detail line while a manual session runs.
+    @Published private(set) var manualSessionHeaderDetail: String?
     @Published var onlyWhileConnectedToPower: Bool {
         didSet {
             defaults.set(onlyWhileConnectedToPower, forKey: Keys.onlyWhileConnectedToPower)
@@ -482,7 +487,11 @@ final class LetItBrewAppModel: ObservableObject {
             using: UserDefaultsLetItBrewSettingsMigrationPersistence(defaults: defaults)
         )
         let loadedPauseController = LetItBrewPauseController(
-            persistence: UserDefaultsLetItBrewPausePersistence(defaults: defaults)
+            persistence: UserDefaultsLetItBrewPausePersistence(defaults: defaults),
+            manualSessions: startsPolling
+                ? ManualSessionStorage() as any ManualSessionPersisting
+                : NoManualSessionPersistence(),
+            bootSessionID: BootSession.currentID()
         )
         pauseController = loadedPauseController
         isPaused = loadedPauseController.isPaused
@@ -587,8 +596,11 @@ final class LetItBrewAppModel: ObservableObject {
 
     @discardableResult
     func allowMacToSleep() -> Bool {
+        // Pausing also ends a running manual session.
         pauseController.pause()
         isPaused = true
+        keepAwakeRow = nil
+        manualSessionHeaderDetail = nil
         requestedSystemHold = false
         let systemReleased = powerAssertion.setSystemHold(false, reason: "Released by user")
         let displayReleased = powerAssertion.setDisplayHold(false, reason: "Released by user")
@@ -947,6 +959,29 @@ final class LetItBrewAppModel: ObservableObject {
         pauseController.resume()
         isPaused = false
         holdReleaseFailure = nil
+        refreshNow()
+    }
+
+    /// Starts a manual session, replacing any running one. Starting one turns
+    /// Let It Brew back on if it was paused.
+    func startManualSession(_ length: ManualSessionLength) {
+        pauseController.startManualSession(length, now: Date())
+        if isPaused, !pauseController.isPaused {
+            isPaused = false
+            holdReleaseFailure = nil
+        }
+        reapplyLatestSnapshot()
+        refreshNow()
+    }
+
+    func extendManualSession() {
+        pauseController.extendManualSession(now: Date())
+        reapplyLatestSnapshot()
+    }
+
+    func endManualSession() {
+        pauseController.endManualSession()
+        reapplyLatestSnapshot()
         refreshNow()
     }
 
@@ -2227,10 +2262,13 @@ final class LetItBrewAppModel: ObservableObject {
             snapshot: snapshot
         )
         holdRows = MenuHoldPresentationPolicy.rows(from: snapshot.holds, now: snapshot.now)
+        pauseController.expireManualSession(at: snapshot.now)
+        let manualSessionDemands = pauseController.manualSessionDemand(at: snapshot.now)
+            .map { [$0] } ?? []
 
         let decision = decide(
             sessions: liveSessions,
-            demands: snapshot.holds.map(KeepAwakeDemand.hold),
+            demands: snapshot.holds.map(KeepAwakeDemand.hold) + manualSessionDemands,
             now: snapshot.now,
             settings: settings,
             power: snapshot.power,
@@ -2320,6 +2358,11 @@ final class LetItBrewAppModel: ObservableObject {
         } else {
             presentationState = .idle
         }
+        updateKeepAwakePresentation(
+            now: snapshot.now,
+            isKeepingAwake: isKeepingAwake,
+            isHeldBack: releaseConstraint != nil && decision.wantedBy.manualSessions > 0
+        )
         reason = MenuHeaderCopy.resolve(
             isPaused: isPaused,
             isKeepingAwake: isKeepingAwake,
@@ -2340,6 +2383,29 @@ final class LetItBrewAppModel: ObservableObject {
             idleReason: reason
         )
 
+    }
+
+    private func updateKeepAwakePresentation(
+        now: Date,
+        isKeepingAwake: Bool,
+        isHeldBack: Bool
+    ) {
+        let formatTime: (Date) -> String = { $0.formatted(date: .omitted, time: .shortened) }
+        let session = pauseController.manualSession
+        keepAwakeRow = session.map {
+            MenuKeepAwakePresentationPolicy.running(
+                $0, now: now, isHeldBack: isHeldBack, formatTime: formatTime
+            )
+        }
+        manualSessionHeaderDetail = MenuKeepAwakePresentationPolicy.headerDetail(
+            session: session,
+            isKeepingAwake: isKeepingAwake,
+            isHeldBack: isHeldBack,
+            rows: sessions,
+            holdCount: holdRows.count,
+            now: now,
+            formatTime: formatTime
+        )
     }
 
     private func evaluateLidCloseDisplaySleep(snapshot: LetItBrewSnapshot) {
