@@ -139,6 +139,20 @@ stable GitHub Release must identify the same version/build
 and link the source commit, Apache License 2.0, NOTICE, trademark policy,
 release notes, SHA-256, and [GitHub Issues](https://github.com/ruban-24/letitbrew/issues).
 
+Right after publishing, update the Homebrew cask so `brew` users get the new
+version. The script reads the published release, hashes the downloaded DMG
+(checked against the published SHA256SUMS), and pushes the new `version` and
+`sha256` to `ruban-24/homebrew-tap`. Preview with `--dry-run` first:
+
+```sh
+scripts/update-homebrew-tap.sh "$letitbrew_version" --dry-run
+scripts/update-homebrew-tap.sh "$letitbrew_version"
+```
+
+This step never changes the GitHub release. If it fails, it names the failed
+step and prints the command to finish the tap update by hand; the release stays
+published. See [scripts/README.md](scripts/README.md#update-homebrew-tapsh-version---dry-run).
+
 Download the DMG back through GitHub Releases rather than testing the local
 upload source. Record the release URL, downloaded SHA-256, exact source commit,
 and UAT evidence in a local, non-repository maintainer record. GitHub credentials

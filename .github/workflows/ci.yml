@@ -58,3 +58,6 @@ jobs:
 
       - name: Test direct-distribution scripts with isolated fixtures
         run: scripts/tests/direct-distribution-tests.sh
+
+      - name: Test Homebrew tap update with a local tap
+        run: scripts/tests/homebrew-tap-update-tests.sh

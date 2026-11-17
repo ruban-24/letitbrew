@@ -155,6 +155,40 @@ workspace: `LetItBrew-<version>.dmg`,
 redirect then gives the website a permanent direct download while the in-app
 updater continues to select and verify the two versioned assets.
 
+Right after the release is published, point the Homebrew cask at it. Preview
+the change first, then run it for real:
+
+```bash
+scripts/update-homebrew-tap.sh "$letitbrew_version" --dry-run
+scripts/update-homebrew-tap.sh "$letitbrew_version"
+```
+
+## `update-homebrew-tap.sh <version> [--dry-run]`
+
+Updates `Casks/letitbrew.rb` in `ruban-24/homebrew-tap` after GitHub release
+`v<version>` is published. Unlike the direct-distribution scripts it does
+publish, but only to the tap; it never creates, edits, uploads to, or deletes a
+GitHub release. Needs `gh` signed in, and git able to push to the tap over
+HTTPS (for example after `gh auth setup-git`).
+
+The script:
+
+1. reads the release with `gh release view` and refuses a draft, a
+   pre-release, or a release without `LetItBrew-<version>.dmg` and
+   `LetItBrew-<version>-SHA256SUMS`;
+2. downloads both assets, hashes the DMG with `shasum -a 256`, and refuses it
+   unless the hash matches the DMG's line in the published checksum file;
+3. clones the tap into a temporary directory and rewrites only the cask's
+   top-level `version` and `sha256` lines, refusing a cask without exactly one
+   of each;
+4. prints the cask diff; with `--dry-run` it stops there; and
+5. commits `letitbrew <version>` and pushes to the tap's default branch.
+
+A tap already at that version and SHA-256 is a no-op, so a rerun is safe. Any
+failure names the failed step, says the GitHub release was not changed, and
+prints the command to finish by hand. If only the push fails, the temporary
+clone is kept and the message gives its `git -C <clone> push origin HEAD`.
+
 ## In-app updater transaction
 
 **Settings → General → Check for Updates…** drives the existing guarded upgrade;
@@ -309,9 +343,20 @@ timeout resume without resubmission, and final evidence contracts. It never
 invokes real Xcode, signing, disk-image, notarization,
 stapling, Gatekeeper, installed-app, service, or power commands.
 
+`scripts/tests/homebrew-tap-update-tests.sh` runs the tap update against a local
+bare repository seeded with a copy of the real cask
+(`scripts/tests/fixtures/homebrew-tap-letitbrew.rb`) and a stand-in for `gh`
+that serves a fake release and DMG. It proves the pushed cask changes only
+`version` and `sha256` to the downloaded DMG's hash, dry run leaves the tap
+unchanged, a rerun is a no-op, a rejected push reports the manual push command
+that then finishes the update, and checksum mismatch, draft, pre-release,
+missing-asset, and unpublished releases are refused. It never contacts GitHub,
+and it checks that only `gh release view` and `gh release download` were called.
+
 ```bash
 scripts/tests/upgrade-transaction-tests.sh
 scripts/tests/direct-distribution-tests.sh
+scripts/tests/homebrew-tap-update-tests.sh
 ```
 
 ## `public-source-tests.sh`
