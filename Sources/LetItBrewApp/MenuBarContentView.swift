@@ -461,6 +461,9 @@ struct MenuBarContentView: View {
                                 },
                                 onStopTracking: { stopTracking(session.session) }
                             )
+
+                        case .hold(let hold):
+                            HoldRowView(hold: hold)
                         }
                     }
                     .background { folderGroupBackground(at: index, in: items) }
@@ -495,7 +498,7 @@ struct MenuBarContentView: View {
             expandedRepositoryID == group.id ? group.id : nil
         case .session(let session, _, _):
             item.isGroupedSession ? session.session.repositoryID : nil
-        case .section:
+        case .section, .hold:
             nil
         }
     }
@@ -529,6 +532,7 @@ struct MenuBarContentView: View {
         MenuBoardLayoutPolicy.items(
             waiting: model.sessions.filter(\.isWaiting),
             groups: model.sessionGroups,
+            holds: model.holdRows,
             expandedRepositoryID: expandedRepositoryID
         )
     }
@@ -599,7 +603,11 @@ struct MenuBarContentView: View {
         case .idle: .idle
         case .paused: .paused
         }
-        return MenuHeaderDetailCopy.resolve(context: context, rows: model.sessions)
+        return MenuHeaderDetailCopy.resolve(
+            context: context,
+            rows: model.sessions,
+            holdCount: model.holdRows.count
+        )
     }
 
     private var batteryPresentation: MenuBatteryPresentation? {
@@ -845,6 +853,47 @@ private struct SessionRowView: View {
     }
 }
 
+/// A `letitbrew hold`: laid out like an agent session row, with a terminal
+/// glyph in place of the agent's logo and nothing to open or stop watching.
+private struct HoldRowView: View {
+    let hold: MenuHoldPresentation
+
+    var body: some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 10) {
+                AgentLogo(toolID: "")
+                    .frame(width: 20, height: 20)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(hold.title)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(Color.green.opacity(0.75))
+                            .frame(width: 6, height: 6)
+                        Text(hold.subtitle)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(hold.elapsedText)
+                .font(.subheadline.monospacedDigit())
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+                .help("Holding for \(hold.elapsedText)")
+        }
+        .padding(.horizontal, 10)
+        .frame(height: RowMetrics.sessionHeight)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(hold.title), \(hold.subtitle), active for \(hold.elapsedText)")
+    }
+}
+
 struct AgentLogo: View {
     let toolID: String
 
@@ -943,6 +992,24 @@ private func previewSession(
                 cwd: "/Projects/idle", updatedAt: now.addingTimeInterval(-30)
             ),
         ], now: now))
+}
+
+#Preview("Hold running beside an agent") {
+    let now = Date()
+    MenuBarContentView()
+        .environmentObject(LetItBrewAppModel.preview(
+            sessions: [
+                previewSession(
+                    id: "codex-flat", tool: "codex",
+                    cwd: "/Projects/letitbrew", updatedAt: now.addingTimeInterval(-5)
+                ),
+            ],
+            holds: [
+                HoldRecord(pid: 4_182, label: "npm run build",
+                           startedAt: now.addingTimeInterval(-1_520)),
+            ],
+            now: now
+        ))
 }
 
 #Preview("One flat Codex session") {

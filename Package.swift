@@ -16,7 +16,7 @@ let package = Package(
         .testTarget(name: "LetItBrewCoreTests", dependencies: ["LetItBrewCore"]),
         .testTarget(
             name: "LetItBrewIntegrationTests",
-            dependencies: ["LetItBrewCore", "LetItBrewAppCore"]
+            dependencies: ["LetItBrewCore", "LetItBrewAppCore", "letitbrew"]
         ),
         .testTarget(
             name: "LetItBrewDaemonCoreTests",

@@ -187,10 +187,13 @@ public enum MenuRepositoryLayoutItem: Identifiable, Equatable, Sendable {
         case section(MenuBoardSection)
         case header(String)
         case session(String)
+        case hold(Int32)
     }
 
     case section(MenuBoardSection)
     case header(MenuRepositoryPresentation)
+    /// A `letitbrew hold`, listed after the agent sessions.
+    case hold(MenuHoldPresentation)
     /// `displaysShortID` marks a session that shares its folder with others,
     /// so its short ID tells them apart. `isGrouped` is only the styling: a
     /// row under its folder's header rather than on its own.
@@ -201,12 +204,13 @@ public enum MenuRepositoryLayoutItem: Identifiable, Equatable, Sendable {
         case .section(let section): .section(section)
         case .header(let group): .header(group.id)
         case .session(let item, _, _): .session(item.id)
+        case .hold(let hold): .hold(hold.id)
         }
     }
 
     public var shortSessionID: String? {
         switch self {
-        case .section, .header: nil
+        case .section, .header, .hold: nil
         case .session(let item, let displaysShortID, _):
             displaysShortID ? item.shortID : nil
         }
@@ -214,7 +218,7 @@ public enum MenuRepositoryLayoutItem: Identifiable, Equatable, Sendable {
 
     public var groupedProject: String? {
         switch self {
-        case .section, .header: nil
+        case .section, .header, .hold: nil
         case .session(let item, let displaysShortID, _):
             displaysShortID ? item.session.project : nil
         }
@@ -279,7 +283,7 @@ public enum MenuSessionPresentationPolicy {
             ?? trimmedTool.capitalized
     }
 
-    private static func duration(_ interval: TimeInterval) -> String {
+    static func duration(_ interval: TimeInterval) -> String {
         let totalSeconds = max(0, Int(interval))
         if totalSeconds < 60 { return "<1m" }
         let totalMinutes = totalSeconds / 60
@@ -407,6 +411,28 @@ public enum MenuRepositoryLayoutPolicy {
     }
 }
 
+/// A `letitbrew hold` row: "Holding · npm run build", subtitled "Command",
+/// with its elapsed time on the right like an agent row.
+public struct MenuHoldPresentation: Identifiable, Equatable, Sendable {
+    public let id: Int32
+    public let title: String
+    public let subtitle: String
+    public let elapsedText: String
+}
+
+public enum MenuHoldPresentationPolicy {
+    public static func rows(from holds: [HoldRecord], now: Date) -> [MenuHoldPresentation] {
+        holds.map {
+            MenuHoldPresentation(
+                id: $0.pid,
+                title: "Holding · \($0.label)",
+                subtitle: "Command",
+                elapsedText: MenuSessionPresentationPolicy.duration(now.timeIntervalSince($0.startedAt))
+            )
+        }
+    }
+}
+
 public enum MenuBoardLayoutPolicy {
     /// Waiting sessions are lifted out of their folders into a "Needs You"
     /// section at the top; the rest keep their folder layout under "Working".
@@ -415,6 +441,7 @@ public enum MenuBoardLayoutPolicy {
     public static func items(
         waiting: [MenuSessionPresentation],
         groups: [MenuRepositoryPresentation],
+        holds: [MenuHoldPresentation] = [],
         expandedRepositoryID: String?
     ) -> [MenuRepositoryLayoutItem] {
         // A folder's sessions, waiting or not, so a session on its own row
@@ -433,7 +460,7 @@ public enum MenuBoardLayoutPolicy {
             (folderSessionIDs[repositoryID]?.count ?? 0) > 1
         }
 
-        let working = groups.flatMap {
+        let agents = groups.flatMap {
             MenuRepositoryLayoutPolicy.items(
                 for: $0,
                 isExpanded: expandedRepositoryID == $0.id
@@ -451,6 +478,7 @@ public enum MenuBoardLayoutPolicy {
                 isGrouped: isGrouped
             )
         }
+        let working = agents + holds.map(MenuRepositoryLayoutItem.hold)
         guard !waiting.isEmpty else { return working }
 
         var items: [MenuRepositoryLayoutItem] = [.section(.needsYou)]
@@ -538,6 +566,7 @@ public enum MenuActivityViewportMetrics {
         case .section: sectionHeaderHeight
         case .header: repositoryHeaderHeight
         case .session: item.isGroupedSession ? groupedSessionHeight : sessionHeight
+        case .hold: sessionHeight
         }
     }
 
@@ -678,22 +707,25 @@ public enum MenuHeaderDetailContext: Sendable {
 public enum MenuHeaderDetailCopy {
     public static func resolve(
         context: MenuHeaderDetailContext,
-        rows: [MenuSessionPresentation]
+        rows: [MenuSessionPresentation],
+        holdCount: Int = 0
     ) -> String {
         switch context {
         case .awake:
             let waitingCount = rows.count(where: \.isWaiting)
             let monitoringCount = rows.count(where: \.isMonitoring)
             let workingCount = rows.count(where: \.isWorking) - monitoringCount
+            let holds = holdCount == 1 ? "1 command is holding" : "\(holdCount) commands are holding"
             var parts: [String]
             switch (workingCount, monitoringCount) {
-            case (0, 0): parts = ["No agents are working"]
+            case (0, 0): parts = [holdCount > 0 ? holds : "No agents are working"]
             case (0, 1): parts = ["1 agent is monitoring background tasks"]
             case (0, let monitoring): parts = ["\(monitoring) agents are monitoring background tasks"]
             case (1, _): parts = ["1 agent is working"]
             case (let working, _): parts = ["\(working) agents are working"]
             }
             if workingCount > 0, monitoringCount > 0 { parts.append("\(monitoringCount) monitoring") }
+            if holdCount > 0, workingCount + monitoringCount > 0 { parts.append(holds) }
             if waitingCount > 0 { parts.append("\(waitingCount) waiting") }
             return parts.joined(separator: " · ")
         case .idle:

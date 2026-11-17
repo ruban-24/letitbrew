@@ -16,6 +16,7 @@ using the affected feature until it is understood.
 
 ## v2.0.0 release scope
 
+<<<<<<< HEAD
 ### Menu-bar flask
 
 `swift test` proves the flask draws distinct idle, awake, needs-you and paused
@@ -72,6 +73,41 @@ notification permission, delivery, and click-through.
    tab shows the warning and Open Settings… opens Let It Brew's notification
    page.
 8. Check the Alerts tab and the menu tip in light and dark appearance.
+=======
+### `letitbrew hold -- <command>`
+
+`swift test` covers exit codes, Ctrl-C, record cleanup, pruning, and the
+warnings with a stand-in app state. These need the signed app. Run the CLI
+from the installed bundle:
+`/Applications/Let\ It\ Brew.app/Contents/MacOS/letitbrew` (or `letitbrew`
+once it is on the PATH).
+
+1. With Let It Brew running, no agents working, and `pmset -g assertions`
+   showing no Let It Brew assertion, run `letitbrew hold -- sleep 120`. Within
+   two seconds the menu lists "Holding · sleep 120" with "Command" and an
+   elapsed time, the header reads "Keeping your Mac awake" and
+   "1 command is holding", and `pmset -g assertions` shows the hold. When the
+   command ends the row disappears and the hold is released on the next poll.
+2. With a Claude session working, start a hold. The header reads
+   "1 agent is working · 1 command is holding". End the Claude turn: the Mac
+   stays held until the command ends.
+3. Run `letitbrew hold -- sh -c 'for i in $(seq 24); do date +%T | tee -a hold.log; sleep 5; done'`
+   on battery with the closed-lid switch on, and close the lid within ten
+   seconds. After two minutes, open it: the timestamps continue without a gap.
+   Repeat with the closed-lid switch off: the Mac sleeps when the lid closes.
+4. On battery below the battery floor, start a hold. No assertion is taken and
+   the header shows "Battery limit reached". Repeat for connected-power-only
+   on battery, and Low Power Mode with "Respect Low Power Mode" on.
+5. Run `letitbrew hold -- vim` (or another full-screen program): it draws,
+   takes input, and Ctrl-C/`:q` behave exactly as without `hold`. `echo $?`
+   after `letitbrew hold -- false` prints 1.
+6. Pause Let It Brew and run `letitbrew hold -- true`: one line warns that
+   Let It Brew is paused and the command still runs. Quit Let It Brew and
+   repeat: the warning says it isn't running.
+7. Start `letitbrew hold -- sleep 600`, then `kill -9` the `letitbrew`
+   process and the `sleep`. Within two seconds the row is gone and
+   `~/Library/Application Support/LetItBrew/holds/` is empty.
+>>>>>>> 8ff372d (Add letitbrew hold -- <cmd>, the manual keep-awake tracer)
 
 ## v1.0.1 release scope
 
