@@ -149,6 +149,20 @@ private func working(updatedAgo seconds: TimeInterval = 0) -> SessionRecord {
     #expect(storage.loadAll().isEmpty)
 }
 
+@Test func holdResultsAreReadOnce() throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("letitbrew-results-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let storage = HoldStorage(directory: root.appendingPathComponent("holds", isDirectory: true))
+    let record = hold(pid: 10, label: "npm run build")
+    try storage.writeResult(HoldResult(hold: record, endedAt: now, exitStatus: 1))
+    #expect(storage.loadAll().isEmpty)
+
+    let results = storage.takeResults()
+    #expect(results == [HoldResult(hold: record, endedAt: now, exitStatus: 1)])
+    #expect(storage.takeResults().isEmpty)
+}
+
 @Test func processStartTimeReadsThisProcess() {
     let started = ProcessStartTime.of(getpid())
     #expect(started != nil)

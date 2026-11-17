@@ -59,20 +59,35 @@ public struct Decision: Equatable, Sendable {
     public var reason: String
     /// What wanted the hold, whether or not a power rule released it.
     public var wantedBy: HoldDemandCount
+    /// The power rule that released the hold, whether or not anything
+    /// wanted it.
+    public var releasedBy: PowerRule?
 
     public init(
         holdSystem: Bool,
         holdLidClosed: Bool,
         holdDisplay: Bool = false,
         reason: String,
-        wantedBy: HoldDemandCount = HoldDemandCount()
+        wantedBy: HoldDemandCount = HoldDemandCount(),
+        releasedBy: PowerRule? = nil
     ) {
         self.holdSystem = holdSystem
         self.holdLidClosed = holdLidClosed
         self.holdDisplay = holdDisplay
         self.reason = reason
         self.wantedBy = wantedBy
+        self.releasedBy = releasedBy
     }
+}
+
+/// The power rules that release the hold, in `decide()`'s priority order.
+public enum PowerRule: Equatable, Sendable {
+    case unknownBattery
+    case connectedPowerOnly
+    /// Carries the floor setting, in percent.
+    case batteryFloor(Int)
+    case lowPowerMode
+    case thermal
 }
 
 /// The agents and manual demands that want the Mac held awake.
@@ -249,8 +264,9 @@ public func decide(
             if case .manualSession(let deadline) = $0 { deadline.map { $0 > now } ?? true } else { false }
         }
     )
-    func release(_ reason: String) -> Decision {
-        Decision(holdSystem: false, holdLidClosed: false, reason: reason, wantedBy: wanted)
+    func release(_ reason: String, _ rule: PowerRule) -> Decision {
+        Decision(holdSystem: false, holdLidClosed: false, reason: reason, wantedBy: wanted,
+                 releasedBy: rule)
     }
 
     // 0. IMPORTANT 4: an untrusted reading must never be treated as a
@@ -260,17 +276,17 @@ public func decide(
     // unknown battery, so this takes precedence over everything else,
     // including active sessions.
     if !power.trusted {
-        return release("battery state unknown")
+        return release("battery state unknown", .unknownBattery)
     }
 
     // 1. Connected-only mode releases on any battery level.
     if settings.onlyWhileConnectedToPower, power.onBattery {
-        return release("battery power")
+        return release("battery power", .connectedPowerOnly)
     }
 
     // 2. Never flatten the battery, even mid-run.
     if power.onBattery, power.batteryPercent <= settings.batteryFloor {
-        return release("battery \(power.batteryPercent)%")
+        return release("battery \(power.batteryPercent)%", .batteryFloor(settings.batteryFloor))
     }
 
     // 3. Low Power Mode releases active holds when the setting is enabled.
@@ -278,12 +294,12 @@ public func decide(
     // person's choice, so it must not release the hold that requested it.
     if settings.respectLowPowerMode, power.lowPowerModeEnabled,
        !lowPowerModeOwnedByLetItBrew {
-        return release("low power mode")
+        return release("low power mode", .lowPowerMode)
     }
 
     // 4. A shut lid traps heat with no airflow, so thermal pressure wins.
     if power.thermal == .serious || power.thermal == .critical {
-        return release("thermal pressure")
+        return release("thermal pressure", .thermal)
     }
 
     // 5. Working sessions hold, as do waits whose approved command is

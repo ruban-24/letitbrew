@@ -275,7 +275,7 @@ struct LetItBrewSettingsView: View {
                     set: { model.setDesktopAlerts($0) }
                 )) {
                     Text("Desktop alerts")
-                    Text("Shows a notification on this Mac when an agent needs you.")
+                    Text("Shows a notification on this Mac.")
                 }
 
                 if model.desktopAlerts, model.desktopAlertAuthorization == .denied {
@@ -295,13 +295,27 @@ struct LetItBrewSettingsView: View {
                 Text("Desktop")
             }
 
-            Section("Alert me when") {
+            Section {
                 Toggle(isOn: $model.needsYouAlerts) {
                     Text("An agent needs you")
-                    Text("After an agent has waited on you for 30 seconds.")
+                    Text("After it has waited 30 seconds")
+                }
+                Toggle(isOn: $model.finishedAlerts) {
+                    Text("Work finishes")
+                    Text("Agents and held commands that ran 3 minutes or more")
+                }
+                Toggle("Keeping awake stops for battery or heat", isOn: $model.stoppedForPowerAlerts)
+                Toggle("Wi-Fi drops while the lid is closed", isOn: $model.wifiDroppedAlerts)
+            } header: {
+                Text("Alert me when")
+            } footer: {
+                if !model.hasAlertChannel {
+                    Text("Turn on desktop or phone alerts to choose what you hear about.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
                 }
             }
-            .disabled(!model.desktopAlerts)
+            .disabled(!model.hasAlertChannel)
 
             Section {
                 Toggle(isOn: $model.hideProjectNamesInAlerts) {
@@ -315,7 +329,7 @@ struct LetItBrewSettingsView: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
-            .disabled(!model.desktopAlerts)
+            .disabled(!model.hasAlertChannel)
         }
         .formStyle(.grouped)
         .onAppear { model.refreshDesktopAlertAuthorization() }
@@ -830,7 +844,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .general: 576
         case .agents: 430
         case .power: 380
-        case .alerts: 380
+        case .alerts: 520
         case .closedLid: 360
         case .about: 360
         }

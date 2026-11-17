@@ -581,3 +581,30 @@ private func monitoring(
         #expect(decision.holdSystem, "limit \(limit)")
     }
 }
+
+@Test func releaseNamesThePowerRuleThatReleasedTheHold() {
+    var settings = Settings()
+    settings.batteryFloor = 25
+    settings.onlyWhileConnectedToPower = false
+    settings.respectLowPowerMode = true
+    func rule(_ power: PowerState, _ settings: Settings = settings) -> PowerRule? {
+        decide(sessions: [session(.working)], now: now, settings: settings, power: power).releasedBy
+    }
+    #expect(rule(plugged) == nil)
+    #expect(rule(PowerState(onBattery: true, batteryPercent: 24, thermal: .nominal)) == .batteryFloor(25))
+    #expect(rule(PowerState(onBattery: false, batteryPercent: 100, thermal: .nominal,
+                            lowPowerModeEnabled: true)) == .lowPowerMode)
+    #expect(rule(PowerState(onBattery: false, batteryPercent: 100, thermal: .critical)) == .thermal)
+    #expect(rule(PowerState(onBattery: false, batteryPercent: 100, thermal: .nominal,
+                            trusted: false)) == .unknownBattery)
+    var connectedOnly = settings
+    connectedOnly.onlyWhileConnectedToPower = true
+    #expect(rule(PowerState(onBattery: true, batteryPercent: 90, thermal: .nominal),
+                 connectedOnly) == .connectedPowerOnly)
+    // Named even when nothing wanted the hold.
+    #expect(decide(sessions: [], now: now, settings: settings,
+                   power: PowerState(onBattery: false, batteryPercent: 100, thermal: .serious))
+        .releasedBy == .thermal)
+    #expect(decide(sessions: [session(.idle)], now: now, settings: settings, power: plugged)
+        .releasedBy == nil)
+}
