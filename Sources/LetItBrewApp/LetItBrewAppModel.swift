@@ -2798,7 +2798,7 @@ final class LetItBrewAppModel: ObservableObject {
             AlertSessionObservation(id: $0, agent: "", project: "", wait: nil,
                                     stateChangedAt: snapshot.now, agentPID: nil)
         }
-        let current = AlertSnapshot(
+        var current = AlertSnapshot(
             observedAt: snapshot.now,
             sessions: observations + hidden,
             holds: snapshot.holds.map(AlertHold.init),
@@ -2820,9 +2820,13 @@ final class LetItBrewAppModel: ObservableObject {
         )
         let alerts = AlertPolicy.alerts(
             previous: previousAlertSnapshot,
-            current: current,
+            current: &current,
             presence: readsLiveState
-                ? AlertPresenceReader.current(lidClosed: snapshot.clamshell == .closed)
+                ? AlertPresenceReader.current(
+                    lidClosed: snapshot.clamshell == .closed,
+                    // An unreadable topology counts as no external display.
+                    externalDisplay: snapshot.displays == .externalDisplayActive
+                )
                 : AlertPresence(lidClosed: false, screenLocked: false, secondsSinceLastInput: 0),
             settings: settings
         )

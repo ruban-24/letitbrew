@@ -16,7 +16,7 @@ struct PhoneAlertsSettingsSection: View {
 
     var body: some View {
         Section {
-            if let configuration = phone.configuration {
+            if phone.isOn, let configuration = phone.configuration {
                 if phone.isWorking {
                     working(configuration)
                 } else {
@@ -55,7 +55,9 @@ struct PhoneAlertsSettingsSection: View {
     private func settingUp(_ configuration: NtfyConfiguration) -> some View {
         statusRow(
             testFailure(configuration) ?? Text("Waiting for a test to arrive…"),
-            button: Button("Cancel") { phone.turnOff() }
+            button: phone.hasPassedTest
+                ? Button("Turn Off") { phone.turnOff() }
+                : Button("Cancel") { phone.cancel() }
         )
 
         HStack(alignment: .top, spacing: 14) {
@@ -68,9 +70,10 @@ struct PhoneAlertsSettingsSection: View {
                 Text("2. Scan this code with it")
                     .fontWeight(.medium)
                     .padding(.top, 6)
-                Text("It subscribes to your private topic \(Text(configuration.topic).monospaced()).")
+                Text("It subscribes to your private topic:")
                     .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
+                topicRow(configuration.topic, configuration: configuration)
+                iPhoneHint
                 sendTestButton
                     .buttonStyle(.borderedProminent)
                     .padding(.top, 8)
@@ -95,9 +98,8 @@ struct PhoneAlertsSettingsSection: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text("Subscribe another phone by scanning this code in the ntfy app.")
                     .foregroundStyle(.secondary)
-                Text(configuration.displayAddress)
-                    .monospaced()
-                    .textSelection(.enabled)
+                topicRow(configuration.displayAddress, configuration: configuration)
+                iPhoneHint
                 sendTestButton
                     .padding(.top, 6)
             }
@@ -135,6 +137,27 @@ struct PhoneAlertsSettingsSection: View {
             Spacer(minLength: 8)
             button
         }
+    }
+
+    /// The topic as shown, with a Copy button that copies the bare topic.
+    private func topicRow(_ shown: String, configuration: NtfyConfiguration) -> some View {
+        HStack(spacing: 6) {
+            Text(shown)
+                .monospaced()
+                .textSelection(.enabled)
+            Button("Copy") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(configuration.topic, forType: .string)
+            }
+            .controlSize(.small)
+            .accessibilityLabel("Copy topic")
+        }
+    }
+
+    private var iPhoneHint: some View {
+        Text("On iPhone, open ntfy, tap +, and paste this topic.")
+            .font(.callout)
+            .foregroundStyle(.secondary)
     }
 
     private var workingStatus: Text {

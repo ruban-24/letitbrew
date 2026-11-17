@@ -85,11 +85,15 @@ private func ended(
     AlertHoldResult(hold: hold(label), endedAt: start.addingTimeInterval(minutes * 60), exitStatus: status)
 }
 
-private func run(_ polls: [Poll], settings: AlertSettings = enabled) -> [Alert] {
+private func run(
+    _ polls: [Poll],
+    settings: AlertSettings = enabled,
+    presence: AlertPresence = present
+) -> [Alert] {
     var previous: AlertSnapshot?
     var alerts: [Alert] = []
     for poll in polls {
-        let current = AlertSnapshot(
+        var current = AlertSnapshot(
             observedAt: start.addingTimeInterval(poll.at),
             sessions: poll.sessions,
             holds: poll.holds,
@@ -99,8 +103,8 @@ private func run(_ polls: [Poll], settings: AlertSettings = enabled) -> [Alert] 
         )
         alerts += AlertPolicy.alerts(
             previous: previous,
-            current: current,
-            presence: present,
+            current: &current,
+            presence: presence,
             settings: settings
         )
         previous = current
@@ -119,14 +123,14 @@ private func run(
     var previous = initial
     var alerts: [Alert] = []
     for (offset, sessions) in steps {
-        let current = AlertSnapshot(
+        var current = AlertSnapshot(
             observedAt: start.addingTimeInterval(offset),
             sessions: sessions,
             previous: previous
         )
         alerts += AlertPolicy.alerts(
             previous: previous,
-            current: current,
+            current: &current,
             presence: presence,
             settings: settings
         )
@@ -161,14 +165,14 @@ private func run(
 
 @Test func reapplyingTheSameSnapshotNeverRepeatsAnAlert() {
     let first = AlertSnapshot(observedAt: start, sessions: [session()], previous: nil)
-    let crossed = AlertSnapshot(
+    var crossed = AlertSnapshot(
         observedAt: start.addingTimeInterval(30), sessions: [session()], previous: first
     )
-    #expect(AlertPolicy.alerts(previous: first, current: crossed, presence: present, settings: enabled).count == 1)
-    let reapplied = AlertSnapshot(
+    #expect(AlertPolicy.alerts(previous: first, current: &crossed, presence: present, settings: enabled).count == 1)
+    var reapplied = AlertSnapshot(
         observedAt: crossed.observedAt, sessions: [session()], previous: crossed
     )
-    #expect(AlertPolicy.alerts(previous: crossed, current: reapplied, presence: present, settings: enabled).isEmpty)
+    #expect(AlertPolicy.alerts(previous: crossed, current: &reapplied, presence: present, settings: enabled).isEmpty)
 }
 
 @Test func firstSnapshotIsABaselineEvenPastThreshold() {
@@ -818,4 +822,159 @@ private func idle(for seconds: TimeInterval) -> AlertPresence {
     notSetUp.desktopAlerts = false
     #expect(run(waitedThirtySeconds, settings: notSetUp,
                 presence: AlertPresence(lidClosed: true, screenLocked: true, secondsSinceLastInput: 900)).isEmpty)
+}
+
+@Test func aClosedLidOnADockedMacIsNotAway() {
+    let docked = AlertPresence(lidClosed: true, screenLocked: false,
+                               secondsSinceLastInput: 0, externalDisplay: true)
+    #expect(!docked.isAway)
+    #expect(destinations(docked) == [.desktop])
+    // Docked, only a locked screen or five idle minutes count.
+    #expect(AlertPresence(lidClosed: true, screenLocked: true,
+                          secondsSinceLastInput: 0, externalDisplay: true).isAway)
+    #expect(!AlertPresence(lidClosed: true, screenLocked: false,
+                           secondsSinceLastInput: 299.9, externalDisplay: true).isAway)
+    #expect(AlertPresence(lidClosed: true, screenLocked: false,
+                          secondsSinceLastInput: 300, externalDisplay: true).isAway)
+    // An external display with the lid open changes nothing.
+    #expect(!AlertPresence(lidClosed: false, screenLocked: false,
+                           secondsSinceLastInput: 0, externalDisplay: true).isAway)
+}
+
+// MARK: Phone follow-up when the person becomes away
+
+private let lidClosed = AlertPresence(lidClosed: true, screenLocked: false, secondsSinceLastInput: 0)
+
+/// Like `run`, with the presence read at each poll.
+private func run(
+    _ steps: [(TimeInterval, [AlertSessionObservation], AlertPresence)],
+    settings: AlertSettings = phoneSetUp
+) -> [Alert] {
+    var previous: AlertSnapshot?
+    var alerts: [Alert] = []
+    for (offset, sessions, presence) in steps {
+        var current = AlertSnapshot(
+            observedAt: start.addingTimeInterval(offset),
+            sessions: sessions,
+            previous: previous
+        )
+        alerts += AlertPolicy.alerts(
+            previous: previous,
+            current: &current,
+            presence: presence,
+            settings: settings
+        )
+        previous = current
+    }
+    return alerts
+}
+
+@Test func becomingAwayInTheSameWaitSendsThePhoneTheAlertOnce() {
+    let alerts = run([
+        (0, [session()], present),
+        (30, [session()], present),
+        (45, [session()], present),
+        (60, [session()], lidClosed),
+        (75, [session()], lidClosed),
+    ])
+    #expect(alerts.map(\.destinations) == [[.desktop], [.phone]])
+    #expect(alerts[1].id == alerts[0].id)
+    #expect(alerts[1].title == alerts[0].title)
+    #expect(alerts[1].body == alerts[0].body)
+}
+
+@Test func thePhoneFollowUpIsSentAtMostOncePerWait() {
+    let alerts = run([
+        (0, [session()], present), (30, [session()], present),
+        (60, [session()], lidClosed), (90, [session()], present),
+        (120, [session()], lidClosed), (150, [session()], idle(for: 900)),
+    ])
+    #expect(alerts.map(\.destinations) == [[.desktop], [.phone]])
+}
+
+@Test func noFollowUpWhenThePhoneAlreadyHadTheAlert() {
+    let awayAtThirty = run([
+        (0, [session()], present), (30, [session()], lidClosed),
+        (60, [session()], present), (90, [session()], lidClosed),
+    ])
+    #expect(awayAtThirty.map(\.destinations) == [[.desktop, .phone]])
+
+    var always = phoneSetUp
+    always.alwaysSendToPhone = true
+    let alwaysSent = run([
+        (0, [session()], present), (30, [session()], present), (60, [session()], lidClosed),
+    ], settings: always)
+    #expect(alwaysSent.map(\.destinations) == [[.desktop, .phone]])
+}
+
+@Test func theFollowUpGoesOutEvenWhenNoDesktopAlertDid() {
+    let phoneOnly = AlertSettings(desktopAlerts: false, phoneAlerts: true)
+    let alerts = run([
+        (0, [session()], present), (30, [session()], present), (60, [session()], lidClosed),
+    ], settings: phoneOnly)
+    #expect(alerts.map(\.destinations) == [[.phone]])
+}
+
+@Test func noFollowUpForAWaitAlreadyUnderWayAtLaunch() {
+    #expect(run([(300, [session()], present), (330, [session()], lidClosed)]).isEmpty)
+}
+
+@Test func noFollowUpOnceTheWaitIsAnswered() {
+    let alerts = run([
+        (0, [session()], present), (30, [session()], present),
+        (45, [session(wait: nil)], present), (60, [session(wait: nil)], lidClosed),
+    ])
+    #expect(alerts.map(\.destinations) == [[.desktop]])
+}
+
+@Test func eachWaitGetsItsOwnFollowUp() {
+    let second = session(stateChangedAt: start.addingTimeInterval(100))
+    let alerts = run([
+        (0, [session()], present), (30, [session()], present),
+        (60, [session()], lidClosed), (80, [session(wait: nil)], present),
+        (100, [second], present), (130, [second], present), (160, [second], lidClosed),
+    ])
+    #expect(alerts.map(\.destinations) == [[.desktop], [.phone], [.desktop], [.phone]])
+    #expect(alerts[1].id != alerts[3].id)
+}
+
+@Test func noFollowUpUnlessPhoneAlertsAreWorkingAndNeedsYouIsOn() {
+    let desktopOnly = AlertSettings(desktopAlerts: true)
+    #expect(run([
+        (0, [session()], present), (30, [session()], present), (60, [session()], lidClosed),
+    ], settings: desktopOnly).map(\.destinations) == [[.desktop]])
+
+    var needsYouOff = phoneSetUp
+    needsYouOff.needsYou = false
+    #expect(run([
+        (0, [session()], present), (30, [session()], present), (60, [session()], lidClosed),
+    ], settings: needsYouOff).isEmpty)
+}
+
+@Test func eachWaitingSessionGetsItsOwnFollowUp() {
+    let other = session("s2", project: "other")
+    let alerts = run([
+        (0, [session(), other], present), (30, [session(), other], present),
+        (60, [session(), other], lidClosed),
+    ])
+    let phone = alerts.filter { $0.destinations == [.phone] }
+    #expect(Set(phone.map(\.sessionID)) == ["s1", "s2"])
+}
+
+@Test func theFollowUpWaitsForTheFiveMinuteIdleEdge() {
+    let steps: (AlertPresence) -> [(TimeInterval, [AlertSessionObservation], AlertPresence)] = {
+        [(0, [session()], present), (30, [session()], present), (60, [session()], $0)]
+    }
+    #expect(run(steps(idle(for: 299.9))).count == 1)
+    #expect(run(steps(idle(for: 300))).map(\.destinations) == [[.desktop], [.phone]])
+}
+
+@Test func unpluggingTheDisplayOfAClosedMacCountsAsBecomingAway() {
+    let docked = AlertPresence(lidClosed: true, screenLocked: false,
+                               secondsSinceLastInput: 0, externalDisplay: true)
+    let alerts = run([
+        (0, [session()], docked), (30, [session()], docked),
+        (60, [session()], docked), (90, [session()], lidClosed),
+    ])
+    #expect(alerts.map(\.destinations) == [[.desktop], [.phone]])
 }

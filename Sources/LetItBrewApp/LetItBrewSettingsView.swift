@@ -846,7 +846,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .general: 576
         case .agents: 430
         case .power: 380
-        case .alerts: 520
+        case .alerts: 580
         case .closedLid: 360
         case .about: 360
         }

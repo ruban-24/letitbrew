@@ -24,6 +24,11 @@ final class PhoneAlerts: ObservableObject, AlertDelivering {
     /// phone, so a 2xx response is all "sent" can mean.
     @Published private(set) var testSentAt: Date?
     @Published private(set) var testState: TestState = .idle
+    /// Set Up turns this on and Turn Off turns it off, keeping the setup.
+    @Published private(set) var isOn: Bool
+    /// A test has reached the server since Set Up made this topic. Until
+    /// then Cancel forgets the setup; afterwards it is kept.
+    @Published private(set) var hasPassedTest: Bool
     @Published var alwaysSendToPhone: Bool {
         didSet { defaults.set(alwaysSendToPhone, forKey: Keys.alwaysSendToPhone) }
     }
@@ -33,6 +38,8 @@ final class PhoneAlerts: ObservableObject, AlertDelivering {
         static let server = "ntfyServer"
         static let testSentAt = "ntfyTestSentAt"
         static let alwaysSendToPhone = "alwaysSendToPhone"
+        static let isOn = "phoneAlertsOn"
+        static let hasPassedTest = "ntfyTestPassed"
     }
 
     private let defaults: UserDefaults
@@ -46,28 +53,43 @@ final class PhoneAlerts: ObservableObject, AlertDelivering {
             ?? NtfyServer.default
         testSentAt = defaults.object(forKey: Keys.testSentAt) as? Date
         alwaysSendToPhone = defaults.bool(forKey: Keys.alwaysSendToPhone)
+        isOn = defaults.bool(forKey: Keys.isOn)
+        hasPassedTest = defaults.bool(forKey: Keys.hasPassedTest)
         // Read once while unlocked, so alerts sent with the screen locked
         // never need the Keychain.
         token = topic == nil ? nil : keychain.read()
     }
 
-    /// Set up and a test has reached the server.
-    var isWorking: Bool { topic != nil && testSentAt != nil }
+    /// On, set up, and a test has reached the server.
+    var isWorking: Bool { isOn && topic != nil && testSentAt != nil }
 
     var configuration: NtfyConfiguration? {
         topic.map { NtfyConfiguration(server: server, topic: $0, token: token) }
     }
 
-    /// Generates a private topic. Sends nothing.
+    /// Turns phone alerts on. A kept setup is reused, so the phone needs no
+    /// new scan; otherwise this generates a private topic. Sends nothing.
     func setUp() {
-        let topic = NtfyTopic.generate()
-        self.topic = topic
-        defaults.set(topic, forKey: Keys.topic)
-        setTestSent(nil)
+        if topic == nil {
+            let topic = NtfyTopic.generate()
+            self.topic = topic
+            defaults.set(topic, forKey: Keys.topic)
+            setTestSent(nil)
+        }
+        setOn(true)
     }
 
-    /// Cancel and Turn Off both forget the topic, server and token.
+    /// Stops phone alerts and keeps every phone setting for turning them
+    /// back on.
     func turnOff() {
+        setOn(false)
+    }
+
+    /// Cancel before any test has passed forgets the topic, server, token
+    /// and Always send to phone. Once a test has passed it is Turn Off.
+    func cancel() {
+        guard !hasPassedTest else { return turnOff() }
+        setOn(false)
         topic = nil
         defaults.removeObject(forKey: Keys.topic)
         server = NtfyServer.default
@@ -143,9 +165,18 @@ final class PhoneAlerts: ObservableObject, AlertDelivering {
         return (response as? HTTPURLResponse)?.statusCode ?? 0
     }
 
+    private func setOn(_ on: Bool) {
+        isOn = on
+        defaults.set(on, forKey: Keys.isOn)
+    }
+
     private func setTestSent(_ date: Date?) {
         testSentAt = date
         defaults.set(date, forKey: Keys.testSentAt)
+        if date != nil, !hasPassedTest {
+            hasPassedTest = true
+            defaults.set(true, forKey: Keys.hasPassedTest)
+        }
         if date == nil, testState == .failed { testState = .idle }
     }
 }
