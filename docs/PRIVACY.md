@@ -44,8 +44,8 @@ session's `session-state/<session>/events.jsonl` and decodes only each event's
 `type` and `timestamp`, never prompts, responses, or tool details. Nothing from
 the log is stored.
 
-Nothing from session records is uploaded, except the agent name and project
-folder name in phone alerts you set up. See [Alerts](#alerts).
+Nothing from session records is uploaded, except the alert text that phone
+alerts send once you set them up. See [Alerts](#alerts).
 
 Let It Brew checks GitHub for published release metadata about 30 seconds after
 launch, no more than once every 24 hours. A manual check can also be started
@@ -60,11 +60,10 @@ Mac and send nothing over the network.
 
 Phone alerts make the only outbound request besides the update check. Nothing
 is sent until you choose Set Up under **Settings → Alerts → On your phone** and
-press Send Test.
-Set Up generates a private random topic on the Mac, `letitbrew-` followed by 16
-random lowercase letters and digits, and draws its QR code locally. Requests go
-only to the server you chose, `https://ntfy.sh` by default, and only over HTTPS.
-On a public server such as ntfy.sh, anyone who knows the topic can read its
+press Send Test. Set Up generates a private random topic on the Mac,
+`letitbrew-` followed by 16 random lowercase letters and digits, and draws its
+QR code locally. Requests go only to the server you chose, `https://ntfy.sh` by
+default, and only over HTTPS. On a public server such as ntfy.sh, anyone who knows the topic can read its
 alerts, so keep the topic private.
 
 Each alert, and each Send Test, is one HTTPS `POST` to the server root with a

@@ -143,10 +143,13 @@ Alerts are off until you turn them on in Settings → Alerts. Let It Brew can
 alert you when:
 
 - an agent has waited on you for 30 seconds;
-- an agent, or a `letitbrew hold` command, finishes after at least 3 minutes;
+- an agent, or a command run with `letitbrew hold`, finishes after at least 3
+  minutes;
 - your Mac stops keeping awake because of the battery floor, connected power
   only, Low Power Mode, or heat; or
-- Wi-Fi drops for a minute while the lid is closed. This one is off by default.
+- Wi-Fi drops for a minute while the lid is closed and the Mac is held awake.
+  This one is off by default. It shows only as a desktop alert, because a
+  phone alert needs the network that just dropped.
 
 Desktop alerts show as notifications on this Mac. Phone alerts go through
 [ntfy](https://ntfy.sh).
@@ -168,9 +171,9 @@ alert sends.
 4. If you run your own ntfy server, set its URL and access token in Advanced,
    then press Send Test again. In the ntfy app, add the same server and login.
 
-Phone alerts go out only when you're away: the lid is closed, the screen is
-locked, or you haven't used the keyboard or mouse for 5 minutes. A closed lid
-with an external display doesn't count. Turn on Always send to phone to get
+Phone alerts go out only when you are away: the lid is closed, the screen is
+locked, or you have not used the keyboard or mouse for 5 minutes. A closed lid
+with an external display does not count. Turn on Always send to phone to get
 them every time.
 
 ## Safety and privacy
