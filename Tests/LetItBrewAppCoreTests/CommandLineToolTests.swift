@@ -295,7 +295,7 @@ private struct FakeMac {
     )
 }
 
-@Test func cancellingThePasswordPromptIsNotAnError() {
+@Test func administratorPromptOutcomeTreatsCancelAsNoError() {
     #expect(
         CommandLineToolAuthorization.outcome(
             status: 1, output: "0:79: execution error: User canceled. (-128)\n"

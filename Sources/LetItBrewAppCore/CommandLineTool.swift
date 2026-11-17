@@ -1,4 +1,5 @@
 import Foundation
+import LetItBrewCore
 
 /// Where the `letitbrew` command-line tool can live. `root` is `/` on a real
 /// Mac; tests point it at a temporary directory.
@@ -59,7 +60,7 @@ public enum CommandLineTool {
         guard state(at: locations) == .notInstalled else { return nil }
         let link = shellQuoted(locations.link)
         let directory = shellQuoted((locations.link as NSString).deletingLastPathComponent)
-        return "[ ! -e \(link) ] && [ ! -L \(link) ] && /bin/mkdir -p \(directory) && /bin/ln -s \(shellQuoted(locations.bundledCLI)) \(link)"
+        return "[ ! -e \(link) ] && [ ! -L \(link) ] && /bin/mkdir -p \(directory) && /bin/ln -sh \(shellQuoted(locations.bundledCLI)) \(link)"
     }
 
     /// Deletes our link, and only while it still points where it did when
@@ -110,7 +111,7 @@ public enum CommandLineTool {
     }
 
     private static func shellQuoted(_ value: String) -> String {
-        "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        ClaudeHooks.shellSingleQuoted(value)
     }
 }
 

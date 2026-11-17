@@ -3,9 +3,9 @@
 The supported way to uninstall is **Settings → About → Uninstall Let It Brew…**.
 It needs no admin password and handles everything below in the right order.
 
-Neither way removes the command-line tool. If you installed it from
-**Settings → General → Command-line tool**, remove it afterwards with
-`sudo rm /usr/local/bin/letitbrew`.
+Neither the in-app uninstaller nor the steps below remove the command-line
+tool. If you installed it from **Settings → General → Command-line tool**,
+remove it afterwards with `sudo rm /usr/local/bin/letitbrew`.
 
 Use this document only if the app will not launch.
 
