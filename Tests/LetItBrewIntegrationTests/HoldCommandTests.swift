@@ -311,8 +311,7 @@ private final class HoldRun {
         var status: Int32 = 0
         let result = waitpid(pid, &status, WNOHANG)
         guard result == pid else { return result == 0 }
-        let signalNumber = status & 0x7f
-        exitStatus = signalNumber == 0 ? (status >> 8) & 0xff : 128 + signalNumber
+        exitStatus = Self.exitCode(fromWaitStatus: status)
         return false
     }
 
@@ -339,10 +338,14 @@ private final class HoldRun {
             }
             usleep(20_000)
         }
-        let signalNumber = status & 0x7f
-        let result = signalNumber == 0 ? (status >> 8) & 0xff : 128 + signalNumber
+        let result = Self.exitCode(fromWaitStatus: status)
         exitStatus = result
         return result
+    }
+
+    private static func exitCode(fromWaitStatus status: Int32) -> Int32 {
+        let signalNumber = status & 0x7f
+        return signalNumber == 0 ? (status >> 8) & 0xff : 128 + signalNumber
     }
 
     /// The `letitbrew` executable SwiftPM built beside this test bundle.

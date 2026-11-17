@@ -64,16 +64,20 @@ private func holdUntilStopped(exitOf pid: pid_t?, label: String, storage: HoldSt
     defer { close(queue) }
 
     // Signals and the exit watch are armed before the record is written, so
-    // a stop that comes as soon as the hold shows up is never missed. An
-    // ignored signal is still reported to the kqueue.
+    // a stop that comes as soon as the hold shows up is never missed. Each
+    // signal is watched before it is ignored, so one that arrives during
+    // setup still ends the CLI; an ignored signal is still reported here.
     let stopSignals = [SIGINT, SIGTERM, SIGHUP]
     for sig in stopSignals {
-        signal(sig, SIG_IGN)
         var change = kevent(
             ident: UInt(sig), filter: Int16(EVFILT_SIGNAL), flags: UInt16(EV_ADD),
             fflags: 0, data: 0, udata: nil
         )
-        kevent(queue, &change, 1, nil, 0, nil)
+        guard kevent(queue, &change, 1, nil, 0, nil) == 0 else {
+            FileHandle.standardError.write(Data("letitbrew: \(String(cString: strerror(errno)))\n".utf8))
+            return 1
+        }
+        signal(sig, SIG_IGN)
     }
     if let pid {
         var change = kevent(
@@ -81,7 +85,8 @@ private func holdUntilStopped(exitOf pid: pid_t?, label: String, storage: HoldSt
             fflags: NOTE_EXIT, data: 0, udata: nil
         )
         if kevent(queue, &change, 1, nil, 0, nil) == -1 {
-            // ESRCH: it exited after the existence check, so the wait is over.
+            // ESRCH: it exited after the existence check, or is an unreaped
+            // zombie, so the wait is over.
             guard errno == ESRCH else {
                 FileHandle.standardError.write(Data(
                     "letitbrew: can't watch PID \(pid): \(String(cString: strerror(errno)))\n".utf8
@@ -118,12 +123,7 @@ private func holdUntilStopped(exitOf pid: pid_t?, label: String, storage: HoldSt
 /// forwards termination signals, and exits with the command's status, or
 /// 128 + signal when a signal ended it.
 private func runHold(command: [String], storage: HoldStorage) -> Int32 {
-    if let warning = HoldWarning.message(
-        appRunning: HoldAppState.isAppRunning(),
-        paused: HoldAppState.isPaused()
-    ) {
-        FileHandle.standardError.write(Data((warning + "\n").utf8))
-    }
+    printHoldWarning(anyway: "Running your command anyway.")
 
     // Ignore the terminal's interrupt and quit here before spawning, so the
     // command alone decides what they do. The child gets default handlers.

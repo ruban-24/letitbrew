@@ -62,6 +62,7 @@ default:
                               keep the Mac awake while the command runs
       letitbrew hold --pid <pid>
                               keep the Mac awake until that process exits
+                              (exits 128 + signal if you stop it first)
       letitbrew hold           keep the Mac awake until Ctrl-C (exits 0)
       letitbrew repair          clear a sleep-watchdog lease left by a dead
                               watchdog loop (see `letitbrew doctor`)
