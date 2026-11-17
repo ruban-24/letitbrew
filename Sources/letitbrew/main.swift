@@ -38,6 +38,8 @@ case "status":
     exit(runStatus(json: arguments.contains("--json")))
 case "repair":
     exit(runRepair())
+case "hold":
+    exit(runHold(arguments: Array(arguments.dropFirst())))
 case "--version":
     print("letitbrew 1.0.1")
     exit(0)
@@ -56,6 +58,8 @@ default:
                               also keep it awake with the lid shut (asks for
                               your password once, at startup)
       letitbrew status [--json]  one-shot board
+      letitbrew hold -- <command> [args...]
+                              keep the Mac awake while the command runs
       letitbrew repair          clear a sleep-watchdog lease left by a dead
                               watchdog loop (see `letitbrew doctor`)
       letitbrew hook <agent> <event>

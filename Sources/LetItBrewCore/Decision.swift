@@ -57,12 +57,44 @@ public struct Decision: Equatable, Sendable {
     public var holdDisplay: Bool
     /// Human-readable explanation, shown in the menu and the status output.
     public var reason: String
+    /// What wanted the hold, whether or not a power rule released it.
+    public var wantedBy: HoldDemandCount
 
-    public init(holdSystem: Bool, holdLidClosed: Bool, holdDisplay: Bool = false, reason: String) {
+    public init(
+        holdSystem: Bool,
+        holdLidClosed: Bool,
+        holdDisplay: Bool = false,
+        reason: String,
+        wantedBy: HoldDemandCount = HoldDemandCount()
+    ) {
         self.holdSystem = holdSystem
         self.holdLidClosed = holdLidClosed
         self.holdDisplay = holdDisplay
         self.reason = reason
+        self.wantedBy = wantedBy
+    }
+}
+
+/// The agents and manual demands that want the Mac held awake.
+public struct HoldDemandCount: Equatable, Sendable {
+    /// Working agent sessions, including waits whose approved command runs.
+    public var agents: Int
+    /// Live `letitbrew hold` processes.
+    public var holds: Int
+
+    public init(agents: Int = 0, holds: Int = 0) {
+        self.agents = agents
+        self.holds = holds
+    }
+
+    public var isEmpty: Bool { agents == 0 && holds == 0 }
+
+    /// "1 working", "1 hold", or "2 working, 1 hold".
+    var reason: String {
+        var parts: [String] = []
+        if agents > 0 { parts.append("\(agents) working") }
+        if holds > 0 { parts.append(holds == 1 ? "1 hold" : "\(holds) holds") }
+        return parts.joined(separator: ", ")
     }
 }
 
@@ -180,50 +212,20 @@ public struct RunningApprovals: Equatable, Sendable {
 ///
 /// Precedence: safety guards first, then active work. Idle states never hold
 /// the Mac awake.
+///
+/// `demands` are manual keep-awake requests such as `letitbrew hold`. The
+/// caller passes only live ones (see `HoldRecord.live`); each holds like a
+/// Working session, under the same power rules, and is never bounded by
+/// `MonitoringLease`.
 public func decide(
     sessions: [SessionRecord],
+    demands: [KeepAwakeDemand] = [],
     now: Date,
     settings: Settings,
     power: PowerState,
     runningApprovals: RunningApprovals = .none,
     lowPowerModeOwnedByLetItBrew: Bool = false
 ) -> Decision {
-    // 0. IMPORTANT 4: an untrusted reading must never be treated as a
-    // confirmed "plugged in at 100%" — that would bypass the battery floor
-    // below entirely. The standing rule is refuse-rather-than-guess, and the
-    // safe direction here is the one that does NOT keep a laptop awake on an
-    // unknown battery, so this takes precedence over everything else,
-    // including active sessions.
-    if !power.trusted {
-        return Decision(holdSystem: false, holdLidClosed: false, reason: "battery state unknown")
-    }
-
-    // 1. Connected-only mode releases on any battery level.
-    if settings.onlyWhileConnectedToPower, power.onBattery {
-        return Decision(holdSystem: false, holdLidClosed: false, reason: "battery power")
-    }
-
-    // 2. Never flatten the battery, even mid-run.
-    if power.onBattery, power.batteryPercent <= settings.batteryFloor {
-        return Decision(holdSystem: false, holdLidClosed: false,
-                        reason: "battery \(power.batteryPercent)%")
-    }
-
-    // 3. Low Power Mode releases active holds when the setting is enabled.
-    // Low Power Mode that Let It Brew turned on for closed-lid work is not the
-    // person's choice, so it must not release the hold that requested it.
-    if settings.respectLowPowerMode, power.lowPowerModeEnabled,
-       !lowPowerModeOwnedByLetItBrew {
-        return Decision(holdSystem: false, holdLidClosed: false, reason: "low power mode")
-    }
-
-    // 4. A shut lid traps heat with no airflow, so thermal pressure wins.
-    if power.thermal == .serious || power.thermal == .critical {
-        return Decision(holdSystem: false, holdLidClosed: false,
-                        reason: "thermal pressure")
-    }
-
-    // 5. Working sessions hold, as do waits whose approved command is running.
     // Monitoring, and a subagent's own record, end once the session family
     // has been silent for its limit; see `MonitoringLease`.
     let familyEdges = MonitoringLease.latestEdges(sessions)
@@ -232,15 +234,58 @@ public func decide(
             $0, familyEdges: familyEdges, now: now, limit: settings.monitoringHoldLimit
         )
     }
-    let working = sessions.count {
-        runningApprovals.holdsAwake($0) && !expiredLeases.contains($0)
+    let wanted = HoldDemandCount(
+        agents: sessions.count {
+            runningApprovals.holdsAwake($0) && !expiredLeases.contains($0)
+        },
+        holds: demands.count { if case .hold = $0 { true } else { false } }
+    )
+    func release(_ reason: String) -> Decision {
+        Decision(holdSystem: false, holdLidClosed: false, reason: reason, wantedBy: wanted)
     }
-    if working > 0 {
+
+    // 0. IMPORTANT 4: an untrusted reading must never be treated as a
+    // confirmed "plugged in at 100%" — that would bypass the battery floor
+    // below entirely. The standing rule is refuse-rather-than-guess, and the
+    // safe direction here is the one that does NOT keep a laptop awake on an
+    // unknown battery, so this takes precedence over everything else,
+    // including active sessions.
+    if !power.trusted {
+        return release("battery state unknown")
+    }
+
+    // 1. Connected-only mode releases on any battery level.
+    if settings.onlyWhileConnectedToPower, power.onBattery {
+        return release("battery power")
+    }
+
+    // 2. Never flatten the battery, even mid-run.
+    if power.onBattery, power.batteryPercent <= settings.batteryFloor {
+        return release("battery \(power.batteryPercent)%")
+    }
+
+    // 3. Low Power Mode releases active holds when the setting is enabled.
+    // Low Power Mode that Let It Brew turned on for closed-lid work is not the
+    // person's choice, so it must not release the hold that requested it.
+    if settings.respectLowPowerMode, power.lowPowerModeEnabled,
+       !lowPowerModeOwnedByLetItBrew {
+        return release("low power mode")
+    }
+
+    // 4. A shut lid traps heat with no airflow, so thermal pressure wins.
+    if power.thermal == .serious || power.thermal == .critical {
+        return release("thermal pressure")
+    }
+
+    // 5. Working sessions hold, as do waits whose approved command is
+    // running, and live manual demands.
+    if !wanted.isEmpty {
         return Decision(
             holdSystem: true,
             holdLidClosed: settings.lidClosedFollowsSession,
             holdDisplay: !settings.allowDisplaysToSleep,
-            reason: "\(working) working"
+            reason: wanted.reason,
+            wantedBy: wanted
         )
     }
 

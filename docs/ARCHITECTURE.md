@@ -157,11 +157,23 @@ Each adapter's exact source-event vocabulary is frozen in
 [AGENT-HOOK-CONTRACTS.md](AGENT-HOOK-CONTRACTS.md); unsupported source events do
 not infer a state.
 
-`Decision.decide()` is a pure function over sessions, settings, power state,
-running approved commands, and whether Let It Brew owns the current Low Power Mode. It is
+`Decision.decide()` is a pure function over sessions, manual keep-awake
+demands, settings, power state, running approved commands, and whether Let It
+Brew owns the current Low Power Mode. It is
 where the battery floor and thermal release live. `PowerState.trusted` exists
 so a *failed* IOKit read is never mistaken for "this machine has no battery" —
 an untrusted reading must not bypass the battery floor.
+
+Manual keep-awake demands are a separate input from agent sessions: they have
+no `AgentID`, never appear in hook install, uninstall, or doctor, and are not
+bounded by `MonitoringLease`. Today the only kind is a `letitbrew hold`: the
+CLI runs the command in the same terminal and process group and writes one
+record (PID, label, start time) to `~/Library/Application Support/LetItBrew/holds/`,
+removing it when the command exits. The app reads that folder on its poll and
+drops records whose process has exited, so a killed CLI leaves nothing behind.
+A live demand counts like a Working session and passes through the same power
+rules; `Decision.wantedBy` records what wanted the hold so the menu can explain
+a release.
 
 A Waiting session releases the hold, with no grace period. Every question,
 and every OpenCode and Pi wait, reports its answer with a hook. Approving a

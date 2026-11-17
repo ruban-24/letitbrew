@@ -13,6 +13,8 @@ enum LetItBrewPresentationState: String {
 
 struct LetItBrewSnapshot: Sendable {
     let sessions: [SessionRecord]
+    /// Live `letitbrew hold` records; not agent sessions.
+    let holds: [HoldRecord]
     let power: PowerState
     let clamshell: ClamshellStateReading
     let displays: ActiveDisplayTopologyReading
@@ -220,6 +222,7 @@ final class LetItBrewAppModel: ObservableObject {
     @Published private(set) var sessions: [MenuSessionPresentation] = []
     @Published private(set) var hasLoadedSessionSnapshot = false
     @Published private(set) var sessionGroups: [MenuRepositoryPresentation] = []
+    @Published private(set) var holdRows: [MenuHoldPresentation] = []
     @Published private(set) var presentationState: LetItBrewPresentationState = .idle
     @Published private(set) var reason = "Your Mac can sleep"
     @Published private(set) var iconState: BrewIconState = .idle
@@ -2052,6 +2055,7 @@ final class LetItBrewAppModel: ObservableObject {
             )
             let snapshot = LetItBrewSnapshot(
                 sessions: sessions.sessions,
+                holds: HoldStorage().loadLive(),
                 power: IOKitPowerSource().current(),
                 clamshell: clamshellMonitor.currentClamshellState(),
                 displays: activeDisplayMonitor.currentDisplayTopology(),
@@ -2153,6 +2157,7 @@ final class LetItBrewAppModel: ObservableObject {
         }
         applyVisibleSnapshot(LetItBrewSnapshot(
             sessions: tracking.sessions,
+            holds: snapshot.holds,
             power: snapshot.power,
             clamshell: snapshot.clamshell,
             displays: snapshot.displays,
@@ -2215,9 +2220,11 @@ final class LetItBrewAppModel: ObservableObject {
             monitoringHoldLimit: settings.monitoringHoldLimit,
             snapshot: snapshot
         )
+        holdRows = MenuHoldPresentationPolicy.rows(from: snapshot.holds, now: snapshot.now)
 
         let decision = decide(
             sessions: liveSessions,
+            demands: snapshot.holds.map(KeepAwakeDemand.hold),
             now: snapshot.now,
             settings: settings,
             power: snapshot.power,
@@ -2277,8 +2284,9 @@ final class LetItBrewAppModel: ObservableObject {
 
         let isKeepingAwake = intent.system
             || (requestedLidHold && daemonHoldRequestState.confirmedHold == true)
-        // A constraint explains a release only for sessions that would hold.
-        releaseConstraint = if sessions.contains(where: \.isWorking) {
+        // A constraint explains a release only for agents or holds that
+        // would hold.
+        releaseConstraint = if !decision.wantedBy.isEmpty {
             if !snapshot.power.trusted {
                 .powerUnavailable
             } else if settings.onlyWhileConnectedToPower,
@@ -2688,6 +2696,7 @@ final class LetItBrewAppModel: ObservableObject {
 extension LetItBrewAppModel {
     static func preview(
         sessions: [SessionRecord],
+        holds: [HoldRecord] = [],
         power: PowerState = PowerState(onBattery: false, batteryPercent: 100, thermal: .nominal),
         updateState: OneClickUpdateState = .idle,
         now: Date = Date()
@@ -2703,6 +2712,7 @@ extension LetItBrewAppModel {
         model.updateState = updateState
         model.apply(LetItBrewSnapshot(
             sessions: sessions,
+            holds: holds,
             power: power,
             clamshell: .open,
             displays: .noExternalDisplay,
