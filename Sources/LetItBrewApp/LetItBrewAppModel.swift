@@ -316,6 +316,15 @@ final class LetItBrewAppModel: ObservableObject {
     @Published var batteryFloor: Double {
         didSet { defaults.set(batteryFloor, forKey: Keys.batteryFloor) }
     }
+    @Published private(set) var desktopAlerts: Bool
+    @Published var needsYouAlerts: Bool {
+        didSet { defaults.set(needsYouAlerts, forKey: Keys.needsYouAlerts) }
+    }
+    @Published var hideProjectNamesInAlerts: Bool {
+        didSet { defaults.set(hideProjectNamesInAlerts, forKey: Keys.hideProjectNamesInAlerts) }
+    }
+    @Published private(set) var desktopAlertAuthorization: DesktopAlertAuthorization = .notDetermined
+    @Published private(set) var alertsTipDismissed: Bool
 
     private enum Keys {
         static let batteryFloor = "batteryFloor"
@@ -329,6 +338,10 @@ final class LetItBrewAppModel: ObservableObject {
         static let allowDisplaysToSleep = "allowDisplaysToSleep"
         static let useLowPowerModeWithLidClosed = "useLowPowerModeWithLidClosed"
         static let automaticUpdateSnapshot = "automaticUpdateSnapshotV1"
+        static let desktopAlerts = "desktopAlerts"
+        static let needsYouAlerts = "needsYouAlerts"
+        static let hideProjectNamesInAlerts = "hideProjectNamesInAlerts"
+        static let alertsTipDismissed = "alertsTipDismissed"
     }
 
     let defaults: UserDefaults
@@ -351,6 +364,8 @@ final class LetItBrewAppModel: ObservableObject {
     private var updateResultTask: Task<Void, Never>?
     private var automaticUpdateTask: Task<Void, Never>?
     private var latestSnapshot: LetItBrewSnapshot?
+    private let alertDelivery: any AlertDelivering
+    private var previousAlertSnapshot: AlertSnapshot?
     private var latestAppliedSnapshotAt: Date?
     private var daemonConnection: DaemonConnection?
     private var daemonRecoveryTask: Task<Void, Never>?
@@ -393,9 +408,12 @@ final class LetItBrewAppModel: ObservableObject {
         displaySleepCommand: any DisplaySleepCommanding = PMSetDisplaySleepCommand(),
         updateEnvironment: (any OneClickUpdateEnvironment)? = nil,
         installedUpdateVersion: StableUpdateVersion? = nil,
+        alertDelivery: (any AlertDelivering)? = nil,
         startsPolling: Bool = true
     ) {
         self.defaults = defaults
+        self.alertDelivery = alertDelivery
+            ?? (startsPolling ? DesktopAlerts.shared : NoAlertDelivery())
         daemonRecoveryPersistence = UserDefaultsDaemonRecoveryPersistence(
             defaults: defaults
         )
@@ -464,6 +482,18 @@ final class LetItBrewAppModel: ObservableObject {
         batteryFloor = (Self.persistedDouble(
             defaults, key: Keys.batteryFloor, allowed: 5...50, fallback: 20
         ) / 5).rounded() * 5
+        // Alerts are opt-in for new installs and updates alike.
+        let alertDefaults = AlertSettings()
+        desktopAlerts = Self.persistedBool(
+            defaults, key: Keys.desktopAlerts, fallback: alertDefaults.desktopAlerts
+        )
+        needsYouAlerts = Self.persistedBool(
+            defaults, key: Keys.needsYouAlerts, fallback: alertDefaults.needsYou
+        )
+        hideProjectNamesInAlerts = Self.persistedBool(
+            defaults, key: Keys.hideProjectNamesInAlerts, fallback: alertDefaults.hideProjectNames
+        )
+        alertsTipDismissed = defaults.bool(forKey: Keys.alertsTipDismissed)
         launchAtLoginChoiceWasSaved = defaults.object(forKey: Keys.launchAtLogin) != nil
         launchAtLogin = defaults.bool(forKey: Keys.launchAtLogin)
         showLaunchAtLoginOnboarding = !launchAtLoginChoiceWasSaved
@@ -995,6 +1025,7 @@ final class LetItBrewAppModel: ObservableObject {
     }
 
     func applicationDidBecomeActive() {
+        refreshDesktopAlertAuthorization()
         refreshCodexTrustIfNeeded()
         refreshBackgroundHelper(trigger: .userRequestedRetry)
     }
@@ -1188,6 +1219,35 @@ final class LetItBrewAppModel: ObservableObject {
                 self.defaults.set(true, forKey: Keys.launchAtLoginOnboardingDismissed)
             }
         }
+    }
+
+    var showsAlertsTip: Bool {
+        AlertsTipPolicy.isShown(dismissed: alertsTipDismissed, desktopAlerts: desktopAlerts)
+    }
+
+    /// Turning desktop alerts on asks for notification permission.
+    func setDesktopAlerts(_ enabled: Bool) {
+        desktopAlerts = enabled
+        defaults.set(enabled, forKey: Keys.desktopAlerts)
+        if enabled { dismissAlertsTip() }
+        guard enabled, readsLiveState else { return }
+        Task { [weak self] in
+            let authorization = await DesktopAlerts.shared.requestAuthorization()
+            self?.desktopAlertAuthorization = authorization
+        }
+    }
+
+    func refreshDesktopAlertAuthorization() {
+        guard desktopAlerts, readsLiveState else { return }
+        Task { [weak self] in
+            let authorization = await DesktopAlerts.shared.authorization()
+            self?.desktopAlertAuthorization = authorization
+        }
+    }
+
+    func dismissAlertsTip() {
+        alertsTipDismissed = true
+        defaults.set(true, forKey: Keys.alertsTipDismissed)
     }
 
     func dismissLaunchAtLoginOnboarding() {
@@ -2148,6 +2208,13 @@ final class LetItBrewAppModel: ObservableObject {
             previousIDs: sessionGroups.map(\.id)
         )
         sessions = nextSessions
+        evaluateAlerts(
+            liveSessions,
+            runningApprovals: runningApprovals,
+            familyEdges: familyEdges,
+            monitoringHoldLimit: settings.monitoringHoldLimit,
+            snapshot: snapshot
+        )
 
         let decision = decide(
             sessions: liveSessions,
@@ -2535,6 +2602,60 @@ final class LetItBrewAppModel: ObservableObject {
     private func updateHoldOwnership() {
         ownsHold = requestedSystemHold
             || (requestedLidHold && daemonHoldRequestState.confirmedHold == true)
+    }
+
+    /// Alerts judge the same Waiting the menu shows. Every poll moves the
+    /// snapshot on, even with alerts off, so turning them on later never
+    /// alerts for a wait already under way.
+    private func evaluateAlerts(
+        _ liveSessions: [SessionRecord],
+        runningApprovals: RunningApprovals,
+        familyEdges: [String: Date],
+        monitoringHoldLimit: TimeInterval,
+        snapshot: LetItBrewSnapshot
+    ) {
+        let observations = liveSessions.map { record in
+            let state = MenuSessionState.resolve(
+                record,
+                runningApprovals: runningApprovals,
+                now: snapshot.now,
+                familyEdges: familyEdges,
+                monitoringHoldLimit: monitoringHoldLimit
+            )
+            let wait: AlertWaitKind? = switch state {
+            case .waitingForApproval: .approval
+            case .waitingForAnswer: .answer
+            default: nil
+            }
+            return AlertSessionObservation(
+                id: record.id,
+                agent: record.tool,
+                project: record.repoName,
+                wait: wait,
+                stateChangedAt: record.stateChangedAt ?? record.updatedAt,
+                agentPID: record.pid
+            )
+        }
+        let current = AlertSnapshot(
+            observedAt: snapshot.now,
+            sessions: observations,
+            previous: previousAlertSnapshot
+        )
+        let settings = AlertSettings(
+            desktopAlerts: desktopAlerts,
+            needsYou: needsYouAlerts,
+            hideProjectNames: hideProjectNamesInAlerts
+        )
+        let alerts = AlertPolicy.alerts(
+            previous: previousAlertSnapshot,
+            current: current,
+            presence: readsLiveState
+                ? AlertPresenceReader.current(lidClosed: snapshot.clamshell == .closed)
+                : AlertPresence(lidClosed: false, screenLocked: false, secondsSinceLastInput: 0),
+            settings: settings
+        )
+        previousAlertSnapshot = current
+        if !alerts.isEmpty { alertDelivery.deliver(alerts) }
     }
 
     private static func menuInput(
