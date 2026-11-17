@@ -79,6 +79,7 @@ LETITBREW_TEST_AGENT_HOOK_SLEEP_DISABLED_BASELINE=0 \
 scripts/tests/upgrade-transaction-tests.sh
 scripts/tests/update-runner-tests.sh
 scripts/tests/direct-distribution-tests.sh
+scripts/tests/homebrew-tap-update-tests.sh
 ```
 
 These are what CI runs, and they're what a PR needs to pass.

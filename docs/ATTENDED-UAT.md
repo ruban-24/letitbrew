@@ -141,6 +141,26 @@ cask:
    Choose Set Up (approve the helper if asked), and confirm `launchctl print`
    finds the service and a closed-lid hold works.
 
+### Homebrew tap update (#69)
+
+`scripts/tests/homebrew-tap-update-tests.sh` runs the update against a local
+copy of the tap with a fake release. Only the real release can show the real
+push. During the 2.0.0 cut, right after publishing GitHub release `v2.0.0`:
+
+1. Run `scripts/update-homebrew-tap.sh 2.0.0 --dry-run`. The printed SHA-256
+   matches the `LetItBrew-2.0.0.dmg` line in the published
+   `LetItBrew-2.0.0-SHA256SUMS`, the diff changes only `version` and `sha256`,
+   and `gh api repos/ruban-24/homebrew-tap/commits/main --jq .sha` is the same
+   before and after.
+2. Run `scripts/update-homebrew-tap.sh 2.0.0`. It ends with "Pushed letitbrew
+   2.0.0 to the Homebrew tap", and the tap's latest commit is
+   "letitbrew 2.0.0". Run it again: "Nothing to do", with no new commit.
+3. Run `brew update`, then `brew info --cask ruban-24/tap/letitbrew` shows
+   2.0.0, and `brew fetch --cask ruban-24/tap/letitbrew` downloads the DMG
+   without a checksum error.
+4. Confirm the GitHub release `v2.0.0` and its three assets are unchanged by
+   the tap step.
+
 ## v1.0.1 release scope
 
 This release replaces the input check for Claude, Copilot, Gemini, and Qwen
