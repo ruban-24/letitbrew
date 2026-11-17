@@ -102,11 +102,12 @@ the `hold` section.
    min". `letitbrew hold -- sleep 60` sends nothing. With Hide project names on,
    the titles read "A held command finished" and "A held command failed".
    Afterwards `~/Library/Application Support/LetItBrew/hold-results/` is empty.
-4. Hold with no exit status: once `letitbrew hold --pid N` and bare
-   `letitbrew hold` exist (#60), hold a process for over 3 minutes and let it
-   exit (or press Ctrl-C on a bare hold): "<label> finished" / "Finished after
-   N min". Also `kill -9` the CLI of a 4-minute `hold -- sleep 600` and then the
-   `sleep`: the same "finished" wording, no success or failure claimed.
+4. Hold with no exit status: start `sleep 240 &`, run
+   `letitbrew hold --pid <its PID>`, and wait: "Process <PID> finished" /
+   "Finished after 4 min". Run bare `letitbrew hold` for 4 minutes and press
+   Ctrl-C: no banner. Also `kill -9` the CLI of a `hold -- sleep 600` after 4
+   minutes, then the `sleep`: "sleep 600 finished" / "Finished after N min",
+   with no success or failure claimed.
 5. Battery floor: on battery just above the floor (Settings → Power), keep an
    agent Working or a hold running until the charge reaches the floor. One
    banner: "Your Mac stopped keeping awake" / "Battery reached <floor>%." It

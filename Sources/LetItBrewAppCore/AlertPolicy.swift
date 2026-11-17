@@ -110,11 +110,15 @@ public struct AlertHold: Equatable, Sendable {
     /// The held command line, or what names a held process.
     public let label: String
     public let startedAt: Date
+    /// A bare `letitbrew hold`, which ends at Ctrl-C with the person at the
+    /// terminal, so its end is not news.
+    public let endsAtTerminal: Bool
 
-    public init(id: String, label: String, startedAt: Date) {
+    public init(id: String, label: String, startedAt: Date, endsAtTerminal: Bool = false) {
         self.id = id
         self.label = label
         self.startedAt = startedAt
+        self.endsAtTerminal = endsAtTerminal
     }
 
     /// A hold is its PID plus its start time, so a reused PID is a new hold.
@@ -122,7 +126,8 @@ public struct AlertHold: Equatable, Sendable {
         self.init(
             id: "\(record.pid).\(record.startedAt.timeIntervalSince1970)",
             label: record.label,
-            startedAt: record.startedAt
+            startedAt: record.startedAt,
+            endsAtTerminal: record.label == HoldRecord.terminalLabel
         )
     }
 }
@@ -406,8 +411,8 @@ public enum AlertPolicy {
     }
 
     /// A held command reports its exit status; a hold that vanishes without
-    /// one (`--pid`, a bare hold, or a killed CLI) is timed to the last poll
-    /// that saw it.
+    /// one (`--pid`, or a killed CLI) is timed to the last poll that saw it.
+    /// A bare hold's end is never alerted.
     private static func finishedHoldAlerts(
         previous: AlertSnapshot,
         current: AlertSnapshot,
@@ -432,7 +437,7 @@ public enum AlertPolicy {
             .union(current.endedHolds.map(\.hold.id))
             .union(reported)
         let vanished: [Alert] = previous.holds.compactMap { hold in
-            guard !stillKnown.contains(hold.id) else { return nil }
+            guard !stillKnown.contains(hold.id), !hold.endsAtTerminal else { return nil }
             let ran = previous.observedAt.timeIntervalSince(hold.startedAt)
             guard ran >= finishedMinimum else { return nil }
             return holdAlert(

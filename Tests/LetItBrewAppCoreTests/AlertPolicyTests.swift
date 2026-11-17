@@ -608,3 +608,20 @@ private func run(
         Poll(at: 7300, sessions: [idle(since: 7300)]),
     ]).isEmpty)
 }
+
+@Test func aBareHoldSendsNoFinishedAlert() {
+    // Ended by Ctrl-C in the terminal: the person is right there.
+    let bare = AlertHold(HoldRecord(pid: 77, label: HoldRecord.terminalLabel, startedAt: start))
+    #expect(run([
+        Poll(at: 0, holds: [bare]),
+        Poll(at: 1320, holds: [bare]),
+        Poll(at: 1321),
+    ]).isEmpty)
+    let process = AlertHold(HoldRecord(pid: 78, label: HoldRecord.processLabel(pid: 4182),
+                                       startedAt: start))
+    #expect(run([
+        Poll(at: 0, holds: [process]),
+        Poll(at: 1320, holds: [process]),
+        Poll(at: 1321),
+    ]).map(\.title) == ["Process 4182 finished"])
+}
