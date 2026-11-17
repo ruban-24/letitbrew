@@ -135,8 +135,8 @@ bundle as in the section above.
 6. Start bare `letitbrew hold`, then `kill -9` the `letitbrew` process from
    another terminal. Within two seconds the row is gone and `holds/` is empty.
 7. Pause Let It Brew and run bare `letitbrew hold`: one line warns that Let It
-   Brew is paused and ends "Holding anyway."; the row appears and the Mac is
-   held as soon as you resume. Quit Let It Brew and run
+   Brew is paused and ends "Holding anyway."; within two seconds of resuming,
+   the row appears and the Mac is held. Quit Let It Brew and run
    `letitbrew hold --pid 1`: the warning says it isn't running.
 
 ### Homebrew cask (#68)
