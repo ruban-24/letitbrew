@@ -4,45 +4,119 @@ import LetItBrewCore
 import SwiftUI
 
 struct MenuBarStatusIcon: View {
-    let state: LetItBrewPresentationState
-
-    // ponytail: a fraction of the cone's height, not its area. The cone widens
-    // downward, so this pour covers well over half the glyph — the point is that
-    // awake reads as clearly filled vs an empty idle outline at 18pt monochrome
-    // in the menu bar, where fill level is the only state signal. Nudge down if
-    // it reads heavy, up if awake/idle look too alike.
-    private static let activeFillLevel: CGFloat = 0.62
+    let state: BrewIconState
+    let toolTip: String
+    private let icon = BrewIcon.flask
     private static let size: CGFloat = 18
 
-    private var level: CGFloat { state == .awake ? Self.activeFillLevel : 0 }
+    @State private var frame = 0
+    @State private var reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    @State private var lowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
+
+    private var frameCount: Int {
+        icon.frameCount(for: state, reduceMotion: reduceMotion, lowPowerMode: lowPowerMode)
+    }
 
     // A MenuBarExtra label must be Text or an Image. A ZStack of Shapes draws
     // correctly everywhere else and renders as an empty status item here, so
-    // the glyph is drawn into a template NSImage rather than composed in
-    // SwiftUI. Drawing it also costs the pour animation: an Image cannot tween
-    // between levels.
+    // the glyph is drawn into an NSImage rather than composed in SwiftUI, and
+    // the awake animation swaps pre-rendered frames on a timer instead of
+    // tweening. The timer exists only while there is more than one frame.
     var body: some View {
-        Image(nsImage: flaskImage(level: level, side: Self.size))
+        Image(nsImage: BrewIconImages.image(
+            icon: icon,
+            state: state,
+            frame: frameCount > 1 ? frame % frameCount : 0,
+            side: Self.size
+        ))
+        .task(id: frameCount) {
+            frame = 0
+            guard frameCount > 1 else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: BrewIcon.frameInterval)
+                frame = BrewIcon.frame(after: frame, count: frameCount)
+            }
+        }
+        .onReceive(NSWorkspace.shared.notificationCenter.publisher(
+            for: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification
+        )) { _ in
+            reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        }
+        .onReceive(NotificationCenter.default.publisher(
+            for: Notification.Name.NSProcessInfoPowerStateDidChange
+        ).receive(on: RunLoop.main)) { _ in
+            lowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
+        }
+        .onAppear { MenuBarStatusItemToolTip.apply(toolTip) }
+        .onChange(of: toolTip) { _, newValue in MenuBarStatusItemToolTip.apply(newValue) }
     }
 }
 
-/// The flask as a template image: macOS recolours it for the current menu-bar
-/// appearance and inverts it on highlight, keying entirely off the alpha
-/// channel — which is exactly what the opaque PNGs this replaced got wrong.
-private func flaskImage(level: CGFloat, side: CGFloat) -> NSImage {
-    let image = NSImage(size: NSSize(width: side, height: side), flipped: true) { rect in
-        guard let context = NSGraphicsContext.current?.cgContext else { return false }
-        context.setFillColor(NSColor.black.cgColor)
-        context.setStrokeColor(NSColor.black.cgColor)
-        FlaskGeometry.draw(
-            in: context,
-            level: level,
-            scale: min(rect.width, rect.height) / FlaskGeometry.canvas
-        )
-        return true
+/// Pre-rendered menu-bar frames. Every state but needs-you is a template
+/// image: macOS recolours it for the current menu-bar appearance and inverts
+/// it on highlight, keying entirely off the alpha channel. Needs-you carries
+/// the orange dot, which a template would flatten, so it draws its glyph in
+/// the label colour resolved for the appearance it is drawn in.
+@MainActor
+private enum BrewIconImages {
+    private struct Key: Hashable {
+        let icon: BrewIcon
+        let state: BrewIconState
+        let frame: Int
+        let side: CGFloat
     }
-    image.isTemplate = true
-    return image
+
+    private static var cache: [Key: NSImage] = [:]
+
+    static func image(icon: BrewIcon, state: BrewIconState, frame: Int, side: CGFloat) -> NSImage {
+        let key = Key(icon: icon, state: state, frame: frame, side: side)
+        if let image = cache[key] { return image }
+
+        let isTemplate = state != .needsYou
+        let image = NSImage(size: NSSize(width: side, height: side), flipped: true) { rect in
+            guard let context = NSGraphicsContext.current?.cgContext else { return false }
+            icon.draw(
+                in: context,
+                state: state,
+                frame: frame,
+                scale: min(rect.width, rect.height) / FlaskGeometry.canvas,
+                ink: isTemplate ? NSColor.black.cgColor : NSColor.labelColor.cgColor,
+                dot: NSColor.systemOrange.cgColor
+            )
+            return true
+        }
+        image.isTemplate = isTemplate
+        // A non-template image must redraw for each appearance so its glyph
+        // follows light and dark menu bars.
+        if !isTemplate { image.cacheMode = .never }
+        cache[key] = image
+        return image
+    }
+}
+
+/// A MenuBarExtra label ignores `.help`, so the tooltip goes straight onto
+/// the status item's button, found through the status bar window that hosts
+/// it. Missing the button only loses the tooltip.
+@MainActor
+private enum MenuBarStatusItemToolTip {
+    static func apply(_ text: String) {
+        // The status item's window can appear after the label does.
+        DispatchQueue.main.async {
+            for window in NSApp.windows where window.className == "NSStatusBarWindow" {
+                guard let button = statusBarButton(in: window.contentView) else { continue }
+                button.toolTip = text
+            }
+        }
+    }
+
+    private static func statusBarButton(in view: NSView?) -> NSStatusBarButton? {
+        guard let view else { return nil }
+        if let button = view as? NSStatusBarButton { return button }
+        for subview in view.subviews {
+            if let button = statusBarButton(in: subview) { return button }
+        }
+        return nil
+    }
 }
 
 private struct PopoverHoverHighlight: ViewModifier {

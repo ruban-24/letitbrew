@@ -14,6 +14,36 @@ If a safety or power test fails, stop with physical access to the Mac, preserve
 the original `SleepDisabled` baseline, record the exact reproduction, and stop
 using the affected feature until it is understood.
 
+## v2.0.0 release scope
+
+### Menu-bar flask
+
+`swift test` proves the flask draws distinct idle, awake, needs-you and paused
+frames, that the awake sequence loops, and that Reduce Motion and Low Power Mode
+leave a single frame. It cannot see the status item. With the signed app, on a
+light menu bar and then a dark one (change the wallpaper or **System Settings →
+Appearance**):
+
+1. With no agent Working, confirm an empty, still flask. Hover it: the tooltip
+   reads "Watching for agents" (or the release reason, such as "Low Power Mode
+   is on").
+2. Start a Claude turn that runs for a minute. Confirm the flask fills and its
+   bubbles rise in a steady loop, and the tooltip reads "Keeping awake · 1 agent
+   working". Open the menu: the icon stays legible on the highlighted button.
+3. Leave a Claude approval unanswered. Confirm the flask is filled and still
+   with an orange dot at its top right, the glyph matches the menu-bar colour on
+   both light and dark bars, and the tooltip reads "1 agent needs you" (with
+   "Keeping awake · " in front while another agent is Working).
+4. Pause Let It Brew. Confirm an empty flask with a slash, distinct from idle,
+   and the tooltip "Let It Brew is paused".
+5. With an agent Working, turn on **System Settings → Accessibility → Display →
+   Reduce motion**, then separately turn on Low Power Mode. Each time the flask
+   stops on one filled frame within a second and resumes when switched off.
+6. In Activity Monitor, confirm Let It Brew's CPU stays near zero while the
+   flask is idle, paused, or needs you; it only wakes for frames while awake.
+7. With VoiceOver on, focus the status item: it reads "Let It Brew," then the
+   tooltip text.
+
 ## v1.0.1 release scope
 
 This release replaces the input check for Claude, Copilot, Gemini, and Qwen

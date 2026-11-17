@@ -53,7 +53,7 @@ private struct LetItBrewMenuBarApp: App {
             MenuBarContentView()
                 .environmentObject(model)
         } label: {
-            MenuBarStatusIcon(state: model.presentationState)
+            MenuBarStatusIcon(state: model.iconState, toolTip: model.menuBarToolTip)
                 .accessibilityLabel(model.menuBarAccessibilityLabel)
                 .onReceive(NotificationCenter.default.publisher(
                     for: NSApplication.didBecomeActiveNotification
