@@ -15,6 +15,10 @@ public struct AlertSettings: Equatable, Sendable {
     /// something was held.
     public var wifiDropped: Bool
     public var hideProjectNames: Bool
+    /// ntfy is set up and a test has reached the server.
+    public var phoneAlerts: Bool
+    /// Send to the phone even while the person is at the Mac.
+    public var alwaysSendToPhone: Bool
 
     public init(
         desktopAlerts: Bool = false,
@@ -22,7 +26,9 @@ public struct AlertSettings: Equatable, Sendable {
         finished: Bool = true,
         stoppedForPower: Bool = true,
         wifiDropped: Bool = false,
-        hideProjectNames: Bool = false
+        hideProjectNames: Bool = false,
+        phoneAlerts: Bool = false,
+        alwaysSendToPhone: Bool = false
     ) {
         self.desktopAlerts = desktopAlerts
         self.needsYou = needsYou
@@ -30,11 +36,13 @@ public struct AlertSettings: Equatable, Sendable {
         self.stoppedForPower = stoppedForPower
         self.wifiDropped = wifiDropped
         self.hideProjectNames = hideProjectNames
+        self.phoneAlerts = phoneAlerts
+        self.alwaysSendToPhone = alwaysSendToPhone
     }
 }
 
-/// Whether the person is at the Mac. The needs-you rule does not use it;
-/// phone alerts go out only when the person is away.
+/// Whether the person is at the Mac. Desktop alerts ignore it; phone
+/// alerts go out only when the person is away.
 public struct AlertPresence: Equatable, Sendable {
     public let lidClosed: Bool
     public let screenLocked: Bool
@@ -44,6 +52,13 @@ public struct AlertPresence: Equatable, Sendable {
         self.lidClosed = lidClosed
         self.screenLocked = screenLocked
         self.secondsSinceLastInput = secondsSinceLastInput
+    }
+
+    public static let awayAfterNoInput: TimeInterval = 5 * 60
+
+    /// Lid closed, screen locked, or five minutes with no keyboard or mouse.
+    public var isAway: Bool {
+        lidClosed || screenLocked || secondsSinceLastInput >= Self.awayAfterNoInput
     }
 }
 
@@ -258,6 +273,7 @@ public enum AlertKind: Equatable, Sendable {
 
 public enum AlertDestination: Hashable, Sendable {
     case desktop
+    case phone
 }
 
 public struct Alert: Equatable, Sendable, Identifiable {
@@ -369,13 +385,19 @@ public enum AlertPolicy {
         )
     }
 
-    /// Where an alert goes. Every kind shares the same channels.
+    /// Where an alert goes. Every kind shares the same channels: desktop
+    /// whenever desktop alerts are on; the phone only once ntfy is set up,
+    /// and then only while the person is away unless they chose "Always
+    /// send to phone".
     private static func destinations(
         presence: AlertPresence,
         settings: AlertSettings
     ) -> Set<AlertDestination> {
         var destinations: Set<AlertDestination> = []
         if settings.desktopAlerts { destinations.insert(.desktop) }
+        if settings.phoneAlerts, settings.alwaysSendToPhone || presence.isAway {
+            destinations.insert(.phone)
+        }
         return destinations
     }
 

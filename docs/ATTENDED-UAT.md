@@ -407,6 +407,64 @@ and a MacBook:
     buttons do nothing. Cancel the uninstall: Let It Brew turns back on with
     no session.
 
+### ntfy phone alerts (#65)
+
+`AlertPolicy` tests cover away detection (lid closed, screen locked, 5
+minutes without input) and Always send to phone. `NtfyPublisher` tests cover
+the request, the token header, and retry-once-then-drop against a stub
+server. These steps need a phone, the network, and the signed app. Use a
+throwaway topic; never paste a real topic into an issue.
+
+1. Settings → Alerts, "On your phone": "Phone alerts" with "Get alerts on your
+   phone through the free ntfy app." and Set Up; footer "Phone alerts go out
+   only when you're away from your Mac." Press Set Up. The group expands in
+   place: "Waiting for a test to arrive…", Cancel, a QR code (about 92 pt), the
+   two steps naming a `letitbrew-` topic with at least 12 random characters,
+   Send Test, and Advanced with Server "https://ntfy.sh" and Access token
+   ("Optional"). Confirm with Little Snitch or `nettop -p "Let It Brew"` that
+   Set Up and editing Advanced send no request.
+2. **QR code (open question).** The code encodes the topic's https address
+   (`https://ntfy.sh/<topic>`). The ntfy docs offer a subscribe deep link
+   (`ntfy://<host>/<topic>`) only for Android, and the iOS app registers no
+   URL scheme. Scan the code with an iPhone and an Android phone (the ntfy app
+   and the system camera) and record what happens. If the app does not
+   subscribe, subscribe by hand to the topic shown (it is selectable) and
+   report the result so the payload can change.
+3. Press Send Test. The phone shows "Let It Brew test" / "Phone alerts are
+   working." Settings shows "● Working · test received at <time>" (green dot,
+   the real time), Turn Off, a smaller QR code with "ntfy.sh/<topic>", Send
+   Test, "Always send to phone" (off), and a collapsed Advanced showing
+   "ntfy.sh". The "Alert me when" and Privacy groups are no longer dimmed,
+   even with Desktop alerts off.
+4. Away rule, with Always send to phone off and an approval left waiting 30
+   seconds each time:
+   - At the Mac, typing: no phone alert (desktop banner only, if on).
+   - Lock the screen (Ctrl-Cmd-Q): the phone gets "Claude Code needs you ·
+     <folder>" / "Waiting for your approval".
+   - Close the lid with closed-lid support on: the phone gets the alert.
+   - Leave the Mac untouched for 5 minutes, then let an approval wait: the
+     phone gets the alert.
+   Turn on Always send to phone and repeat at the Mac: the phone gets it.
+5. Turn on Hide project names: the phone title has no folder. Confirm no
+   phone alert ever contains a prompt, question, or command, and has no emoji.
+6. Turn Wi-Fi off, lock the screen, and let an approval wait 30 seconds.
+   Confirm the menu shows no error, the hold is unchanged, and nothing arrives
+   later when Wi-Fi returns (the send was retried once, then dropped).
+   With Wi-Fi off, Send Test shows "The test didn't reach ntfy.sh. Check your
+   connection and try again." in Settings only.
+7. Custom server and token (needs a self-hosted ntfy with auth, or an ntfy.sh
+   account token): open Advanced, enter the https server and an access token,
+   press Return. Status drops back to "Waiting for a test to arrive…".
+   Subscribe the phone to the topic on that server, press Send Test, and
+   confirm it arrives. An `http://` server is rejected and the field reverts.
+8. Keychain: in Keychain Access, find "Let It Brew ntfy access token"
+   (service ending `.ntfy`). Confirm the token is not in
+   `defaults read com.ruban24.letitbrew` (only `ntfyTopic`, `ntfyServer`,
+   `ntfyTestReceivedAt`, `alwaysSendToPhone`). Quit and relaunch: still
+   Working and the token still works. Turn Off removes the Keychain item and
+   the topic, and the section returns to Set Up.
+9. Check the section in light and dark appearance, in all three states.
+
 ## v1.0.1 release scope
 
 This release replaces the input check for Claude, Copilot, Gemini, and Qwen

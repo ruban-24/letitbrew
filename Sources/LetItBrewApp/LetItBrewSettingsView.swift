@@ -295,6 +295,8 @@ struct LetItBrewSettingsView: View {
                 Text("On this Mac")
             }
 
+            PhoneAlertsSettingsSection(phone: model.phoneAlerts)
+
             Section {
                 Toggle(isOn: $model.needsYouAlerts) {
                     Text("An agent needs you")

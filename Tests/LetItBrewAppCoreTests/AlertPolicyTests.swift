@@ -113,6 +113,7 @@ private func run(_ polls: [Poll], settings: AlertSettings = enabled) -> [Alert] 
 private func run(
     _ steps: [(TimeInterval, [AlertSessionObservation])],
     settings: AlertSettings = enabled,
+    presence: AlertPresence = present,
     from initial: AlertSnapshot? = nil
 ) -> [Alert] {
     var previous = initial
@@ -126,7 +127,7 @@ private func run(
         alerts += AlertPolicy.alerts(
             previous: previous,
             current: current,
-            presence: present,
+            presence: presence,
             settings: settings
         )
         previous = current
@@ -761,4 +762,60 @@ private func manualSessionMachine(
     #expect(run(polls(endingAt: 600), settings: all).isEmpty)
     // A second earlier, the session still wanted the hold.
     #expect(run(polls(endingAt: 599), settings: all).map(\.kind) == [.stoppedForPower])
+}
+
+// MARK: Phone destinations
+
+private let phoneSetUp = AlertSettings(desktopAlerts: true, phoneAlerts: true)
+private let waitedThirtySeconds: [(TimeInterval, [AlertSessionObservation])] = [
+    (0, [session()]), (30, [session()]),
+]
+
+private func destinations(
+    _ presence: AlertPresence,
+    settings: AlertSettings = phoneSetUp
+) -> Set<AlertDestination>? {
+    run(waitedThirtySeconds, settings: settings, presence: presence).first?.destinations
+}
+
+private func idle(for seconds: TimeInterval) -> AlertPresence {
+    AlertPresence(lidClosed: false, screenLocked: false, secondsSinceLastInput: seconds)
+}
+
+@Test func phoneAlertsGoOutOnlyWhenThePersonIsAway() {
+    #expect(destinations(present) == [.desktop])
+    #expect(destinations(AlertPresence(lidClosed: true, screenLocked: false, secondsSinceLastInput: 0))
+        == [.desktop, .phone])
+    #expect(destinations(AlertPresence(lidClosed: false, screenLocked: true, secondsSinceLastInput: 0))
+        == [.desktop, .phone])
+    #expect(destinations(idle(for: 300)) == [.desktop, .phone])
+}
+
+@Test func fiveMinutesWithoutInputIsTheAwayEdge() {
+    #expect(destinations(idle(for: 299.9)) == [.desktop])
+    #expect(destinations(idle(for: 300)) == [.desktop, .phone])
+}
+
+@Test func alwaysSendToPhoneIgnoresPresence() {
+    var always = phoneSetUp
+    always.alwaysSendToPhone = true
+    #expect(destinations(present, settings: always) == [.desktop, .phone])
+    #expect(AlertSettings().alwaysSendToPhone == false)
+}
+
+@Test func phoneAlertsAloneStillAlertWhenAway() {
+    let phoneOnly = AlertSettings(desktopAlerts: false, phoneAlerts: true)
+    #expect(destinations(idle(for: 600), settings: phoneOnly) == [.phone])
+    // At the Mac with desktop alerts off there is nowhere to send.
+    #expect(run(waitedThirtySeconds, settings: phoneOnly, presence: present).isEmpty)
+}
+
+@Test func noPhoneDestinationUnlessPhoneAlertsAreSetUp() {
+    #expect(AlertSettings().phoneAlerts == false)
+    var notSetUp = AlertSettings(desktopAlerts: true, alwaysSendToPhone: true)
+    #expect(destinations(AlertPresence(lidClosed: true, screenLocked: true, secondsSinceLastInput: 900),
+                         settings: notSetUp) == [.desktop])
+    notSetUp.desktopAlerts = false
+    #expect(run(waitedThirtySeconds, settings: notSetUp,
+                presence: AlertPresence(lidClosed: true, screenLocked: true, secondsSinceLastInput: 900)).isEmpty)
 }
