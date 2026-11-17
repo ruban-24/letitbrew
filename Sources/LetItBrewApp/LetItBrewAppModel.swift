@@ -15,6 +15,11 @@ struct LetItBrewSnapshot: Sendable {
     let sessions: [SessionRecord]
     /// Live `letitbrew hold` records; not agent sessions.
     let holds: [HoldRecord]
+    /// Held commands that exited and whose result alerts have not yet seen.
+    var holdResults: [HoldResult] = []
+    /// Sessions hidden by disconnecting an agent or Stop Tracking: still
+    /// running, so alerts must not take them for ended.
+    var hiddenSessionIDs: Set<String> = []
     let power: PowerState
     let clamshell: ClamshellStateReading
     let displays: ActiveDisplayTopologyReading
@@ -339,6 +344,15 @@ final class LetItBrewAppModel: ObservableObject {
     @Published var needsYouAlerts: Bool {
         didSet { defaults.set(needsYouAlerts, forKey: Keys.needsYouAlerts) }
     }
+    @Published var finishedAlerts: Bool {
+        didSet { defaults.set(finishedAlerts, forKey: Keys.finishedAlerts) }
+    }
+    @Published var stoppedForPowerAlerts: Bool {
+        didSet { defaults.set(stoppedForPowerAlerts, forKey: Keys.stoppedForPowerAlerts) }
+    }
+    @Published var wifiDroppedAlerts: Bool {
+        didSet { defaults.set(wifiDroppedAlerts, forKey: Keys.wifiDroppedAlerts) }
+    }
     @Published var hideProjectNamesInAlerts: Bool {
         didSet { defaults.set(hideProjectNamesInAlerts, forKey: Keys.hideProjectNamesInAlerts) }
     }
@@ -360,6 +374,9 @@ final class LetItBrewAppModel: ObservableObject {
         static let automaticUpdateSnapshot = "automaticUpdateSnapshotV1"
         static let desktopAlerts = "desktopAlerts"
         static let needsYouAlerts = "needsYouAlerts"
+        static let finishedAlerts = "finishedAlerts"
+        static let stoppedForPowerAlerts = "stoppedForPowerAlerts"
+        static let wifiDroppedAlerts = "wifiDroppedAlerts"
         static let hideProjectNamesInAlerts = "hideProjectNamesInAlerts"
         static let alertsTipDismissed = "alertsTipDismissed"
     }
@@ -386,6 +403,7 @@ final class LetItBrewAppModel: ObservableObject {
     private var latestSnapshot: LetItBrewSnapshot?
     private let alertDelivery: any AlertDelivering
     private var previousAlertSnapshot: AlertSnapshot?
+    private let networkReachability = NetworkReachability()
     private var latestAppliedSnapshotAt: Date?
     private var daemonConnection: DaemonConnection?
     private var daemonRecoveryTask: Task<Void, Never>?
@@ -515,6 +533,15 @@ final class LetItBrewAppModel: ObservableObject {
         needsYouAlerts = Self.persistedBool(
             defaults, key: Keys.needsYouAlerts, fallback: alertDefaults.needsYou
         )
+        finishedAlerts = Self.persistedBool(
+            defaults, key: Keys.finishedAlerts, fallback: alertDefaults.finished
+        )
+        stoppedForPowerAlerts = Self.persistedBool(
+            defaults, key: Keys.stoppedForPowerAlerts, fallback: alertDefaults.stoppedForPower
+        )
+        wifiDroppedAlerts = Self.persistedBool(
+            defaults, key: Keys.wifiDroppedAlerts, fallback: alertDefaults.wifiDropped
+        )
         hideProjectNamesInAlerts = Self.persistedBool(
             defaults, key: Keys.hideProjectNamesInAlerts, fallback: alertDefaults.hideProjectNames
         )
@@ -535,6 +562,7 @@ final class LetItBrewAppModel: ObservableObject {
         presentUnselectedAgents()
 
         if startsPolling {
+            networkReachability.start()
             startPolling()
             startPendingUpdateResultPolling()
             runDaemonRecovery(trigger: .automaticLaunch)
@@ -1277,6 +1305,9 @@ final class LetItBrewAppModel: ObservableObject {
     var showsAlertsTip: Bool {
         AlertsTipPolicy.isShown(dismissed: alertsTipDismissed, desktopAlerts: desktopAlerts)
     }
+
+    /// Whether any alert channel is on, so the per-type choices matter.
+    var hasAlertChannel: Bool { desktopAlerts }
 
     /// Turning desktop alerts on asks for notification permission.
     func setDesktopAlerts(_ enabled: Bool) {
@@ -2103,9 +2134,15 @@ final class LetItBrewAppModel: ObservableObject {
                 loadRecords: { CopilotCancellation.reconcile(storage.loadAll()) },
                 ttl: 12 * 3_600
             )
+            // Live holds first: the CLI writes a result before the hold
+            // stops counting as live, so a hold missing from this read has
+            // its result on disk for the next one.
+            let holdStorage = HoldStorage()
+            let holds = holdStorage.loadLive()
             let snapshot = LetItBrewSnapshot(
                 sessions: sessions.sessions,
-                holds: HoldStorage().loadLive(),
+                holds: holds,
+                holdResults: holdStorage.loadResults(),
                 power: IOKitPowerSource().current(),
                 clamshell: clamshellMonitor.currentClamshellState(),
                 displays: activeDisplayMonitor.currentDisplayTopology(),
@@ -2122,6 +2159,10 @@ final class LetItBrewAppModel: ObservableObject {
         ) else { return }
         latestAppliedSnapshotAt = read.startedAt
         apply(read.snapshot)
+        // Only an applied read has shown its results to alerts; a read that
+        // lost the race leaves them for the next one.
+        let holdStorage = HoldStorage()
+        read.snapshot.holdResults.forEach(holdStorage.removeResult)
     }
 
     private func runDaemonRecovery(trigger: DaemonRecoveryTrigger) {
@@ -2208,6 +2249,9 @@ final class LetItBrewAppModel: ObservableObject {
         applyVisibleSnapshot(LetItBrewSnapshot(
             sessions: tracking.sessions,
             holds: snapshot.holds,
+            holdResults: snapshot.holdResults,
+            hiddenSessionIDs: Set(snapshot.sessions.map(\.id))
+                .subtracting(tracking.sessions.map(\.id)),
             power: snapshot.power,
             clamshell: snapshot.clamshell,
             displays: snapshot.displays,
@@ -2263,13 +2307,6 @@ final class LetItBrewAppModel: ObservableObject {
             previousIDs: sessionGroups.map(\.id)
         )
         sessions = nextSessions
-        evaluateAlerts(
-            liveSessions,
-            runningApprovals: runningApprovals,
-            familyEdges: familyEdges,
-            monitoringHoldLimit: settings.monitoringHoldLimit,
-            snapshot: snapshot
-        )
         holdRows = MenuHoldPresentationPolicy.rows(from: snapshot.holds, now: snapshot.now)
         pauseController.expireManualSession(at: snapshot.now)
         let manualSessionDemands = pauseController.manualSessionDemand(at: snapshot.now)
@@ -2337,6 +2374,20 @@ final class LetItBrewAppModel: ObservableObject {
 
         let isKeepingAwake = intent.system
             || (requestedLidHold && daemonHoldRequestState.confirmedHold == true)
+        evaluateAlerts(
+            liveSessions,
+            runningApprovals: runningApprovals,
+            familyEdges: familyEdges,
+            monitoringHoldLimit: settings.monitoringHoldLimit,
+            snapshot: snapshot,
+            machine: AlertMachineState(
+                held: isKeepingAwake,
+                holdWanted: !isPaused && !decision.wantedBy.isEmpty,
+                releasedBy: decision.releasedBy,
+                lidClosed: snapshot.clamshell == .closed,
+                networkReachable: readsLiveState ? networkReachability.isReachable : nil
+            )
+        )
         // A constraint explains a release only for agents or holds that
         // would hold.
         releaseConstraint = if !decision.wantedBy.isEmpty {
@@ -2696,15 +2747,16 @@ final class LetItBrewAppModel: ObservableObject {
             || (requestedLidHold && daemonHoldRequestState.confirmedHold == true)
     }
 
-    /// Alerts judge the same Waiting the menu shows. Every poll moves the
-    /// snapshot on, even with alerts off, so turning them on later never
-    /// alerts for a wait already under way.
+    /// Alerts judge the same Waiting and Working the menu shows. Every poll
+    /// moves the snapshot on, even with alerts off, so turning them on later
+    /// never alerts for a wait already under way.
     private func evaluateAlerts(
         _ liveSessions: [SessionRecord],
         runningApprovals: RunningApprovals,
         familyEdges: [String: Date],
         monitoringHoldLimit: TimeInterval,
-        snapshot: LetItBrewSnapshot
+        snapshot: LetItBrewSnapshot,
+        machine: AlertMachineState
     ) {
         let observations = liveSessions.map { record in
             let state = MenuSessionState.resolve(
@@ -2719,23 +2771,42 @@ final class LetItBrewAppModel: ObservableObject {
             case .waitingForAnswer: .answer
             default: nil
             }
+            // A subagent's record ends while its parent works on; only the
+            // parent session finishing is news.
+            let isSubagent = HookRecordID(encoded: record.id)?.childID != nil
             return AlertSessionObservation(
                 id: record.id,
                 agent: record.tool,
                 project: record.repoName,
                 wait: wait,
+                working: !isSubagent && (state == .working || state == .monitoring),
+                idle: state == .idle,
                 stateChangedAt: record.stateChangedAt ?? record.updatedAt,
                 agentPID: record.pid
             )
         }
+        // Hidden sessions are neither Working, Waiting, nor Idle, so hiding
+        // one never reads as its work finishing.
+        let hidden = snapshot.hiddenSessionIDs.sorted().map {
+            AlertSessionObservation(id: $0, agent: "", project: "", wait: nil,
+                                    stateChangedAt: snapshot.now, agentPID: nil)
+        }
         let current = AlertSnapshot(
             observedAt: snapshot.now,
-            sessions: observations,
+            sessions: observations + hidden,
+            holds: snapshot.holds.map(AlertHold.init),
+            endedHolds: snapshot.holdResults.map {
+                AlertHoldResult(hold: AlertHold($0.hold), endedAt: $0.endedAt, exitStatus: $0.exitStatus)
+            },
+            machine: machine,
             previous: previousAlertSnapshot
         )
         let settings = AlertSettings(
             desktopAlerts: desktopAlerts,
             needsYou: needsYouAlerts,
+            finished: finishedAlerts,
+            stoppedForPower: stoppedForPowerAlerts,
+            wifiDropped: wifiDroppedAlerts,
             hideProjectNames: hideProjectNamesInAlerts
         )
         let alerts = AlertPolicy.alerts(

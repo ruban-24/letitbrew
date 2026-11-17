@@ -171,9 +171,11 @@ CLI runs the command in the same terminal and process group and writes one
 record (PID, label, start time) to `~/Library/Application Support/LetItBrew/holds/`,
 removing it when the command exits. `hold --pid N` and bare `hold` write the
 same record for the CLI's own PID and wait in a kqueue for N's exit or for
-SIGINT, SIGTERM, or SIGHUP; N may belong to another user. The app reads that
-folder on its poll and drops records whose process has exited, so a killed CLI
-leaves nothing behind.
+SIGINT, SIGTERM, or SIGHUP; N may belong to another user. Before reaping a
+held command, `hold -- <command>` also writes its exit status to
+`hold-results/` beside that folder, which the app reads once for the finished
+alert. The app reads `holds/` on its poll and drops records whose process has
+exited, so a killed CLI leaves nothing behind.
 A manual session, started from the menu's Keep awake row, lasts until its
 deadline or until it is ended. `LetItBrewPauseController` owns it beside Pause,
 last action wins: starting a session clears Pause, and pausing ends it. It is
@@ -182,8 +184,8 @@ the boot session UUID (`kern.bootsessionuuid`), so it resumes after a relaunch
 or update on the same boot and is discarded after a reboot or once expired;
 `letitbrew status` reads the same file.
 A live demand counts like a Working session and passes through the same power
-rules; `Decision.wantedBy` records what wanted the hold so the menu can explain
-a release.
+rules; `Decision.wantedBy` records what wanted the hold and `Decision.releasedBy`
+the power rule that released it, so the menu and alerts can explain a release.
 
 A Waiting session releases the hold, with no grace period. Every question,
 and every OpenCode and Pi wait, reports its answer with a hook. Approving a

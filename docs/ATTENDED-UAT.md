@@ -58,20 +58,83 @@ notification permission, delivery, and click-through.
 2. Turn on Desktop alerts. Confirm macOS asks for notification permission
    exactly once, with no sound option offered.
 3. Leave a Claude Code approval unanswered in Terminal. After 30 seconds
-   confirm one banner, "Claude Code needs you · <folder>" with "Waiting for
+   confirm one banner, "Claude Code needs you" with "<folder> · Waiting for
    your approval", and no second banner while it keeps waiting. Repeat with a
-   question: "Waiting for your answer".
+   question: "<folder> · Waiting for your answer".
 4. Answer an approval within 20 seconds: no banner. Approve a command that runs
    for a minute: no banner while it runs.
 5. Switch to another app, then click the banner. Confirm Terminal (or the
    session's host app: iTerm2, Ghostty, VS Code, Orca) comes forward.
-6. Turn on Hide project names and repeat step 3: the title is "Claude Code needs
-   you" with no folder. Check the banner and Notification Center never show the
-   prompt, question, or command.
+6. Turn on Hide project names and repeat step 3: the body is "Waiting for
+   your approval" with no folder. Check the banner and Notification Center
+   never show the prompt, question, or command.
 7. Deny notifications in System Settings → Notifications. Confirm the Alerts
    tab shows the warning and Open Settings… opens Let It Brew's notification
    page.
 8. Check the Alerts tab and the menu tip in light and dark appearance.
+
+### Finished, battery/heat and Wi-Fi alerts (#64)
+
+`AlertPolicy` tests cover the 3-minute and 60-second rules at their edges,
+one alert per episode, exit-status wording, hidden names and the per-type
+defaults; the `hold` integration tests cover the exit-status result file.
+These steps cover real notifications, the real power and network triggers,
+and the Alerts tab.
+Turn on Desktop alerts first, and run the CLI from the installed bundle as in
+the `hold` section.
+
+1. On an install that has never changed the alert types, open Settings →
+   Alerts. "Alert me when" lists "An agent needs you" ("After it has waited 30
+   seconds"), "Work finishes" ("Agents and held commands that ran 3 minutes or
+   more"), "Keeping awake stops for battery or heat", and "Wi-Fi drops while
+   the lid is closed". The first three are on and Wi-Fi is off. The Privacy
+   footer reads "Alerts never include your prompts or questions." Turn Desktop
+   alerts off: the group and Privacy dim and the footer reads "Turn on desktop
+   or phone alerts to choose what you hear about." Nothing is clipped in light
+   or dark appearance; quit and relaunch, and every toggle keeps its value.
+2. Start a Codex (or Claude Code) turn that works for at least 4 minutes,
+   then let it finish. One banner: "Codex finished" / "<folder> · Worked for
+   4 min". Clicking it brings the session's app forward. A turn of about 2
+   minutes sends nothing. Approve a prompt mid-turn: going Waiting sends no
+   finished banner. With Hide project names on, the body is only "Worked for
+   N min". A Claude turn that runs subagents sends one banner, for the parent.
+3. Run `letitbrew hold -- sh -c 'sleep 200'`: after it ends, "sh -c sleep 200
+   finished" / "Succeeded after 3 min". Run
+   `letitbrew hold -- sh -c 'sleep 200; exit 1'`: "… failed" / "Failed after 3
+   min". `letitbrew hold -- sleep 60` sends nothing. With Hide project names on,
+   the titles read "A held command finished" and "A held command failed".
+   Afterwards `~/Library/Application Support/LetItBrew/hold-results/` is empty.
+4. Hold with no exit status: start `sleep 240 &`, run
+   `letitbrew hold --pid <its PID>`, and wait: "Process <PID> finished" /
+   "Finished after 4 min". Run bare `letitbrew hold` for 4 minutes and press
+   Ctrl-C: no banner. Also `kill -9` the CLI of a `hold -- sleep 600` after 4
+   minutes, then the `sleep`: "sleep 600 finished" / "Finished after N min",
+   with no success or failure claimed.
+5. Battery floor: on battery just above the floor (Settings → Power), keep an
+   agent Working or a hold running until the charge reaches the floor. One
+   banner: "Your Mac stopped keeping awake" / "Battery reached <floor>%." It
+   does not repeat while the battery stays low. If work starts after the
+   battery is already below the floor, nothing is sent.
+6. Connected power only: turn it on, hold the Mac with work while plugged in,
+   then unplug: "It switched to battery power." Plug in, wait for the hold,
+   unplug again: a second banner.
+7. Low Power Mode: turn on "Respect Low Power Mode", hold with work, then turn
+   Low Power Mode on in System Settings → Battery: "Low Power Mode turned on."
+   Pausing Let It Brew first, then turning it on, sends nothing.
+8. Heat: if a sustained load can push `pmset -g therm` to a serious thermal
+   level while work is held, confirm "It got too warm." once. Otherwise record
+   this step as not reproduced.
+9. Wi-Fi: turn on "Wi-Fi drops while the lid is closed". With the closed-lid
+   switch on, hold the Mac with a 10-minute `letitbrew hold -- sleep 600`,
+   close the lid, then turn the Wi-Fi router off (or leave its range) for
+   about two minutes. Open the lid: Notification Center shows one "Wi-Fi
+   dropped while your Mac was closed" / "Agents may be stuck until it
+   reconnects." Repeat with an outage of about 20 seconds: no banner. Repeat
+   with the lid open, and with nothing held: no banner. Turn Wi-Fi off with the
+   lid open, then close it: no banner.
+10. Check that no banner or Notification Center entry from steps 2–9 shows a
+    prompt, question, tool name or command (a held command's own label is
+    shown only while Hide project names is off).
 
 ### `letitbrew hold -- <command>`
 

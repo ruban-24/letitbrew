@@ -149,6 +149,29 @@ private func working(updatedAgo seconds: TimeInterval = 0) -> SessionRecord {
     #expect(storage.loadAll().isEmpty)
 }
 
+@Test func holdResultsStayUntilRemoved() throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("letitbrew-results-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let storage = HoldStorage(directory: root.appendingPathComponent("holds", isDirectory: true))
+    let record = hold(pid: 10, label: "npm run build")
+    try storage.writeResult(HoldResult(hold: record, endedAt: now, exitStatus: 1))
+    #expect(storage.loadAll().isEmpty)
+
+    let result = HoldResult(hold: record, endedAt: now, exitStatus: 1)
+    #expect(storage.loadResults() == [result])
+    #expect(storage.loadResults() == [result])
+
+    // A newer hold that reused the PID is not removed with the old result.
+    let newer = HoldResult(hold: hold(pid: 10, label: "make"), endedAt: now.addingTimeInterval(9),
+                           exitStatus: 0)
+    try storage.writeResult(newer)
+    storage.removeResult(result)
+    #expect(storage.loadResults() == [newer])
+    storage.removeResult(newer)
+    #expect(storage.loadResults().isEmpty)
+}
+
 @Test func processStartTimeReadsThisProcess() {
     let started = ProcessStartTime.of(getpid())
     #expect(started != nil)

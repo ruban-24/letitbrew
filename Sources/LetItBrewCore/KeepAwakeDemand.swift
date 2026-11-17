@@ -69,6 +69,20 @@ public struct HoldRecord: Codable, Equatable, Sendable {
     }
 }
 
+/// How a held command ended, left by the CLI for the app's finished alert.
+public struct HoldResult: Codable, Equatable, Sendable {
+    public var hold: HoldRecord
+    public var endedAt: Date
+    /// The command's exit code, or 128 + signal.
+    public var exitStatus: Int32
+
+    public init(hold: HoldRecord, endedAt: Date, exitStatus: Int32) {
+        self.hold = hold
+        self.endedAt = endedAt
+        self.exitStatus = exitStatus
+    }
+}
+
 /// When a process started, read from the kernel's process table.
 public enum ProcessStartTime {
     @Sendable
@@ -114,6 +128,52 @@ public struct HoldStorage: Sendable {
 
     public func remove(pid: Int32) {
         try? FileManager.default.removeItem(at: url(for: pid))
+    }
+
+    /// Results sit beside the holds folder, so pruning dead holds never
+    /// removes one before the app reads it.
+    public var resultsDirectory: URL {
+        directory.deletingLastPathComponent()
+            .appendingPathComponent("hold-results", isDirectory: true)
+    }
+
+    public func writeResult(_ result: HoldResult) throws {
+        try FileManager.default.createDirectory(
+            at: resultsDirectory, withIntermediateDirectories: true
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .secondsSince1970
+        try encoder.encode(result).write(
+            to: resultsDirectory.appendingPathComponent("\(result.hold.pid).json"),
+            options: .atomic
+        )
+    }
+
+    /// Every result not yet removed. Unreadable files are skipped: a result
+    /// mid-write must not be lost.
+    public func loadResults() -> [HoldResult] {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: resultsDirectory.path)) ?? []
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSince1970
+        return names.filter { $0.hasSuffix(".json") }.compactMap { name in
+            guard let data = FileManager.default.contents(
+                atPath: resultsDirectory.appendingPathComponent(name).path
+            ) else { return nil }
+            return try? decoder.decode(HoldResult.self, from: data)
+        }
+        .sorted { $0.endedAt < $1.endedAt }
+    }
+
+    /// Removes a result once it has been seen, unless a newer hold on the
+    /// same PID has replaced it.
+    public func removeResult(_ result: HoldResult) {
+        let url = resultsDirectory.appendingPathComponent("\(result.hold.pid).json")
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSince1970
+        guard let data = FileManager.default.contents(atPath: url.path),
+              (try? decoder.decode(HoldResult.self, from: data)) == result
+        else { return }
+        try? FileManager.default.removeItem(at: url)
     }
 
     /// Every readable record. Unreadable files are skipped, not deleted: a

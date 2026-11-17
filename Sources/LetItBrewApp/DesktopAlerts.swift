@@ -1,6 +1,7 @@
 import AppKit
 import CoreGraphics
 import LetItBrewAppCore
+import Network
 @preconcurrency import UserNotifications
 
 /// Hands finished alerts to a channel. `AlertPolicy` has already decided
@@ -109,5 +110,25 @@ enum AlertPresenceReader {
                 .combinedSessionState, eventType: anyInput
             )
         )
+    }
+}
+
+/// Whether the Mac can reach a network, for the Wi-Fi alert. Nil until the
+/// first reading, so launch never counts as a drop.
+final class NetworkReachability: @unchecked Sendable {
+    private let monitor = NWPathMonitor()
+    private let lock = NSLock()
+    private var reachable: Bool?
+
+    var isReachable: Bool? {
+        lock.withLock { reachable }
+    }
+
+    func start() {
+        monitor.pathUpdateHandler = { [weak self] path in
+            guard let self else { return }
+            self.lock.withLock { self.reachable = path.status == .satisfied }
+        }
+        monitor.start(queue: DispatchQueue(label: "com.ruban24.letitbrew.network"))
     }
 }

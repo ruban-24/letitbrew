@@ -163,19 +163,29 @@ private func runHold(command: [String], storage: HoldStorage) -> Int32 {
     }
     defer { forwarders.forEach { $0.cancel() } }
 
-    try? storage.write(HoldRecord(
+    let record = HoldRecord(
         pid: child,
         label: HoldRecord.label(for: command),
         startedAt: Date()
-    ))
+    )
+    try? storage.write(record)
     defer { storage.remove(pid: child) }
+
+    // Read the status without reaping, so the result is written while the
+    // exited command still counts as held: the app never sees the hold end
+    // without its result.
+    var info = siginfo_t()
+    while waitid(P_PID, id_t(child), &info, WEXITED | WNOWAIT) == -1 {
+        guard errno == EINTR else { return 1 }
+    }
+    let exitStatus = info.si_code == CLD_EXITED ? info.si_status & 0xff : 128 + info.si_status
+    try? storage.writeResult(HoldResult(hold: record, endedAt: Date(), exitStatus: exitStatus))
 
     var status: Int32 = 0
     while waitpid(child, &status, 0) == -1 {
         guard errno == EINTR else { return 1 }
     }
-    let signalNumber = status & 0x7f
-    return signalNumber == 0 ? (status >> 8) & 0xff : 128 + signalNumber
+    return exitStatus
 }
 
 /// What the app would do with a hold right now, read without AppKit: this
