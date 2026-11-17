@@ -55,9 +55,7 @@ struct PhoneAlertsSettingsSection: View {
     private func settingUp(_ configuration: NtfyConfiguration) -> some View {
         statusRow(
             testFailure(configuration) ?? Text("Waiting for a test to arrive…"),
-            button: phone.hasPassedTest
-                ? Button("Turn Off") { phone.turnOff() }
-                : Button("Cancel") { phone.cancel() }
+            button: Button(phone.hasSentTest ? "Turn Off" : "Cancel") { phone.cancel() }
         )
 
         HStack(alignment: .top, spacing: 14) {
@@ -72,7 +70,7 @@ struct PhoneAlertsSettingsSection: View {
                     .padding(.top, 6)
                 Text("It subscribes to your private topic:")
                     .foregroundStyle(.secondary)
-                topicRow(configuration.topic, configuration: configuration)
+                topicRow(configuration.topic, topic: configuration.topic)
                 iPhoneHint
                 sendTestButton
                     .buttonStyle(.borderedProminent)
@@ -98,7 +96,7 @@ struct PhoneAlertsSettingsSection: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text("Subscribe another phone by scanning this code in the ntfy app.")
                     .foregroundStyle(.secondary)
-                topicRow(configuration.displayAddress, configuration: configuration)
+                topicRow(configuration.displayAddress, topic: configuration.topic)
                 iPhoneHint
                 sendTestButton
                     .padding(.top, 6)
@@ -140,14 +138,14 @@ struct PhoneAlertsSettingsSection: View {
     }
 
     /// The topic as shown, with a Copy button that copies the bare topic.
-    private func topicRow(_ shown: String, configuration: NtfyConfiguration) -> some View {
+    private func topicRow(_ shown: String, topic: String) -> some View {
         HStack(spacing: 6) {
             Text(shown)
                 .monospaced()
                 .textSelection(.enabled)
             Button("Copy") {
                 NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(configuration.topic, forType: .string)
+                NSPasteboard.general.setString(topic, forType: .string)
             }
             .controlSize(.small)
             .accessibilityLabel("Copy topic")

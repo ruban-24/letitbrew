@@ -26,9 +26,9 @@ final class PhoneAlerts: ObservableObject, AlertDelivering {
     @Published private(set) var testState: TestState = .idle
     /// Set Up turns this on and Turn Off turns it off, keeping the setup.
     @Published private(set) var isOn: Bool
-    /// A test has reached the server since Set Up made this topic. Until
-    /// then Cancel forgets the setup; afterwards it is kept.
-    @Published private(set) var hasPassedTest: Bool
+    /// A test has been sent since Set Up made this topic. Until then Cancel
+    /// forgets the setup; afterwards Cancel is Turn Off and keeps it.
+    @Published private(set) var hasSentTest: Bool
     @Published var alwaysSendToPhone: Bool {
         didSet { defaults.set(alwaysSendToPhone, forKey: Keys.alwaysSendToPhone) }
     }
@@ -39,7 +39,7 @@ final class PhoneAlerts: ObservableObject, AlertDelivering {
         static let testSentAt = "ntfyTestSentAt"
         static let alwaysSendToPhone = "alwaysSendToPhone"
         static let isOn = "phoneAlertsOn"
-        static let hasPassedTest = "ntfyTestPassed"
+        static let hasSentTest = "ntfyTestSent"
     }
 
     private let defaults: UserDefaults
@@ -54,7 +54,7 @@ final class PhoneAlerts: ObservableObject, AlertDelivering {
         testSentAt = defaults.object(forKey: Keys.testSentAt) as? Date
         alwaysSendToPhone = defaults.bool(forKey: Keys.alwaysSendToPhone)
         isOn = defaults.bool(forKey: Keys.isOn)
-        hasPassedTest = defaults.bool(forKey: Keys.hasPassedTest)
+        hasSentTest = defaults.bool(forKey: Keys.hasSentTest)
         // Read once while unlocked, so alerts sent with the screen locked
         // never need the Keychain.
         token = topic == nil ? nil : keychain.read()
@@ -85,11 +85,11 @@ final class PhoneAlerts: ObservableObject, AlertDelivering {
         setOn(false)
     }
 
-    /// Cancel before any test has passed forgets the topic, server, token
-    /// and Always send to phone. Once a test has passed it is Turn Off.
+    /// Cancel before any test has been sent forgets the topic, server, token
+    /// and Always send to phone. Once a test has been sent it is Turn Off.
     func cancel() {
-        guard !hasPassedTest else { return turnOff() }
-        setOn(false)
+        turnOff()
+        guard !hasSentTest else { return }
         topic = nil
         defaults.removeObject(forKey: Keys.topic)
         server = NtfyServer.default
@@ -173,9 +173,9 @@ final class PhoneAlerts: ObservableObject, AlertDelivering {
     private func setTestSent(_ date: Date?) {
         testSentAt = date
         defaults.set(date, forKey: Keys.testSentAt)
-        if date != nil, !hasPassedTest {
-            hasPassedTest = true
-            defaults.set(true, forKey: Keys.hasPassedTest)
+        if date != nil, !hasSentTest {
+            hasSentTest = true
+            defaults.set(true, forKey: Keys.hasSentTest)
         }
         if date == nil, testState == .failed { testState = .idle }
     }

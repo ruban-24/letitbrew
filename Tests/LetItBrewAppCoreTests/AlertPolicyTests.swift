@@ -117,12 +117,19 @@ private func run(
 private func run(
     _ steps: [(TimeInterval, [AlertSessionObservation])],
     settings: AlertSettings = enabled,
-    presence: AlertPresence = present,
-    from initial: AlertSnapshot? = nil
+    presence: AlertPresence = present
 ) -> [Alert] {
-    var previous = initial
+    run(steps.map { ($0.0, $0.1, presence) }, settings: settings)
+}
+
+/// Like `run`, with the presence read at each poll.
+private func run(
+    _ steps: [(TimeInterval, [AlertSessionObservation], AlertPresence)],
+    settings: AlertSettings = phoneSetUp
+) -> [Alert] {
+    var previous: AlertSnapshot?
     var alerts: [Alert] = []
-    for (offset, sessions) in steps {
+    for (offset, sessions, presence) in steps {
         var current = AlertSnapshot(
             observedAt: start.addingTimeInterval(offset),
             sessions: sessions,
@@ -845,30 +852,6 @@ private func idle(for seconds: TimeInterval) -> AlertPresence {
 
 private let lidClosed = AlertPresence(lidClosed: true, screenLocked: false, secondsSinceLastInput: 0)
 
-/// Like `run`, with the presence read at each poll.
-private func run(
-    _ steps: [(TimeInterval, [AlertSessionObservation], AlertPresence)],
-    settings: AlertSettings = phoneSetUp
-) -> [Alert] {
-    var previous: AlertSnapshot?
-    var alerts: [Alert] = []
-    for (offset, sessions, presence) in steps {
-        var current = AlertSnapshot(
-            observedAt: start.addingTimeInterval(offset),
-            sessions: sessions,
-            previous: previous
-        )
-        alerts += AlertPolicy.alerts(
-            previous: previous,
-            current: &current,
-            presence: presence,
-            settings: settings
-        )
-        previous = current
-    }
-    return alerts
-}
-
 @Test func becomingAwayInTheSameWaitSendsThePhoneTheAlertOnce() {
     let alerts = run([
         (0, [session()], present),
@@ -975,6 +958,14 @@ private func run(
     let alerts = run([
         (0, [session()], docked), (30, [session()], docked),
         (60, [session()], docked), (90, [session()], lidClosed),
+    ])
+    #expect(alerts.map(\.destinations) == [[.desktop], [.phone]])
+}
+
+@Test func lockingTheScreenLaterSendsTheFollowUp() {
+    let locked = AlertPresence(lidClosed: false, screenLocked: true, secondsSinceLastInput: 0)
+    let alerts = run([
+        (0, [session()], present), (30, [session()], present), (40, [session()], locked),
     ])
     #expect(alerts.map(\.destinations) == [[.desktop], [.phone]])
 }

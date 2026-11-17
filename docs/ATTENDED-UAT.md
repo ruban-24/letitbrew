@@ -431,8 +431,11 @@ throwaway topic; never paste a real topic into an issue.
    (`https://ntfy.sh/<topic>`). The ntfy docs offer a subscribe deep link
    (`ntfy://<host>/<topic>`) only for Android, and the iOS app registers no
    URL scheme. Scan the code with an iPhone and an Android phone (the ntfy app
-   and the system camera) and record what happens. On iPhone, also follow the
-   hint: press Copy, open ntfy, tap +, paste the topic and subscribe.
+   and the system camera) and record what happens. If the app does not
+   subscribe, report the result so the payload can change. On iPhone, also
+   follow the hint: press Copy, open ntfy, tap +, paste the topic and
+   subscribe (with a self-hosted server, choose it in ntfy's "Use another
+   server" before subscribing).
 3. Press Send Test. The phone shows "Let It Brew test" / "Phone alerts are
    working." Settings shows "● Working · test sent at <time>" (green dot,
    the real time), Turn Off, a smaller QR code with "ntfy.sh/<topic>" and a
@@ -475,7 +478,7 @@ throwaway topic; never paste a real topic into an issue.
 8. End to end on the maintainer's self-hosted ntfy server: open Advanced
    and enter the server's https URL and an access token (press Return after
    each). Status drops back to "Waiting for a test to arrive…" with Turn Off
-   (not Cancel, since a test has passed). Scan the QR code with the phone, or
+   (not Cancel, since a test has been sent). Scan the QR code with the phone, or
    subscribe the ntfy app to that server and topic, then press Send Test: it
    arrives on the phone and Settings shows "● Working · test sent at <time>". Then close
    the lid with something keeping the Mac awake (see step 4) and let an agent
@@ -485,7 +488,7 @@ throwaway topic; never paste a real topic into an issue.
 9. Keychain: in Keychain Access, find "Let It Brew ntfy access token"
    (service ending `.ntfy`). Confirm the token is not in
    `defaults read com.ruban24.letitbrew` (only `ntfyTopic`, `ntfyServer`,
-   `ntfyTestSentAt`, `ntfyTestPassed`, `phoneAlertsOn`,
+   `ntfyTestSentAt`, `ntfyTestSent`, `phoneAlertsOn`,
    `alwaysSendToPhone`). Quit and relaunch: still Working and the token
    still works. Turn on Always send to phone, then Turn Off: the section
    returns to Set Up, the Keychain item and the topic stay, and a waiting
