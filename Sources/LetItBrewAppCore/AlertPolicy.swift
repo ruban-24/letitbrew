@@ -183,6 +183,10 @@ public struct AlertSnapshot: Equatable, Sendable {
     public let holds: [AlertHold]
     /// Held commands that have exited since the results were last read.
     public let endedHolds: [AlertHoldResult]
+    /// Holds whose result some poll has seen, kept while a live record or
+    /// result remains, so a live record that outlives its result never
+    /// reads as a second ending.
+    public let reportedHolds: Set<String>
     public let machine: AlertMachineState
 
     /// A record's state edge alone cannot time a wait: an approved command
@@ -201,6 +205,9 @@ public struct AlertSnapshot: Equatable, Sendable {
         self.observedAt = observedAt
         self.holds = holds
         self.endedHolds = endedHolds
+        self.reportedHolds = Set(endedHolds.map(\.hold.id)).union(
+            (previous?.reportedHolds ?? []).intersection(holds.map(\.id))
+        )
         self.sessions = sessions.map { session in
             let before = previous?.sessions.first { $0.observation.id == session.id }
             let firstSeen = max(session.stateChangedAt, previous?.observedAt ?? .distantPast)
@@ -419,7 +426,7 @@ public enum AlertPolicy {
         destinations: Set<AlertDestination>,
         settings: AlertSettings
     ) -> [Alert] {
-        let reported = Set(previous.endedHolds.map(\.hold.id))
+        let reported = previous.reportedHolds
         let withStatus: [Alert] = current.endedHolds.compactMap { result in
             guard !reported.contains(result.hold.id) else { return nil }
             let ran = result.endedAt.timeIntervalSince(result.hold.startedAt)

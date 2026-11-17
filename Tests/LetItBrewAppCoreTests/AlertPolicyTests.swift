@@ -429,6 +429,28 @@ private func run(
     #expect(alerts.count == 1)
 }
 
+@Test func aReportedHoldStaysReportedWhileItsLiveRecordOutlivesTheResult() {
+    // Overlapping polls: one applies the result and removes it, while a
+    // later read still sees the live record but no longer the result.
+    let alerts = run([
+        Poll(at: 0, holds: [hold()]),
+        Poll(at: 361, holds: [hold()], ended: [ended(after: 6, status: 1)]),
+        Poll(at: 362, holds: [hold()]),
+        Poll(at: 363),
+    ])
+    #expect(alerts.map(\.title) == ["npm run build failed"])
+    #expect(alerts.map(\.body) == ["Failed after 6 min"])
+
+    #expect(run([
+        Poll(at: 0, holds: [hold()]),
+        Poll(at: 361, holds: [hold()], ended: [ended(after: 6, status: 1)]),
+        Poll(at: 362, holds: [hold()]),
+        Poll(at: 363, holds: [hold()]),
+        Poll(at: 364, holds: [hold()]),
+        Poll(at: 365),
+    ]).map(\.title) == ["npm run build failed"])
+}
+
 @Test func holdWithoutAnExitStatusSaysFinished() {
     // `--pid` and bare holds, or a hold whose CLI was killed: the hold
     // vanishes, timed to the last poll that saw it.
