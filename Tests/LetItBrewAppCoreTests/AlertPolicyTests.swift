@@ -699,3 +699,66 @@ private func run(
         Poll(at: 1321),
     ]).map(\.title) == ["Process 4182 finished"])
 }
+
+// MARK: Manual sessions
+
+/// The machine state the app derives from `decide()` when a menu manual
+/// session is the only demand, lid closed.
+private func manualSessionMachine(
+    deadline: TimeInterval = 3_600,
+    at offset: TimeInterval,
+    power: PowerState = PowerState(onBattery: false, batteryPercent: 100, thermal: .nominal),
+    networkReachable: Bool = true
+) -> AlertMachineState {
+    let decision = decide(
+        sessions: [],
+        demands: [.manualSession(deadline: start.addingTimeInterval(deadline))],
+        now: start.addingTimeInterval(offset),
+        settings: Settings(),
+        power: power
+    )
+    return AlertMachineState(held: decision.holdSystem, holdWanted: !decision.wantedBy.isEmpty,
+                             releasedBy: decision.releasedBy, lidClosed: true,
+                             networkReachable: networkReachable)
+}
+
+@Test func manualSessionCountsAsSomethingThatWantedTheHold() {
+    let hot = PowerState(onBattery: false, batteryPercent: 100, thermal: .serious)
+    let stopped = run([
+        Poll(at: 0, machine: manualSessionMachine(at: 0)),
+        Poll(at: 1, machine: manualSessionMachine(at: 1, power: hot)),
+    ])
+    #expect(stopped.map(\.kind) == [.stoppedForPower])
+    #expect(stopped.map(\.body) == ["It got too warm."])
+    let low = PowerState(onBattery: true, batteryPercent: Settings().batteryFloor, thermal: .nominal)
+    #expect(run([
+        Poll(at: 0, machine: manualSessionMachine(at: 0)),
+        Poll(at: 1, machine: manualSessionMachine(at: 1, power: low)),
+    ]).map(\.body) == ["Battery reached \(Settings().batteryFloor)%."])
+
+    var wifi = enabled
+    wifi.wifiDropped = true
+    #expect(run([
+        Poll(at: 0, machine: manualSessionMachine(at: 0)),
+        Poll(at: 1, machine: manualSessionMachine(at: 1, networkReachable: false)),
+        Poll(at: 61, machine: manualSessionMachine(at: 61, networkReachable: false)),
+    ], settings: wifi).map(\.kind) == [.wifiDropped])
+}
+
+@Test func manualSessionReachingItsDeadlineSendsNoAlert() {
+    var all = enabled
+    all.wifiDropped = true
+    // The deadline lands as the Mac overheats and the network drops: the
+    // session ended, nothing was stopped, and nothing is held for Wi-Fi.
+    let hot = PowerState(onBattery: false, batteryPercent: 100, thermal: .serious)
+    func polls(endingAt end: TimeInterval) -> [Poll] {
+        [
+            Poll(at: 0, machine: manualSessionMachine(deadline: 600, at: 0)),
+            Poll(at: end, machine: manualSessionMachine(deadline: 600, at: end, power: hot,
+                                                        networkReachable: false)),
+        ]
+    }
+    #expect(run(polls(endingAt: 600), settings: all).isEmpty)
+    // A second earlier, the session still wanted the hold.
+    #expect(run(polls(endingAt: 599), settings: all).map(\.kind) == [.stoppedForPower])
+}
