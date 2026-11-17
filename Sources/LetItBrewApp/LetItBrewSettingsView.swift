@@ -74,6 +74,10 @@ struct LetItBrewSettingsView: View {
                 openLoginItems: { model.openLoginItemSettings() }
             )
 
+            CommandLineToolSettingsSection(
+                actionsBlocked: model.updateBlocksOtherActions || model.uninstallInProgress
+            )
+
             Section("Updates") {
                 LabeledContent {
                     updateAccessory

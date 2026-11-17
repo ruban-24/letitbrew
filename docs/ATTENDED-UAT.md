@@ -193,6 +193,53 @@ push. During the 2.0.0 cut, right after publishing GitHub release `v2.0.0`:
 4. Confirm the GitHub release `v2.0.0` and its three assets are unchanged by
    the tap step.
 
+### Command-line tool in Settings (#61)
+
+`swift test` covers state detection (not installed, ours, Homebrew on Apple
+Silicon and Intel, another app's file), the Settings wording for each state,
+and the install and remove commands run without privileges against a temp
+directory, including never replacing another app's file and never removing a
+link that isn't ours. These need the signed app and an administrator account.
+Before starting, record `ls -l /usr/local/bin/letitbrew /opt/homebrew/bin/letitbrew`.
+
+1. On a Mac installed from the DMG with nothing at `/usr/local/bin/letitbrew`,
+   open Settings → General. Command-line tool sits between the launch-at-login
+   group (and Appearance, once it lands) and Updates. The row reads
+   "`letitbrew` command" (letitbrew in monospace), "Not installed", and
+   Install…, with the footer "Lets you run `letitbrew hold` in any terminal.
+   Adds a link in /usr/local/bin and asks for your password."
+2. Click Install… and choose Cancel in the password prompt. Confirm the prompt
+   is the standard macOS administrator prompt naming Let It Brew, no error is
+   shown, the row still reads "Not installed", and `ls -l /usr/local/bin/letitbrew`
+   reports no such file.
+3. Click Install… and enter your password. The row reads "● Installed in
+   /usr/local/bin" with a green dot and Remove…, and the footer is gone.
+   `readlink /usr/local/bin/letitbrew` prints
+   `/Applications/Let It Brew.app/Contents/Helpers/letitbrew`.
+4. Open a new Terminal window and run `which letitbrew` (prints
+   `/usr/local/bin/letitbrew`) and `letitbrew hold -- sleep 30`: the menu lists
+   "Holding · sleep 30" and the command exits 0.
+5. Connect Claude Code (or reconnect it) and confirm the hook command in
+   `~/.claude/settings.json` still points at
+   `/Applications/Let It Brew.app/Contents/Helpers/letitbrew`, not
+   `/usr/local/bin/letitbrew`.
+6. Click Remove…, cancel the prompt: nothing changes. Click Remove… again and
+   enter your password: the row returns to "Not installed" and the link is
+   gone; the app bundle's CLI is untouched.
+7. On a Mac where `/usr/local/bin` does not exist (common on a clean Apple
+   Silicon Mac), Install… creates it and the link.
+8. Put another app's file there: `sudo sh -c 'printf "#!/bin/sh\n" > /usr/local/bin/letitbrew'`.
+   Reopen Settings: the row reads "/usr/local/bin/letitbrew belongs to another
+   app. Let It Brew won't replace it." with no button. Remove the file.
+9. On an Apple Silicon Mac with `brew install ruban-24/tap/letitbrew`, the row
+   reads "● Installed by Homebrew" with no button. On an Intel Mac with the
+   cask installed (its link is `/usr/local/bin/letitbrew`), the row also reads
+   "● Installed by Homebrew" with no button, never Remove….
+10. Check the group in light and dark appearance, and with VoiceOver: the dot
+    is not read out, the row reads the state text and the button.
+11. Restore anything changed so the `ls -l` output matches the record from the
+    start.
+
 ## v1.0.1 release scope
 
 This release replaces the input check for Claude, Copilot, Gemini, and Qwen
