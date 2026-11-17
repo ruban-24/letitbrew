@@ -12,8 +12,8 @@
 
 It sleeps the moment they're done.
 
-Why not Amphetamine? Amphetamine runs until a timer. Let It Brew stops when the
-agent finishes or asks for approval.
+Why not Amphetamine or caffeinate? Both keep your Mac awake until a timer ends or
+you stop them. Let It Brew stops when the agent finishes or asks for approval.
 
 Works with Claude Code, Codex, Cursor and 6 more.
 
