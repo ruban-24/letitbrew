@@ -111,10 +111,11 @@ private func working(updatedAgo seconds: TimeInterval = 0) -> SessionRecord {
 
 @Test func deadHoldProcessesAreIgnored() {
     let records = [hold(pid: 10, label: "alive"), hold(pid: 11, label: "dead")]
-    let live = HoldRecord.live(records, isAlive: { $0 == 10 })
+    let started = now.addingTimeInterval(-61)
+    let live = HoldRecord.live(records, startTime: { $0 == 10 ? started : nil })
     #expect(live.map(\.label) == ["alive"])
 
-    let decision = decide(sessions: [], demands: HoldRecord.live(records, isAlive: { _ in false })
+    let decision = decide(sessions: [], demands: HoldRecord.live(records, startTime: { _ in nil })
         .map(KeepAwakeDemand.hold), now: now, settings: Settings(), power: plugged)
     #expect(!decision.holdSystem)
     #expect(decision.reason == "no agent sessions")
@@ -129,7 +130,16 @@ private func working(updatedAgo seconds: TimeInterval = 0) -> SessionRecord {
     try storage.write(hold(pid: 11, label: "dead"))
     try Data("{not json".utf8).write(to: directory.appendingPathComponent("12.json"))
 
-    let live = storage.loadLive(isAlive: { $0 == 10 })
+    try storage.write(hold(pid: 13, label: "reused"))
+    let holdStart = now.addingTimeInterval(-60)
+    let live = storage.loadLive(startTime: { pid in
+        switch pid {
+        case 10: holdStart.addingTimeInterval(-0.01)
+        // The PID now belongs to a process that started after the hold.
+        case 13: holdStart.addingTimeInterval(HoldRecord.startTolerance + 1)
+        default: nil
+        }
+    })
 
     #expect(live.map(\.pid) == [10])
     let remaining = try FileManager.default.contentsOfDirectory(atPath: directory.path).sorted()
@@ -137,6 +147,13 @@ private func working(updatedAgo seconds: TimeInterval = 0) -> SessionRecord {
     #expect(remaining == ["10.json", "12.json"])
     storage.remove(pid: 10)
     #expect(storage.loadAll().isEmpty)
+}
+
+@Test func processStartTimeReadsThisProcess() {
+    let started = ProcessStartTime.of(getpid())
+    #expect(started != nil)
+    #expect(started! <= Date())
+    #expect(ProcessStartTime.of(-1) == nil)
 }
 
 @Test func holdLabelIsOneShortLine() {

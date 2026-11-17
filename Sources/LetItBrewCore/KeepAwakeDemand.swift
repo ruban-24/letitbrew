@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 /// A keep-awake request that is not an agent session: it has no `AgentID`,
@@ -38,13 +39,40 @@ public struct HoldRecord: Codable, Equatable, Sendable {
         return String(line.prefix(maxLabelLength - 1)) + "…"
     }
 
-    /// Keeps holds whose process is still running. A PID the caller may not
-    /// signal counts as alive.
+    /// A process that started this long after the record's start time is a
+    /// different process that reused the PID.
+    public static let startTolerance: TimeInterval = 2
+
+    /// Keeps holds whose own process is still running. `startTime` reports
+    /// when the process now at a PID started, or nil if there is none; a
+    /// process that started after the hold did reused the PID, so a stale
+    /// record left by a crash or power loss never holds.
     public static func live(
         _ records: [HoldRecord],
-        isAlive: (Int32) -> Bool = { KillZeroLiveness().isAlive(pid: $0) }
+        startTime: (Int32) -> Date? = ProcessStartTime.of
     ) -> [HoldRecord] {
-        records.filter { isAlive($0.pid) }
+        records.filter { record in
+            guard let started = startTime(record.pid) else { return false }
+            return started <= record.startedAt.addingTimeInterval(startTolerance)
+        }
+    }
+}
+
+/// When a process started, read from the kernel's process table.
+public enum ProcessStartTime {
+    @Sendable
+    public static func of(_ pid: Int32) -> Date? {
+        guard pid > 0 else { return nil }
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.stride
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+        guard sysctl(&mib, u_int(mib.count), &info, &size, nil, 0) == 0,
+              size == MemoryLayout<kinfo_proc>.stride,
+              info.kp_proc.p_pid == pid
+        else { return nil }
+        let start = info.kp_proc.p_un.__p_starttime
+        return Date(timeIntervalSince1970: TimeInterval(start.tv_sec)
+            + TimeInterval(start.tv_usec) / 1_000_000)
     }
 }
 
@@ -92,13 +120,14 @@ public struct HoldStorage: Sendable {
         .sorted { $0.startedAt < $1.startedAt }
     }
 
-    /// Live holds. Records whose process has exited are deleted, so a killed
-    /// CLI never leaves a hold behind.
+    /// Live holds. Records whose process has exited, or whose PID now
+    /// belongs to another process, are deleted, so a killed CLI never leaves
+    /// a hold behind.
     public func loadLive(
-        isAlive: (Int32) -> Bool = { KillZeroLiveness().isAlive(pid: $0) }
+        startTime: (Int32) -> Date? = ProcessStartTime.of
     ) -> [HoldRecord] {
         let all = loadAll()
-        let live = HoldRecord.live(all, isAlive: isAlive)
+        let live = HoldRecord.live(all, startTime: startTime)
         for record in all where !live.contains(record) {
             remove(pid: record.pid)
         }
