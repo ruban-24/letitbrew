@@ -77,8 +77,9 @@ notification permission, delivery, and click-through.
 
 `AlertPolicy` tests cover the 3-minute and 60-second rules at their edges,
 one alert per episode, exit-status wording, hidden names and the per-type
-defaults; the `hold` integration tests cover the exit-status result file. These steps cover
-real notifications, the real power and network triggers, and the Alerts tab.
+defaults; the `hold` integration tests cover the exit-status result file.
+These steps cover real notifications, the real power and network triggers,
+and the Alerts tab.
 Turn on Desktop alerts first, and run the CLI from the installed bundle as in
 the `hold` section.
 
@@ -86,7 +87,8 @@ the `hold` section.
    Alerts. "Alert me when" lists "An agent needs you" ("After it has waited 30
    seconds"), "Work finishes" ("Agents and held commands that ran 3 minutes or
    more"), "Keeping awake stops for battery or heat", and "Wi-Fi drops while
-   the lid is closed". The first three are on and Wi-Fi is off. Turn Desktop
+   the lid is closed". The first three are on and Wi-Fi is off. The Privacy
+   footer reads "Alerts never include your prompts or questions." Turn Desktop
    alerts off: the group and Privacy dim and the footer reads "Turn on desktop
    or phone alerts to choose what you hear about." Nothing is clipped in light
    or dark appearance; quit and relaunch, and every toggle keeps its value.

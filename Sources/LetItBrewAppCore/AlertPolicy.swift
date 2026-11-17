@@ -11,7 +11,8 @@ public struct AlertSettings: Equatable, Sendable {
     /// The hold released by the battery floor, connected-power-only, Low
     /// Power Mode, or heat.
     public var stoppedForPower: Bool
-    /// Wi-Fi dropped while the lid was closed and something was held.
+    /// The network stayed down for 60 seconds while the lid was closed and
+    /// something was held.
     public var wifiDropped: Bool
     public var hideProjectNames: Bool
 
