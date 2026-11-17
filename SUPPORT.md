@@ -72,9 +72,10 @@ and session data stay in place.
 5. When Finder asks, choose **Replace**.
 6. Launch Let It Brew.
 
-**Is Let It Brew available through Homebrew or the App Store?** No. The signed,
-notarized DMG on [GitHub Releases](https://github.com/ruban-24/letitbrew/releases/latest)
-is the only install channel.
+**Is Let It Brew available through Homebrew or the App Store?** Homebrew, yes:
+`brew install ruban-24/tap/letitbrew` installs the same signed, notarized DMG
+from [GitHub Releases](https://github.com/ruban-24/letitbrew/releases/latest).
+It is not on the App Store.
 
 **What if the app will not launch when I need to uninstall it?** Follow the
 [manual uninstall procedure](docs/UNINSTALL.md). The order matters because the
