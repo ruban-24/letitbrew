@@ -50,10 +50,11 @@ An awake hold prevents the Mac from sleeping while that work continues.
 - **Shows when an agent needs you.** Sessions waiting for an answer or approval
   are marked in the menu. Click any session to bring its terminal, editor, or
   agent app forward.
-- **Alerts you when an agent waits.** Turn on desktop alerts in Settings →
-  Alerts to get a notification after an agent has waited on you for 30 seconds.
-  Alerts name the agent and project folder, never your prompts or commands.
-  Click one to bring the agent's app forward.
+- **Alerts you when it matters.** Turn on alerts in Settings → Alerts to hear
+  when an agent has waited on you for 30 seconds, when long work finishes, or
+  when keeping awake stops. Alerts can also reach your phone through ntfy. They
+  name the agent and project folder, or the program you held, never your
+  prompts or its arguments. Click one to bring the agent's app forward.
 - **Holds for any command.** `letitbrew hold -- <command>` keeps the Mac awake
   while that command runs, under the same power rules. If Let It Brew is paused
   or not running, the command still runs and the CLI prints a warning. Homebrew puts the CLI on
