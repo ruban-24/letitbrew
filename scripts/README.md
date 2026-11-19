@@ -46,7 +46,7 @@ candidate.
 duplicated, conflicting, or malformed entries are refusals. Every live operation
 records and compares the exact value; a user baseline of `1` remains `1`.
 
-## `verify-artifact.sh <Let It Brew.app> [--release]`
+## `verify-artifact.sh <Let It Brew.app> [--release|--restored]`
 
 Verifies the production product before installation:
 
@@ -70,7 +70,10 @@ Verifies the production product before installation:
   than that framework's binary linking UserNotifications.
 
 `--release` additionally requires Developer ID Application authority and secure
-timestamps. The upgrader requires decimal `CFBundleVersion` values and refuses a
+timestamps. `--restored` is used only by the upgrader's rollback to verify the
+restored old bundle: when `Contents/Frameworks` is entirely absent (a 1.0.x
+bundle) it skips the framework checks; a present `Frameworks`, and every other
+check, is verified as for a candidate. The upgrader requires decimal `CFBundleVersion` values and refuses a
 candidate unless its build is strictly greater than the installed build.
 
 ## Direct-distribution scripts

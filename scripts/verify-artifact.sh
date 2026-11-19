@@ -4,7 +4,7 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && /bin/pwd -P)"
-APP="${1:?usage: verify-artifact.sh <Let It Brew.app> [--release]}"
+APP="${1:?usage: verify-artifact.sh <Let It Brew.app> [--release|--restored]}"
 MODE="${2:-}"
 EXPECTED_TEAM="MV2UL94MDC"
 EXPECTED_APP_ID="com.ruban24.letitbrew"
@@ -12,7 +12,7 @@ EXPECTED_DAEMON_ID="$EXPECTED_APP_ID.daemon"
 EXPECTED_HELPER_ID="$EXPECTED_APP_ID.cli"
 EXPECTED_ALERTS_ID="$EXPECTED_APP_ID.alerts"
 
-[ "$MODE" = "" ] || [ "$MODE" = "--release" ] || {
+[ "$MODE" = "" ] || [ "$MODE" = "--release" ] || [ "$MODE" = "--restored" ] || {
     echo "FATAL: unknown verification mode '$MODE'." >&2
     exit 1
 }
@@ -90,6 +90,13 @@ PLISTS_DIR="$APP/Contents/Library/LaunchDaemons"
 FRAMEWORKS_DIR="$APP/Contents/Frameworks"
 ALERTS="$FRAMEWORKS_DIR/LetItBrewAlerts.framework"
 ALERTS_BIN="$ALERTS/Versions/A/LetItBrewAlerts"
+# Rollback restores the old bundle, which is pre-framework when it is 1.0.x.
+# Only --restored skips the framework checks, and only when Contents/Frameworks
+# is entirely absent; a present one is fully checked.
+CHECK_ALERTS=1
+if [ "$MODE" = "--restored" ] && [ ! -e "$FRAMEWORKS_DIR" ] && [ ! -L "$FRAMEWORKS_DIR" ]; then
+    CHECK_ALERTS=0
+fi
 
 echo "== verifying production artifact $APP =="
 [ "$MODE" = "--release" ] && echo "(release mode: Developer ID + secure timestamp required)"
@@ -100,12 +107,16 @@ for file in "$MAIN" "$DAEMON" "$HELPER" "$INFO_PLIST"; do
     check "$(basename "$file") present" test -f "$file"
     check "$(basename "$file") is not a symlink" test ! -L "$file"
 done
-check "LetItBrewAlerts.framework present as an ordinary directory" \
-    eval '[ -d "$ALERTS" ] && [ ! -L "$ALERTS" ] && [ ! -L "$FRAMEWORKS_DIR" ]'
-check "LetItBrewAlerts present as an ordinary file" \
-    eval '[ -f "$ALERTS_BIN" ] && [ ! -L "$ALERTS_BIN" ]'
-frameworks_entries="$(/usr/bin/find "$FRAMEWORKS_DIR" -mindepth 1 -maxdepth 1 -print 2>/dev/null | /usr/bin/sed 's|.*/||' | /usr/bin/sort | /usr/bin/tr '\n' ',')"
-check "Frameworks contains only LetItBrewAlerts.framework" test "$frameworks_entries" = "LetItBrewAlerts.framework,"
+if [ "$CHECK_ALERTS" -eq 1 ]; then
+    check "LetItBrewAlerts.framework present as an ordinary directory" \
+        eval '[ -d "$ALERTS" ] && [ ! -L "$ALERTS" ] && [ ! -L "$FRAMEWORKS_DIR" ]'
+    check "LetItBrewAlerts present as an ordinary file" \
+        eval '[ -f "$ALERTS_BIN" ] && [ ! -L "$ALERTS_BIN" ]'
+    frameworks_entries="$(/usr/bin/find "$FRAMEWORKS_DIR" -mindepth 1 -maxdepth 1 -print 2>/dev/null | /usr/bin/sed 's|.*/||' | /usr/bin/sort | /usr/bin/tr '\n' ',')"
+    check "Frameworks contains only LetItBrewAlerts.framework" test "$frameworks_entries" = "LetItBrewAlerts.framework,"
+else
+    echo "ok: pre-framework restored bundle has no Frameworks directory"
+fi
 
 echo
 echo "-- embedded legal resources --"
@@ -168,7 +179,9 @@ fi
 
 echo
 echo "-- universal binaries (arm64 + x86_64) --"
-for file in "$MAIN" "$DAEMON" "$HELPER" "$ALERTS_BIN"; do
+universal_files=("$MAIN" "$DAEMON" "$HELPER")
+[ "$CHECK_ALERTS" -eq 0 ] || universal_files+=("$ALERTS_BIN")
+for file in "${universal_files[@]}"; do
     archs="$(/usr/bin/lipo -archs "$file" 2>/dev/null)"
     note "$(basename "$file"): $archs"
     case " $archs " in *" arm64 "*) echo "ok: $(basename "$file") has arm64" ;; *) echo "FAIL: $(basename "$file") is missing arm64" >&2; fail=1 ;; esac
@@ -181,11 +194,14 @@ check "bundle passes --deep --strict" /usr/bin/codesign --verify --deep --strict
 check "main signature valid" /usr/bin/codesign --verify --strict "$MAIN"
 check "daemon signature valid" /usr/bin/codesign --verify --strict "$DAEMON"
 check "helper signature valid" /usr/bin/codesign --verify --strict "$HELPER"
-check "LetItBrewAlerts.framework signature valid" /usr/bin/codesign --verify --strict "$ALERTS"
-
-expected_ids=("$EXPECTED_APP_ID" "$EXPECTED_DAEMON_ID" "$EXPECTED_HELPER_ID" "$EXPECTED_ALERTS_ID")
-signed_files=("$APP" "$DAEMON" "$HELPER" "$ALERTS")
-for index in 0 1 2 3; do
+expected_ids=("$EXPECTED_APP_ID" "$EXPECTED_DAEMON_ID" "$EXPECTED_HELPER_ID")
+signed_files=("$APP" "$DAEMON" "$HELPER")
+if [ "$CHECK_ALERTS" -eq 1 ]; then
+    check "LetItBrewAlerts.framework signature valid" /usr/bin/codesign --verify --strict "$ALERTS"
+    expected_ids+=("$EXPECTED_ALERTS_ID")
+    signed_files+=("$ALERTS")
+fi
+for index in "${!signed_files[@]}"; do
     file="${signed_files[$index]}"
     expected_id="${expected_ids[$index]}"
     info="$(signing_info "$file")"
@@ -255,7 +271,9 @@ for file in "$MAIN" "$DAEMON" "$HELPER"; do
         echo "ok: $(basename "$file") does not link UserNotifications"
     fi
 done
-if ! alerts_entitlements="$(normalized_entitlements "$ALERTS")"; then
+if [ "$CHECK_ALERTS" -eq 0 ]; then
+    :
+elif ! alerts_entitlements="$(normalized_entitlements "$ALERTS")"; then
     echo "FAIL: LetItBrewAlerts.framework entitlements could not be read as a dictionary" >&2
     fail=1
 elif printf '%s\n' "$alerts_entitlements" | /usr/bin/grep -q '<key>'; then
@@ -296,16 +314,18 @@ cli_build="$(embedded_plist_string "$HELPER" CFBundleVersion)"
 note "app=$app_version helper=$cli_version app-build=$app_build helper-build=$cli_build"
 check "helper and app marketing versions match" test "$cli_version" = "$app_version"
 check "helper and app builds match" test "$cli_build" = "$app_build"
-ALERTS_INFO="$ALERTS/Versions/A/Resources/Info.plist"
-alerts_version=""
-alerts_build=""
-if [ -f "$ALERTS_INFO" ] && [ ! -L "$ALERTS_INFO" ]; then
-    alerts_version="$(plist_value "$ALERTS_INFO" CFBundleShortVersionString)"
-    alerts_build="$(plist_value "$ALERTS_INFO" CFBundleVersion)"
+if [ "$CHECK_ALERTS" -eq 1 ]; then
+    ALERTS_INFO="$ALERTS/Versions/A/Resources/Info.plist"
+    alerts_version=""
+    alerts_build=""
+    if [ -f "$ALERTS_INFO" ] && [ ! -L "$ALERTS_INFO" ]; then
+        alerts_version="$(plist_value "$ALERTS_INFO" CFBundleShortVersionString)"
+        alerts_build="$(plist_value "$ALERTS_INFO" CFBundleVersion)"
+    fi
+    note "LetItBrewAlerts=$alerts_version LetItBrewAlerts-build=$alerts_build"
+    check "LetItBrewAlerts and app marketing versions match" test -n "$alerts_version" -a "$alerts_version" = "$app_version"
+    check "LetItBrewAlerts and app builds match" test -n "$alerts_build" -a "$alerts_build" = "$app_build"
 fi
-note "LetItBrewAlerts=$alerts_version LetItBrewAlerts-build=$alerts_build"
-check "LetItBrewAlerts and app marketing versions match" test -n "$alerts_version" -a "$alerts_version" = "$app_version"
-check "LetItBrewAlerts and app builds match" test -n "$alerts_build" -a "$alerts_build" = "$app_build"
 
 echo
 echo "=================================="
