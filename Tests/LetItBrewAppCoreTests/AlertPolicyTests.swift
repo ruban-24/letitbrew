@@ -411,7 +411,7 @@ private func run(
         Poll(at: 1321, ended: [ended(after: 22, status: 0)]),
     ])
     #expect(succeeded.map(\.kind) == [.finished])
-    #expect(succeeded.map(\.title) == ["npm run build finished"])
+    #expect(succeeded.map(\.title) == ["npm finished"])
     #expect(succeeded.map(\.body) == ["Succeeded after 22 min"])
     #expect(succeeded.first?.agentPID == nil)
 
@@ -419,14 +419,42 @@ private func run(
         Poll(at: 0, holds: [hold()]),
         Poll(at: 361, ended: [ended(after: 6, status: 1)]),
     ])
-    #expect(failed.map(\.title) == ["npm run build failed"])
+    #expect(failed.map(\.title) == ["npm failed"])
     #expect(failed.map(\.body) == ["Failed after 6 min"])
 
     // Ended by a signal (128 + signal) is a failure too.
     #expect(run([
         Poll(at: 0, holds: [hold()]),
         Poll(at: 361, ended: [ended(after: 6, status: 130)]),
-    ]).map(\.title) == ["npm run build failed"])
+    ]).map(\.title) == ["npm failed"])
+}
+
+@Test func heldCommandAlertsNameOnlyTheProgram() {
+    // Arguments can hold secrets, and a phone alert can go to a public server.
+    func title(_ label: String) -> [String] {
+        run([
+            Poll(at: 0, holds: [hold(label)]),
+            Poll(at: 361, ended: [ended(label, after: 6, status: 0)]),
+        ]).map(\.title)
+    }
+    #expect(title("npm run build") == ["npm finished"])
+    #expect(title("/usr/local/bin/psql postgres://u:pw@host") == ["psql finished"])
+    #expect(title("sh -c sleep 200") == ["sh finished"])
+    #expect(title("make") == ["make finished"])
+    // Labels without arguments stay whole.
+    #expect(title("Process 4182") == ["Process 4182 finished"])
+    #expect(title(HoldRecord.terminalLabel) == ["Terminal finished"])
+    #expect(title("") == ["A held command finished"])
+}
+
+@Test func hiddenProjectNamesHideTheHeldProgramToo() {
+    var hidden = enabled
+    hidden.hideProjectNames = true
+    let label = "/usr/local/bin/psql postgres://u:pw@host"
+    #expect(run([
+        Poll(at: 0, holds: [hold(label)]),
+        Poll(at: 361, ended: [ended(label, after: 6, status: 0)]),
+    ], settings: hidden).map(\.title) == ["A held command finished"])
 }
 
 @Test func heldCommandOfUnderThreeMinutesNeverAlerts() {
@@ -461,7 +489,7 @@ private func run(
         Poll(at: 362, holds: [hold()]),
         Poll(at: 363),
     ])
-    #expect(alerts.map(\.title) == ["npm run build failed"])
+    #expect(alerts.map(\.title) == ["npm failed"])
     #expect(alerts.map(\.body) == ["Failed after 6 min"])
 
     #expect(run([
@@ -471,7 +499,7 @@ private func run(
         Poll(at: 363, holds: [hold()]),
         Poll(at: 364, holds: [hold()]),
         Poll(at: 365),
-    ]).map(\.title) == ["npm run build failed"])
+    ]).map(\.title) == ["npm failed"])
 }
 
 @Test func holdWithoutAnExitStatusSaysFinished() {
@@ -683,7 +711,7 @@ private func run(
         Poll(at: 1320, holds: [first]),
         Poll(at: 1321, holds: [second]),
     ])
-    #expect(alerts.map(\.title) == ["npm run build finished"])
+    #expect(alerts.map(\.title) == ["npm finished"])
 }
 
 @Test func aMonitoringLeaseRunningOutIsNotFinishing() {

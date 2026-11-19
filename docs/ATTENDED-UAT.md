@@ -98,8 +98,8 @@ the `hold` section.
    minutes sends nothing. Approve a prompt mid-turn: going Waiting sends no
    finished banner. With Hide project names on, the body is only "Worked for
    N min". A Claude turn that runs subagents sends one banner, for the parent.
-3. Run `letitbrew hold -- sh -c 'sleep 200'`: after it ends, "sh -c sleep 200
-   finished" / "Succeeded after 3 min". Run
+3. Run `letitbrew hold -- sh -c 'sleep 200'`: after it ends, "sh finished" /
+   "Succeeded after 3 min". Run
    `letitbrew hold -- sh -c 'sleep 200; exit 1'`: "… failed" / "Failed after 3
    min". `letitbrew hold -- sleep 60` sends nothing. With Hide project names on,
    the titles read "A held command finished" and "A held command failed".
@@ -108,7 +108,7 @@ the `hold` section.
    `letitbrew hold --pid <its PID>`, and wait: "Process <PID> finished" /
    "Finished after 4 min". Run bare `letitbrew hold` for 4 minutes and press
    Ctrl-C: no banner. Also `kill -9` the CLI of a `hold -- sleep 600` after 4
-   minutes, then the `sleep`: "sleep 600 finished" / "Finished after N min",
+   minutes, then the `sleep`: "sleep finished" / "Finished after N min",
    with no success or failure claimed.
 5. Battery floor: on battery just above the floor (Settings → Power), keep an
    agent Working or a hold running until the charge reaches the floor. One
@@ -133,8 +133,8 @@ the `hold` section.
    with the lid open, and with nothing held: no banner. Turn Wi-Fi off with the
    lid open, then close it: no banner.
 10. Check that no banner or Notification Center entry from steps 2–9 shows a
-    prompt, question, tool name or command (a held command's own label is
-    shown only while Hide project names is off).
+    prompt, question, tool name or command arguments (a held command's
+    program name is shown only while Hide project names is off).
 
 ### `letitbrew hold -- <command>`
 
@@ -467,8 +467,8 @@ throwaway topic; never paste a real topic into an issue.
 5. The other alert types follow the same away rule, with the desktop's
    words, and are never resent on becoming away. With the screen locked
    and Always send to phone off:
-   - `letitbrew hold -- sh -c 'sleep 200'` ends: the phone gets "sh -c
-     sleep 200 finished" / "Succeeded after 3 min". An agent turn of over 3
+   - `letitbrew hold -- sh -c 'sleep 200'` ends: the phone gets "sh
+     finished" / "Succeeded after 3 min". An agent turn of over 3
      minutes ending sends "<Agent> finished" / "<folder> · Worked for N min".
    - With Connected power only on, hold the Mac with work while plugged in,
      then unplug: the phone gets "Your Mac stopped keeping awake" / "It
@@ -481,7 +481,7 @@ throwaway topic; never paste a real topic into an issue.
 6. Turn on Hide project names: the phone body is only the state ("Waiting
    for your approval", "Worked for N min") and a held command is "A held
    command". Confirm no phone alert ever contains a prompt, question, or
-   command, and has no emoji.
+   command arguments, and has no emoji.
 7. Turn Wi-Fi off, lock the screen, and let an approval wait 30 seconds.
    Confirm the menu shows no error, the hold is unchanged, and nothing arrives
    later when Wi-Fi returns (the send was retried once, then dropped).
