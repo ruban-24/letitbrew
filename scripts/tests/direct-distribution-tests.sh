@@ -163,6 +163,10 @@ expect_true "accepts canonical major.minor.patch" release_version_is_canonical 0
 expect_false "rejects a two-component release version" release_version_is_canonical 0.4
 expect_false "rejects a leading-zero release version" release_version_is_canonical 00.4.0
 expect_false "rejects a fourth release component" release_version_is_canonical 0.4.0.1
+inherited_project="$TEST_ROOT/inherited-project.yml"
+printf 'settings:\n  base:\n    CURRENT_PROJECT_VERSION: 46\ntargets:\n  Framework:\n    settings:\n      base:\n        CURRENT_PROJECT_VERSION: $(inherited)\n' >"$inherited_project"
+expect_equal "$(release_project_value "$inherited_project" CURRENT_PROJECT_VERSION)" 46 \
+    "a target's \$(inherited) version does not count as a second version"
 
 echo
 echo "-- embedded legal resource contract --"
@@ -218,7 +222,10 @@ verifier_transcript() {
 # something to find without building the app.
 notifications_linker="$TEST_ROOT/links-user-notifications"
 printf 'int main(void) { return 0; }\n' |
-    /usr/bin/clang -x c - -framework UserNotifications -o "$notifications_linker" 2>/dev/null
+    /usr/bin/clang -x c - -framework UserNotifications -o "$notifications_linker" || {
+    echo "FATAL: clang could not build the UserNotifications fixture." >&2
+    exit 1
+}
 
 transcript="$TEST_ROOT/no-framework-transcript"
 fixture="$TEST_ROOT/no-framework/Let It Brew.app"
@@ -256,6 +263,8 @@ expect_contains "$transcript" '^FAIL: LetItBrewAlerts is missing arm64' \
     "verifier checks the notifications framework architectures"
 expect_contains "$transcript" '^ok: only LetItBrewAlerts.framework links UserNotifications' \
     "verifier accepts UserNotifications linkage confined to the framework"
+expect_contains "$transcript" '^FAIL: LetItBrewAlerts and app builds match' \
+    "verifier checks the notifications framework build against the app"
 
 fixture="$TEST_ROOT/extra-framework/Let It Brew.app"
 make_fake_app "$fixture"
@@ -274,6 +283,15 @@ transcript="$TEST_ROOT/stray-linker-transcript"
 verifier_transcript "$fixture" "$transcript"
 expect_contains "$transcript" '^FAIL: Resources/stray links UserNotifications outside LetItBrewAlerts.framework' \
     "verifier refuses UserNotifications linkage outside the framework"
+
+fixture="$TEST_ROOT/named-file/Let It Brew.app"
+make_fake_app "$fixture"
+make_fake_alerts_framework "$fixture/Contents/Frameworks/LetItBrewAlerts.framework"
+/usr/bin/install -m 755 "$SCRIPT_DIR/../LICENSE" "$fixture/Contents/Resources/UserNotifications.txt"
+transcript="$TEST_ROOT/named-file-transcript"
+verifier_transcript "$fixture" "$transcript"
+expect_contains "$transcript" '^ok: only LetItBrewAlerts.framework links UserNotifications' \
+    "verifier ignores a file merely named after UserNotifications"
 
 echo
 echo "-- frozen v0.5.1 update support compatibility --"

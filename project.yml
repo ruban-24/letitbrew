@@ -69,7 +69,11 @@ targets:
     settings:
       base:
         PRODUCT_NAME: LetItBrewAlerts
+        # Without library evolution, the app autolinks the framework's
+        # UserNotifications import even though that import is internal.
         BUILD_LIBRARY_FOR_DISTRIBUTION: true
+        # XcodeGen's framework preset sets build 1; use the project build.
+        CURRENT_PROJECT_VERSION: $(inherited)
         GENERATE_INFOPLIST_FILE: true
         CODE_SIGN_INJECT_BASE_ENTITLEMENTS: false
         ENTITLEMENTS_REQUIRED: false

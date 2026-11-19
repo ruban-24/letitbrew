@@ -65,7 +65,8 @@ Verifies the production product before installation:
   daemon, or helper (the same check Let It Brew 1.0.x runs on an update);
 - `Contents/Frameworks` holding exactly `LetItBrewAlerts.framework`, an ordinary
   directory signed with identifier `com.ruban24.letitbrew.alerts`, Team ID,
-  hardened runtime, no entitlements, `arm64` and `x86_64`; and no file other
+  hardened runtime, no entitlements, `arm64` and `x86_64`, and the app's version
+  and build; and no file other
   than that framework's binary linking UserNotifications.
 
 `--release` additionally requires Developer ID Application authority and secure

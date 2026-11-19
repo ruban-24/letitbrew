@@ -267,7 +267,8 @@ fi
 stray_linkage=0
 while IFS= read -r -d '' file; do
     [ "$file" = "$ALERTS_BIN" ] && continue
-    if /usr/bin/otool -L "$file" 2>/dev/null | /usr/bin/grep -qi UserNotifications; then
+    # Skip otool's first line, which names the file rather than a load command.
+    if /usr/bin/otool -L "$file" 2>/dev/null | /usr/bin/tail -n +2 | /usr/bin/grep -qi UserNotifications; then
         echo "FAIL: ${file#"$APP/Contents/"} links UserNotifications outside LetItBrewAlerts.framework" >&2
         stray_linkage=1
         fail=1
@@ -295,6 +296,16 @@ cli_build="$(embedded_plist_string "$HELPER" CFBundleVersion)"
 note "app=$app_version helper=$cli_version app-build=$app_build helper-build=$cli_build"
 check "helper and app marketing versions match" test "$cli_version" = "$app_version"
 check "helper and app builds match" test "$cli_build" = "$app_build"
+ALERTS_INFO="$ALERTS/Versions/A/Resources/Info.plist"
+alerts_version=""
+alerts_build=""
+if [ -f "$ALERTS_INFO" ] && [ ! -L "$ALERTS_INFO" ]; then
+    alerts_version="$(plist_value "$ALERTS_INFO" CFBundleShortVersionString)"
+    alerts_build="$(plist_value "$ALERTS_INFO" CFBundleVersion)"
+fi
+note "LetItBrewAlerts=$alerts_version LetItBrewAlerts-build=$alerts_build"
+check "LetItBrewAlerts and app marketing versions match" test -n "$alerts_version" -a "$alerts_version" = "$app_version"
+check "LetItBrewAlerts and app builds match" test -n "$alerts_build" -a "$alerts_build" = "$app_build"
 
 echo
 echo "=================================="
