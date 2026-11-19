@@ -9,7 +9,7 @@ import Security
 /// alerts `AlertPolicy` sends to the phone. Nothing is sent until the person
 /// has set up ntfy; a send that fails is retried once and then dropped.
 @MainActor
-final class PhoneAlerts: ObservableObject, AlertDelivering {
+final class PhoneAlerts: ObservableObject {
     enum TestState: Equatable {
         case idle
         case sending
@@ -101,13 +101,18 @@ final class PhoneAlerts: ObservableObject, AlertDelivering {
     }
 
     /// False, changing nothing, unless `text` is an https URL. A new server
-    /// needs a new test.
+    /// needs a new test, and drops the token: it was the old server's.
     @discardableResult
     func setServer(_ text: String) -> Bool {
-        guard let url = NtfyServer.parse(text) else { return false }
-        guard url != server else { return true }
-        server = url
-        defaults.set(url.absoluteString, forKey: Keys.server)
+        var access = NtfyServerAccess(server: server, token: token)
+        guard access.setServer(text) else { return false }
+        guard access.server != server else { return true }
+        server = access.server
+        defaults.set(access.server.absoluteString, forKey: Keys.server)
+        if access.token != token {
+            token = access.token
+            keychain.delete()
+        }
         setTestSent(nil)
         return true
     }
@@ -138,13 +143,24 @@ final class PhoneAlerts: ObservableObject, AlertDelivering {
         }
     }
 
-    func deliver(_ alerts: [Alert]) {
-        guard isWorking, let configuration else { return }
+    /// Starts the phone sends among `alerts`, or returns nil when none go
+    /// to the phone. The task ends once each is sent or dropped; cancelling
+    /// it drops any still going.
+    func deliver(_ alerts: [Alert]) -> Task<Void, Never>? {
+        guard isWorking, let configuration else { return nil }
+        let messages = alerts
+            .filter { $0.destinations.contains(.phone) }
+            .map { (title: $0.title, body: $0.body) }
+        guard !messages.isEmpty else { return nil }
         let publisher = Self.publisher(configuration)
-        for alert in alerts where alert.destinations.contains(.phone) {
-            let title = alert.title
-            let body = alert.body
-            Task.detached { await publisher.publish(title: title, body: body) }
+        return Task.detached {
+            await withTaskGroup(of: Void.self) { group in
+                for message in messages {
+                    group.addTask {
+                        await publisher.publish(title: message.title, body: message.body)
+                    }
+                }
+            }
         }
     }
 

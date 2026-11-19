@@ -523,6 +523,28 @@ throwaway topic; never paste a real topic into an issue.
    Advanced expanded, the whole "On your phone" group shows below "On this
    Mac" without scrolling or clipping; "Alert me when" and Privacy are reached
    by scrolling.
+14. Lid closed, no external display, Always send to phone off, closed-lid
+   support on:
+   - A Claude turn of over 3 minutes finishes while it is the only thing
+     holding: the phone gets "<Agent> finished" promptly, not when the lid is
+     reopened.
+   - With a battery floor just below the current charge and work held,
+     unplug and wait for the floor: the phone gets "Your Mac stopped keeping
+     awake" before the Mac sleeps. Check the Mac does go to sleep within about
+     15 seconds of the alert (`pmset -g log | grep -i sleep` after waking).
+15. Manual sessions: start a manual keep-awake session from the menu (no
+   agents) and lock the screen.
+   - With Connected power only on, unplug: the phone gets "Your Mac stopped
+     keeping awake" / "It switched to battery power."
+   - Turn Wi-Fi off for over 60 seconds: the desktop shows the Wi-Fi alert.
+16. Heat, if `pmset -g therm` can be pushed to serious: with work held and
+   the screen locked, the phone gets "Your Mac stopped keeping awake" / "It
+   got too warm."
+17. Token follows the server: with a custom server and token Working, change
+   Server to https://ntfy.sh and press Return. The Access token field is
+   empty, status drops back to "Waiting for a test to arrive…", and Send Test
+   is needed again; the self-hosted server's log shows no further request
+   with the token, and ntfy.sh gets no Authorization header.
 
 ## v1.0.1 release scope
 

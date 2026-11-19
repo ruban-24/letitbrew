@@ -36,6 +36,8 @@ struct PhoneAlertsSettingsSection: View {
         }
         .onAppear(perform: loadFields)
         .onChange(of: phone.topic) { loadFields() }
+        // A server change drops the token, so the field must not keep it.
+        .onChange(of: phone.token) { tokenText = phone.token ?? "" }
         .onChange(of: focusedField) { previous, _ in
             if previous == .server { commitServer() }
             if previous == .token { commitToken() }

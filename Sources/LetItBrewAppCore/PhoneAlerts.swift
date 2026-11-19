@@ -67,6 +67,27 @@ public enum NtfyServer {
     }
 }
 
+/// The server phone alerts go to and its optional access token. A token
+/// belongs to one server, so a different server drops it.
+public struct NtfyServerAccess: Equatable, Sendable {
+    public private(set) var server: URL
+    public private(set) var token: String?
+
+    public init(server: URL, token: String?) {
+        self.server = server
+        self.token = token
+    }
+
+    /// False, changing nothing, unless `text` is an https URL.
+    public mutating func setServer(_ text: String) -> Bool {
+        guard let url = NtfyServer.parse(text) else { return false }
+        guard url != server else { return true }
+        server = url
+        token = nil
+        return true
+    }
+}
+
 /// Sends one request and returns its HTTP status code.
 public typealias NtfyTransport = @Sendable (URLRequest) async throws -> Int
 

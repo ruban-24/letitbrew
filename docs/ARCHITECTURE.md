@@ -186,6 +186,10 @@ or update on the same boot and is discarded after a reboot or once expired;
 A live demand counts like a Working session and passes through the same power
 rules; `Decision.wantedBy` records what wanted the hold and `Decision.releasedBy`
 the power rule that released it, so the menu and alerts can explain a release.
+The one delay to a release: when the poll that releases the system or lid
+hold also sends phone alerts (a finished or stopped alert, say), the app keeps
+the old hold until those sends are sent or dropped, for at most 15 seconds
+(`PhoneAlertHoldGrace`), so a closed-lid Mac does not sleep mid-send.
 
 A Waiting session releases the hold, with no grace period. Every question,
 and every OpenCode and Pi wait, reports its answer with a hook. Approving a
