@@ -73,8 +73,9 @@ Verifies the production product before installation:
 timestamps. `--restored` is used only by the upgrader's rollback to verify the
 restored old bundle: when `Contents/Frameworks` is entirely absent (a 1.0.x
 bundle) it skips the framework checks; a present `Frameworks`, and every other
-check, is verified as for a candidate. The upgrader requires decimal `CFBundleVersion` values and refuses a
-candidate unless its build is strictly greater than the installed build.
+check, is verified as for a candidate. The upgrader requires decimal
+`CFBundleVersion` values and refuses a candidate unless its build is strictly
+greater than the installed build.
 
 ## Direct-distribution scripts
 

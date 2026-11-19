@@ -331,6 +331,25 @@ run_rollback_case probe_failure probe-new
 run_rollback_case baseline_failure baseline-new
 
 echo
+echo "-- rollback to a pre-framework 1.0.x bundle completes and relaunches --"
+# Like the real verifier, refuse the old (no Frameworks) bundle unless
+# rollback asks for restored mode.
+upgrade_verify_artifact() {
+    local kind
+    kind="$(test_bundle_kind "$1")"
+    test_event "verify-$kind${2:+ $2}"
+    [ "$kind" != old ] || [ "${2:-}" = --restored ]
+}
+setup_transaction pre_framework_rollback 0
+UPGRADE_RELAUNCH=1
+TEST_FAIL_POINT=probe-new
+run_transaction >/dev/null 2>&1
+expect_equal "$UPGRADE_PHASE" rolled-back "pre-framework rollback completes"
+expect_true "pre-framework rollback relaunches the restored app" \
+    /usr/bin/grep -q 'verify-old --restored.*probe-old.*relaunch' <<<"$TEST_EVENTS"
+upgrade_verify_artifact() { test_event "verify-$(test_bundle_kind "$1")${2:+ $2}"; return 0; }
+
+echo
 echo "-- exact baseline preservation on success --"
 for baseline in 0 1; do
     setup_transaction "success-$baseline" "$baseline"

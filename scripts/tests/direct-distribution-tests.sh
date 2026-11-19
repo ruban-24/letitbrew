@@ -215,7 +215,8 @@ echo
 echo "-- notification framework contract --"
 verifier_transcript() {
     local app="$1" transcript="$2"
-    "$SCRIPT_DIR/verify-artifact.sh" "$app" >"$transcript" 2>&1 || true
+    shift 2
+    "$SCRIPT_DIR/verify-artifact.sh" "$app" "$@" >"$transcript" 2>&1 || true
 }
 
 # A real Mach-O that links UserNotifications, so the linkage scan has
@@ -238,15 +239,12 @@ for component in LetItBrew LetItBrewDaemon letitbrew; do
         "verifier keeps the 1.0.x $component UserNotifications check"
 done
 
-restored_transcript() {
-    local app="$1" transcript="$2"
-    "$SCRIPT_DIR/verify-artifact.sh" "$app" --restored >"$transcript" 2>&1 || true
-}
-
 # Rollback verifies the restored old bundle, which is pre-framework when
 # the old install is 1.0.x.
+fixture="$TEST_ROOT/restored-no-framework/Let It Brew.app"
+make_fake_app "$fixture"
 transcript="$TEST_ROOT/restored-no-framework-transcript"
-restored_transcript "$fixture" "$transcript"
+verifier_transcript "$fixture" "$transcript" --restored
 expect_contains "$transcript" '^ok: pre-framework restored bundle has no Frameworks directory$' \
     "restored mode accepts a pre-framework bundle without Frameworks"
 expect_false "restored mode reports no framework failure for a pre-framework bundle" \
@@ -262,7 +260,7 @@ fixture="$TEST_ROOT/restored-stray-linker/Let It Brew.app"
 make_fake_app "$fixture"
 /usr/bin/install -m 755 "$notifications_linker" "$fixture/Contents/Resources/stray"
 transcript="$TEST_ROOT/restored-stray-linker-transcript"
-restored_transcript "$fixture" "$transcript"
+verifier_transcript "$fixture" "$transcript" --restored
 expect_contains "$transcript" '^FAIL: Resources/stray links UserNotifications outside LetItBrewAlerts.framework' \
     "restored mode refuses UserNotifications linkage in a pre-framework bundle"
 
@@ -270,7 +268,7 @@ fixture="$TEST_ROOT/restored-empty-frameworks/Let It Brew.app"
 make_fake_app "$fixture"
 /bin/mkdir -p "$fixture/Contents/Frameworks"
 transcript="$TEST_ROOT/restored-empty-frameworks-transcript"
-restored_transcript "$fixture" "$transcript"
+verifier_transcript "$fixture" "$transcript" --restored
 expect_contains "$transcript" '^FAIL: LetItBrewAlerts.framework present as an ordinary directory' \
     "restored mode fully checks an empty Frameworks directory"
 
@@ -279,7 +277,7 @@ make_fake_app "$fixture"
 make_fake_alerts_framework "$TEST_ROOT/restored-foreign/Frameworks/LetItBrewAlerts.framework"
 /bin/ln -s "$TEST_ROOT/restored-foreign/Frameworks" "$fixture/Contents/Frameworks"
 transcript="$TEST_ROOT/restored-symlinked-frameworks-transcript"
-restored_transcript "$fixture" "$transcript"
+verifier_transcript "$fixture" "$transcript" --restored
 expect_contains "$transcript" '^FAIL: LetItBrewAlerts.framework present as an ordinary directory' \
     "restored mode fully checks a symlinked Frameworks directory"
 
@@ -287,7 +285,7 @@ fixture="$TEST_ROOT/restored-broken-framework/Let It Brew.app"
 make_fake_app "$fixture"
 make_fake_alerts_framework "$fixture/Contents/Frameworks/LetItBrewAlerts.framework"
 transcript="$TEST_ROOT/restored-broken-framework-transcript"
-restored_transcript "$fixture" "$transcript"
+verifier_transcript "$fixture" "$transcript" --restored
 expect_contains "$transcript" '^FAIL: LetItBrewAlerts.framework signature valid' \
     "restored mode fully checks a present framework's signature"
 expect_contains "$transcript" '^FAIL: LetItBrewAlerts is missing arm64' \
