@@ -50,6 +50,7 @@ An awake hold prevents the Mac from sleeping while that work continues.
   battery floor, use Low Power Mode, and decide whether displays can sleep.
 - **Stays out of the way.** It has no Dock icon, main window, or notifications.
 - **Keeps session data local.** There is no account, cloud service, or telemetry.
+  Phone alerts, once you set them up, send only their alert text off the Mac.
 
 ## Let It Brew vs Caffeine vs Amphetamine
 
@@ -137,6 +138,45 @@ Return to Settings → Agents. The connection refreshes automatically.
 If it does not refresh, choose Refresh Connections.
 If a session was open when its hooks changed, restart it.
 
+## Alerts
+
+Alerts are off until you turn them on in Settings → Alerts. Let It Brew can
+alert you when:
+
+- an agent has waited on you for 30 seconds;
+- an agent, or a command run with `letitbrew hold`, finishes after at least 3
+  minutes;
+- your Mac stops keeping awake because of the battery floor, connected power
+  only, Low Power Mode, or heat; or
+- Wi-Fi drops for a minute while the lid is closed and the Mac is held awake.
+  This one is off by default. It goes to the same places as the other alerts,
+  but while the network is down its phone alert usually fails and is dropped.
+
+Desktop alerts show as notifications on this Mac. Phone alerts go through
+[ntfy](https://ntfy.sh).
+
+An alert names the agent and the project folder, for example "Claude Code
+needs you" and "letitbrew · Waiting for your approval". An alert for a held
+command names the command. Turn on Hide project names to leave out the folder
+and the command. Alerts never include your prompts, questions, or tool details.
+See [Privacy and local data](docs/PRIVACY.md#alerts) for exactly what a phone
+alert sends.
+
+### Phone alerts
+
+1. Install the free ntfy app from the App Store or Google Play.
+2. In Settings → Alerts, choose Set Up under On your phone. On Android, scan
+   the QR code with the ntfy app. On iPhone, open ntfy, tap +, and paste the
+   topic. The Copy button next to the topic copies it.
+3. Press Send Test. Phone alerts start once the test reaches the server.
+4. If you run your own ntfy server, set its URL and access token in Advanced,
+   then press Send Test again. In the ntfy app, add the same server and login.
+
+Phone alerts go out only when you are away: the lid is closed, the screen is
+locked, or you have not used the keyboard or mouse for 5 minutes. A closed lid
+with an external display does not count. Turn on Always send to phone to get
+them every time.
+
 ## Safety and privacy
 
 Let It Brew releases its holds when no tracked session is Working.
@@ -155,7 +195,9 @@ If you decline approval for this service, open-lid operation still works.
 See the [architecture document](docs/ARCHITECTURE.md) for the service and its safety rules.
 
 Session content never leaves the Mac. Let It Brew does not record prompts,
-responses, reasoning, tool inputs, tool outputs, or final assistant text. See
+responses, reasoning, tool inputs, tool outputs, or final assistant text.
+Phone alerts, once you set them up, send only the alert text, which can name the
+agent, the project folder, or a held command. See
 [Privacy and local data](docs/PRIVACY.md) for the structural metadata and local
 paths it uses.
 
