@@ -548,14 +548,15 @@ public enum AlertPolicy {
 
     /// The held program without its arguments, which can hold secrets: the
     /// label's first word with any folder path removed. A `--pid` hold's
-    /// "Process N" has no arguments and stays whole.
+    /// "Process N" has no arguments and stays whole. A first word the label's
+    /// length limit cut short names no program, so it is empty.
     private static func programName(_ label: String) -> String {
         let words = label.split(separator: " ")
         if words.count == 2, let pid = Int32(words[1]),
            label == HoldRecord.processLabel(pid: pid) {
             return label
         }
-        guard let first = words.first else { return "" }
+        guard let first = words.first, !first.hasSuffix("…") else { return "" }
         return first.split(separator: "/").last.map(String.init) ?? ""
     }
 

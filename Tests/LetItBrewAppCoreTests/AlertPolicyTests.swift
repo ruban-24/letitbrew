@@ -445,6 +445,9 @@ private func run(
     #expect(title("Process 4182") == ["Process 4182 finished"])
     #expect(title(HoldRecord.terminalLabel) == ["Terminal finished"])
     #expect(title("") == ["A held command finished"])
+    // A program path cut short by the label's length limit has no sure name.
+    #expect(title(HoldRecord.label(for: ["/Users/me/" + String(repeating: "deep/", count: 12) + "tool", "-v"]))
+        == ["A held command finished"])
 }
 
 @Test func hiddenProjectNamesHideTheHeldProgramToo() {
