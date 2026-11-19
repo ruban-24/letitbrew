@@ -98,11 +98,11 @@ The title and message are the alert's text and nothing else. They can contain:
 - for a power or Wi-Fi alert, which rule stopped the hold, such as "Battery
   reached 20%.", or that Wi-Fi dropped.
 
-With Hide project names on, the folder name is left out and a held program is
+With Hide project names on, the folder name is left out and a held command is
 called "A held command". Alerts never include prompts, questions, responses,
 reasoning, tool names, tool inputs or outputs, file contents, or a held
-command's arguments. The Send Test
-message is "Let It Brew test" and "Phone alerts are working."
+command's arguments. The Send Test message is "Let It Brew test" and "Phone
+alerts are working."
 
 ## Local storage and agent configuration
 
