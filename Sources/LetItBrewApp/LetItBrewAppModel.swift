@@ -428,6 +428,7 @@ final class LetItBrewAppModel: ObservableObject {
     private var personalLowPowerSources: Set<PowerModeSource> = []
     private var requestedSystemHold = false
     private var phoneAlertHoldGrace = PhoneAlertHoldGrace()
+    private var phoneAlertGraceSends: (generation: Int, tasks: [Task<Void, Never>]) = (0, [])
     private var lastDaemonAttempt = Date.distantPast
     private var nextDaemonHealthCheck = Date.distantPast
     private var sessionTrackingSuppressions: [SessionTrackingSuppression]
@@ -2851,24 +2852,49 @@ final class LetItBrewAppModel: ObservableObject {
         return alerts
     }
 
-    /// Ends a grace kept for these sends once they settle. Sends a grace
-    /// waits for are dropped at its cap, so a late retry never lands after
-    /// the Mac has slept.
+    /// Waits for the sends a grace keeps the hold for. The last one to
+    /// settle ends the grace; at its cap the grace ends anyway and every send
+    /// still going is dropped, so a late retry never lands after the Mac has
+    /// slept.
     private func awaitPhoneSends(_ sends: Task<Void, Never>) {
         guard phoneAlertHoldGrace.isKeeping else { return }
         let generation = phoneAlertHoldGrace.generation
+        if generation != phoneAlertGraceSends.generation {
+            phoneAlertGraceSends = (generation, [])
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(PhoneAlertHoldGrace.limit))
+                guard let self else { return }
+                if self.phoneAlertGraceSends.generation == generation {
+                    self.phoneAlertGraceSends.tasks.forEach { $0.cancel() }
+                }
+                self.applyGraceRelease(self.phoneAlertHoldGrace.expire(generation: generation))
+            }
+        }
+        phoneAlertGraceSends.tasks.append(sends)
         Task { [weak self] in
             await sends.value
-            guard let self, self.phoneAlertHoldGrace.sendSettled(generation: generation)
-            else { return }
-            self.refreshNow()
+            guard let self else { return }
+            self.applyGraceRelease(self.phoneAlertHoldGrace.sendSettled(generation: generation))
         }
-        Task { [weak self] in
-            try? await Task.sleep(for: .seconds(PhoneAlertHoldGrace.limit))
-            sends.cancel()
-            guard let self, self.phoneAlertHoldGrace.generation == generation else { return }
-            self.refreshNow()
+    }
+
+    /// Applies the release a grace held back, without waiting for a poll.
+    private func applyGraceRelease(_ hold: PhoneAlertHoldGrace.Hold?) {
+        guard let hold else { return }
+        if requestedSystemHold, !hold.system {
+            requestedSystemHold = false
+            let released = powerAssertion.setSystemHold(
+                false,
+                reason: "Let It Brew: phone alerts sent"
+            )
+            updateHoldReleaseFailure(systemReleased: released, displayReleased: true)
         }
+        if requestedLidHold, !hold.lidClosed {
+            requestedLidHold = false
+            synchronizeDaemonHold()
+        }
+        updateHoldOwnership()
+        refreshNow()
     }
 
     private static func menuInput(

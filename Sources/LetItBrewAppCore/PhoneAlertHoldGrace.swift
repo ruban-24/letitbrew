@@ -23,8 +23,9 @@ public struct PhoneAlertHoldGrace: Sendable {
     }
 
     private var kept: Hold?
+    private var wanted = Hold(system: false, lidClosed: false)
     private var deadline = Date.distantPast
-    private var unsettled = 0
+    private var pollsSending = 0
     /// Names the current grace, so a send from an earlier one settling never
     /// ends it. Read after `hold` to tag the sends that poll started.
     public private(set) var generation = 0
@@ -42,9 +43,10 @@ public struct PhoneAlertHoldGrace: Sendable {
         sendingToPhone: Bool,
         now: Date
     ) -> Hold {
+        self.wanted = wanted
         if let kept {
-            if unsettled > 0, now < deadline {
-                if sendingToPhone { unsettled += 1 }
+            if pollsSending > 0, now < deadline {
+                if sendingToPhone { pollsSending += 1 }
                 return kept.union(wanted)
             }
             self.kept = nil
@@ -55,23 +57,32 @@ public struct PhoneAlertHoldGrace: Sendable {
         guard releases, sendingToPhone else { return wanted }
         kept = applied
         deadline = now.addingTimeInterval(Self.limit)
-        unsettled = 1
+        pollsSending = 1
         generation += 1
         return applied.union(wanted)
     }
 
-    /// One poll's phone sends finished, sent or dropped. True when that was
-    /// the last one, so the release can be applied now.
-    @discardableResult
-    public mutating func sendSettled(generation: Int) -> Bool {
-        guard kept != nil, generation == self.generation, unsettled > 0 else { return false }
-        unsettled -= 1
-        return unsettled == 0
+    /// One poll's phone sends finished, sent or dropped. When that was the
+    /// last of this grace's, ends it and returns the hold to apply now.
+    public mutating func sendSettled(generation: Int) -> Hold? {
+        guard kept != nil, generation == self.generation, pollsSending > 0 else { return nil }
+        pollsSending -= 1
+        guard pollsSending == 0 else { return nil }
+        kept = nil
+        return wanted
+    }
+
+    /// The grace's `limit` has passed: ends it, if it is still that grace,
+    /// and returns the hold to apply now.
+    public mutating func expire(generation: Int) -> Hold? {
+        guard kept != nil, generation == self.generation else { return nil }
+        kept = nil
+        return wanted
     }
 
     /// Drops the grace, for releases the person asked for.
     public mutating func end() {
         kept = nil
-        unsettled = 0
+        pollsSending = 0
     }
 }

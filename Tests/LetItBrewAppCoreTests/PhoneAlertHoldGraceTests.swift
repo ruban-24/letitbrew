@@ -12,111 +12,117 @@ private let released = Hold(system: false, lidClosed: false)
 private func poll(
     _ grace: inout PhoneAlertHoldGrace,
     wanted: Hold,
-    applied: Hold,
+    applied: Hold = held,
     sendingToPhone: Bool,
-    now: Date
+    at seconds: TimeInterval
 ) -> Hold {
-    grace.hold(wanted: wanted, applied: applied, sendingToPhone: sendingToPhone, now: now)
+    grace.hold(
+        wanted: wanted,
+        applied: applied,
+        sendingToPhone: sendingToPhone,
+        now: start + seconds
+    )
 }
 
-private func settle(_ grace: inout PhoneAlertHoldGrace, _ generation: Int) -> Bool {
+private func settle(_ grace: inout PhoneAlertHoldGrace, _ generation: Int) -> Hold? {
     grace.sendSettled(generation: generation)
+}
+
+private func expire(_ grace: inout PhoneAlertHoldGrace, _ generation: Int) -> Hold? {
+    grace.expire(generation: generation)
 }
 
 @Test func aReleaseWithNoPhoneSendIsAppliedAtOnce() {
     var grace = PhoneAlertHoldGrace()
-    let hold = grace.hold(wanted: released, applied: held, sendingToPhone: false, now: start)
-    #expect(hold == released)
+    #expect(poll(&grace, wanted: released, sendingToPhone: false, at: 0) == released)
+    #expect(!grace.isKeeping)
 }
 
 @Test func phoneSendsWhileTheHoldStaysOnChangeNothing() {
     var grace = PhoneAlertHoldGrace()
-    #expect(poll(&grace, wanted: held, applied: held, sendingToPhone: true, now: start) == held)
-    #expect(poll(&grace, wanted: released, applied: held, sendingToPhone: false, now: start + 1)
-        == released)
+    #expect(poll(&grace, wanted: held, sendingToPhone: true, at: 0) == held)
+    #expect(!grace.isKeeping)
+    #expect(poll(&grace, wanted: released, sendingToPhone: false, at: 1) == released)
 }
 
 @Test func aReleaseThatSendsToThePhoneKeepsTheHoldUntilTheSendSettles() {
     var grace = PhoneAlertHoldGrace()
-    #expect(poll(&grace, wanted: released, applied: held, sendingToPhone: true, now: start) == held)
+    #expect(poll(&grace, wanted: released, sendingToPhone: true, at: 0) == held)
     let send = grace.generation
-    #expect(poll(&grace, wanted: released, applied: held, sendingToPhone: false, now: start + 1)
-        == held)
+    #expect(poll(&grace, wanted: released, sendingToPhone: false, at: 1) == held)
 
-    #expect(settle(&grace, send))
-    #expect(poll(&grace, wanted: released, applied: held, sendingToPhone: false, now: start + 2)
-        == released)
+    #expect(settle(&grace, send) == released)
+    #expect(!grace.isKeeping)
+    #expect(poll(&grace, wanted: released, sendingToPhone: false, at: 2) == released)
 }
 
 @Test func aReleaseOfOnlyTheLidHoldKeepsWhatWasApplied() {
     var grace = PhoneAlertHoldGrace()
     let lidOnly = Hold(system: false, lidClosed: true)
-    #expect(poll(&grace, wanted: released, applied: lidOnly, sendingToPhone: true, now: start)
+    #expect(poll(&grace, wanted: released, applied: lidOnly, sendingToPhone: true, at: 0)
         == lidOnly)
 }
 
 @Test func theGraceNeverOutlastsFifteenSeconds() {
     var grace = PhoneAlertHoldGrace()
-    _ = grace.hold(wanted: released, applied: held, sendingToPhone: true, now: start)
-    #expect(poll(&grace, wanted: released, applied: held, sendingToPhone: false, now: start + 14.9)
-        == held)
-    #expect(poll(&grace, wanted: released, applied: held, sendingToPhone: false, now: start + 15)
-        == released)
+    #expect(poll(&grace, wanted: released, sendingToPhone: true, at: 0) == held)
+    #expect(poll(&grace, wanted: released, sendingToPhone: false, at: 14.9) == held)
+    #expect(poll(&grace, wanted: released, sendingToPhone: false, at: 15) == released)
+    #expect(!grace.isKeeping)
+}
+
+@Test func expiringAtTheCapReleasesWithoutWaitingForAPoll() {
+    var grace = PhoneAlertHoldGrace()
+    #expect(poll(&grace, wanted: released, sendingToPhone: true, at: 0) == held)
+    #expect(expire(&grace, grace.generation) == released)
+    #expect(!grace.isKeeping)
+    #expect(poll(&grace, wanted: released, sendingToPhone: false, at: 1) == released)
 }
 
 @Test func moreSendsDuringTheGraceWaitTooButNeverExtendIt() {
     var grace = PhoneAlertHoldGrace()
-    _ = grace.hold(wanted: released, applied: held, sendingToPhone: true, now: start)
+    #expect(poll(&grace, wanted: released, sendingToPhone: true, at: 0) == held)
     let generation = grace.generation
-    _ = grace.hold(wanted: released, applied: held, sendingToPhone: true, now: start + 1)
+    #expect(poll(&grace, wanted: released, sendingToPhone: true, at: 1) == held)
+    #expect(grace.generation == generation)
 
-    #expect(!settle(&grace, generation))
-    #expect(poll(&grace, wanted: released, applied: held, sendingToPhone: false, now: start + 2)
-        == held)
-    #expect(settle(&grace, generation))
+    #expect(settle(&grace, generation) == nil)
+    #expect(poll(&grace, wanted: released, sendingToPhone: false, at: 2) == held)
+    #expect(settle(&grace, generation) == released)
 
     var capped = PhoneAlertHoldGrace()
-    _ = capped.hold(wanted: released, applied: held, sendingToPhone: true, now: start)
-    _ = capped.hold(wanted: released, applied: held, sendingToPhone: true, now: start + 14)
-    #expect(poll(&capped, wanted: released, applied: held, sendingToPhone: false, now: start + 15)
-        == released)
+    #expect(poll(&capped, wanted: released, sendingToPhone: true, at: 0) == held)
+    #expect(poll(&capped, wanted: released, sendingToPhone: true, at: 14) == held)
+    #expect(poll(&capped, wanted: released, sendingToPhone: false, at: 15) == released)
 }
 
 @Test func aNewReasonToHoldDuringTheGraceKeepsHolding() {
     var grace = PhoneAlertHoldGrace()
-    _ = grace.hold(wanted: released, applied: held, sendingToPhone: true, now: start)
+    #expect(poll(&grace, wanted: released, sendingToPhone: true, at: 0) == held)
     let generation = grace.generation
-    #expect(poll(&grace, wanted: held, applied: held, sendingToPhone: false, now: start + 1) == held)
-    grace.sendSettled(generation: generation)
-    #expect(poll(&grace, wanted: held, applied: held, sendingToPhone: false, now: start + 2) == held)
+    #expect(poll(&grace, wanted: held, sendingToPhone: false, at: 1) == held)
+    #expect(settle(&grace, generation) == held)
+    #expect(poll(&grace, wanted: held, sendingToPhone: false, at: 2) == held)
 }
 
 @Test func aSendFromAnEarlierGraceDoesNotEndTheCurrentOne() {
     var grace = PhoneAlertHoldGrace()
-    _ = grace.hold(wanted: released, applied: held, sendingToPhone: true, now: start)
+    #expect(poll(&grace, wanted: released, sendingToPhone: true, at: 0) == held)
     let earlier = grace.generation
-    _ = grace.hold(wanted: released, applied: held, sendingToPhone: false, now: start + 15)
+    #expect(poll(&grace, wanted: released, sendingToPhone: false, at: 15) == released)
 
-    _ = grace.hold(wanted: released, applied: held, sendingToPhone: true, now: start + 20)
-    #expect(!settle(&grace, earlier))
-    #expect(poll(&grace, wanted: released, applied: held, sendingToPhone: false, now: start + 21)
-        == held)
+    #expect(poll(&grace, wanted: released, sendingToPhone: true, at: 20) == held)
+    #expect(settle(&grace, earlier) == nil)
+    #expect(expire(&grace, earlier) == nil)
+    #expect(poll(&grace, wanted: released, sendingToPhone: false, at: 21) == held)
 }
 
 @Test func endingTheGraceAppliesTheWantedHoldAtTheNextPoll() {
     var grace = PhoneAlertHoldGrace()
-    _ = grace.hold(wanted: released, applied: held, sendingToPhone: true, now: start)
+    #expect(poll(&grace, wanted: released, sendingToPhone: true, at: 0) == held)
+    let generation = grace.generation
     grace.end()
-    #expect(poll(&grace, wanted: released, applied: released, sendingToPhone: false, now: start + 1)
+    #expect(poll(&grace, wanted: released, applied: released, sendingToPhone: false, at: 1)
         == released)
-}
-
-@Test func onlyAReleaseWithPhoneSendsIsKept() {
-    var grace = PhoneAlertHoldGrace()
-    _ = grace.hold(wanted: held, applied: held, sendingToPhone: true, now: start)
-    #expect(!grace.isKeeping)
-    _ = grace.hold(wanted: released, applied: held, sendingToPhone: true, now: start + 1)
-    #expect(grace.isKeeping)
-    _ = grace.hold(wanted: released, applied: held, sendingToPhone: false, now: start + 16)
-    #expect(!grace.isKeeping)
+    #expect(settle(&grace, generation) == nil)
 }
