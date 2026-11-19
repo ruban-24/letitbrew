@@ -46,7 +46,7 @@ candidate.
 duplicated, conflicting, or malformed entries are refusals. Every live operation
 records and compares the exact value; a user baseline of `1` remains `1`.
 
-## `verify-artifact.sh <Let It Brew.app> [--release]`
+## `verify-artifact.sh <Let It Brew.app> [--release|--restored]`
 
 Verifies the production product before installation:
 
@@ -61,11 +61,21 @@ Verifies the production product before installation:
 - exact ordinary-file `Legal` payload containing only repository-identical
   `LICENSE`, `NOTICE`, and `TRADEMARKS.md` with mode 0644;
 - entitlement-free daemon/helper, icon and `LSUIElement` metadata, app/helper
-  version consistency, and no UserNotifications linkage.
+  version consistency, and no UserNotifications linkage in the main executable,
+  daemon, or helper (the same check Let It Brew 1.0.x runs on an update);
+- `Contents/Frameworks` holding exactly `LetItBrewAlerts.framework`, an ordinary
+  directory signed with identifier `com.ruban24.letitbrew.alerts`, Team ID,
+  hardened runtime, no entitlements, `arm64` and `x86_64`, and the app's version
+  and build; and no file other
+  than that framework's binary linking UserNotifications.
 
 `--release` additionally requires Developer ID Application authority and secure
-timestamps. The upgrader requires decimal `CFBundleVersion` values and refuses a
-candidate unless its build is strictly greater than the installed build.
+timestamps. `--restored` is used only by the upgrader's rollback to verify the
+restored old bundle: when `Contents/Frameworks` is entirely absent (a 1.0.x
+bundle) it skips the framework checks; a present `Frameworks`, and every other
+check, is verified as for a candidate. The upgrader requires decimal
+`CFBundleVersion` values and refuses a candidate unless its build is strictly
+greater than the installed build.
 
 ## Direct-distribution scripts
 

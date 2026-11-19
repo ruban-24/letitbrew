@@ -15,6 +15,7 @@ the right service.
 | `LetItBrewDaemon` | Xcode-only | The privileged launchd daemon executable. |
 | `LetItBrewDaemonCore` | SwiftPM library | XPC protocol, hold coordination, sleep control. |
 | `letitbrew` | SwiftPM executable | The CLI shim that agent hooks invoke. |
+| `LetItBrewAlerts` | Xcode-only framework | The app's only UserNotifications code. |
 
 `LetItBrewApp` and `LetItBrewDaemon` are deliberately thin. Anything worth
 testing lives in one of the three `*Core` libraries, which is why `swift test`
@@ -448,6 +449,13 @@ published SHA-256, safely transitions the background service, renames atomically
 and relaunches. If verification or the service transition cannot be proven safe,
 nothing is replaced. A post-swap failure rolls back where possible and retains
 recovery evidence rather than discarding it.
+
+Desktop notifications live in the embedded `LetItBrewAlerts.framework`, not the
+main executable, because Let It Brew 1.0.x's updater refuses a candidate whose
+main executable, daemon, or helper links UserNotifications. The framework loads
+into the app process, so authorization and notification clicks still belong to
+the app; `verify-artifact.sh` keeps the 1.0.x check and confines the linkage to
+the framework.
 
 ## Uninstall ordering
 

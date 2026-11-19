@@ -113,7 +113,8 @@ release_project_value() {
     local project_file="$1"
     local key="$2"
     local values count
-    values="$(/usr/bin/awk -v key="$key" '$1 == key ":" { print $2 }' "$project_file")" || return 1
+    # A target that sets the key to $(inherited) reuses the project value.
+    values="$(/usr/bin/awk -v key="$key" '$1 == key ":" && $2 != "$(inherited)" { print $2 }' "$project_file")" || return 1
     count="$(printf '%s\n' "$values" | /usr/bin/awk 'NF { count++ } END { print count + 0 }')"
     [ "$count" -eq 1 ] || return 1
     printf '%s\n' "$values"

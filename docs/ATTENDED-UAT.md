@@ -546,6 +546,27 @@ throwaway topic; never paste a real topic into an issue.
    is needed again; the self-hosted server's log shows no further request
    with the token, and ntfy.sh gets no Authorization header.
 
+### Update from 1.0.1 with desktop alerts (notifications framework)
+
+1.0.1 refuses an update whose main executable links UserNotifications, so 2.0
+keeps notifications in `Contents/Frameworks/LetItBrewAlerts.framework`.
+`verify-artifact.sh` and the 1.0.1 verifier prove the linkage; these steps prove
+the update and the alerts still work.
+
+1. Install 1.0.1 with Homebrew (`brew install --cask letitbrew` from the tap)
+   and confirm it runs with closed-lid support on.
+2. Point the in-app update at the 2.0.0 candidate and choose Update. Confirm it
+   installs and relaunches as 2.0.0, with no "links UserNotifications" refusal
+   in the update log, and `otool -L "/Applications/Let It Brew.app/Contents/MacOS/LetItBrew"`
+   lists `LetItBrewAlerts.framework` but not UserNotifications.
+3. Turn on Desktop alerts. Confirm macOS asks for notification permission once
+   and the system Notifications settings list Let It Brew (not a separate
+   framework entry).
+4. Leave a Claude Code approval unanswered for 30 seconds. Confirm one banner,
+   "Claude Code needs you", posts.
+5. Switch to another app and click the banner. Confirm the agent's host app
+   (Terminal, iTerm2, Ghostty, VS Code, Orca) comes forward.
+
 ## v1.0.1 release scope
 
 This release replaces the input check for Claude, Copilot, Gemini, and Qwen

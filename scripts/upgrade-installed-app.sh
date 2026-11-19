@@ -58,7 +58,7 @@ upgrade_executable_manifest() {
 }
 
 upgrade_verify_artifact() {
-    "$UPGRADE_SCRIPT_DIR/verify-artifact.sh" "$1"
+    "$UPGRADE_SCRIPT_DIR/verify-artifact.sh" "$@"
 }
 
 upgrade_build_is_strictly_newer() {
@@ -488,7 +488,8 @@ upgrade_rollback() {
         return 1
     fi
 
-    upgrade_verify_artifact "$UPGRADE_DEST" || rollback_ok=0
+    # The restored bundle may predate the notifications framework (1.0.x).
+    upgrade_verify_artifact "$UPGRADE_DEST" --restored || rollback_ok=0
     upgrade_establish_old_daemon_state \
         "$old_version" "$old_build" "$old_cdhash" || rollback_ok=0
     baseline_assert "$UPGRADE_BASELINE" "rolled-back exact baseline" || rollback_ok=0
