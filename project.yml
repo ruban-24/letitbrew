@@ -58,6 +58,28 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.ruban24.letitbrew.daemon-core
         SKIP_INSTALL: true
 
+  # Every UserNotifications call lives in this framework, loaded into the
+  # app process. Let It Brew 1.0.x refuses an update whose main executable
+  # links UserNotifications, so the main executable must not (ARCHITECTURE.md).
+  LetItBrewAlerts:
+    type: framework
+    platform: macOS
+    sources:
+      - path: Sources/LetItBrewAlerts
+    settings:
+      base:
+        PRODUCT_NAME: LetItBrewAlerts
+        BUILD_LIBRARY_FOR_DISTRIBUTION: true
+        GENERATE_INFOPLIST_FILE: true
+        CODE_SIGN_INJECT_BASE_ENTITLEMENTS: false
+        ENTITLEMENTS_REQUIRED: false
+        SKIP_INSTALL: true
+      configs:
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: com.ruban24.letitbrew.dev.alerts
+        Release:
+          PRODUCT_BUNDLE_IDENTIFIER: com.ruban24.letitbrew.alerts
+
   LetItBrew:
     type: application
     platform: macOS
@@ -94,6 +116,9 @@ targets:
         embed: false
       - target: LetItBrewCLI
         embed: false
+      - target: LetItBrewAlerts
+        embed: true
+        codeSign: true
       - target: LetItBrewAppCore
       - target: LetItBrewDaemonCore
       - target: LetItBrewCore
@@ -176,6 +201,7 @@ schemes:
         LetItBrew: all
         LetItBrewDaemon: all
         LetItBrewCLI: all
+        LetItBrewAlerts: all
     run:
       config: Debug
     archive:

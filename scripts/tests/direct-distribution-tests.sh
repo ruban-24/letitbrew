@@ -92,6 +92,15 @@ make_fake_app() {
     printf 'fake icon\n' >"$app/Contents/Resources/AppIcon.icns"
 }
 
+make_fake_alerts_framework() {
+    local framework="$1"
+    /bin/mkdir -p "$framework/Versions/A/Resources"
+    printf 'fake framework binary\n' >"$framework/Versions/A/LetItBrewAlerts"
+    /bin/ln -s A "$framework/Versions/Current"
+    /bin/ln -s Versions/Current/LetItBrewAlerts "$framework/LetItBrewAlerts"
+    /bin/ln -s Versions/Current/Resources "$framework/Resources"
+}
+
 verify_legal_resources_only() {
     baseline_verify_legal_resources "$1"
 }
@@ -197,6 +206,74 @@ expect_false "old Legal-only environment cannot bypass release verification" \
     env LETITBREW_VERIFY_ARTIFACT_LEGAL_ONLY=1 "$SCRIPT_DIR/verify-artifact.sh" "$minimal_legal_app" --release
 expect_true "normal verifier calls Legal validation and continues through full gates despite the retired environment" \
     normal_verifier_runs_legal_then_full_gates "$minimal_legal_app"
+
+echo
+echo "-- notification framework contract --"
+verifier_transcript() {
+    local app="$1" transcript="$2"
+    "$SCRIPT_DIR/verify-artifact.sh" "$app" >"$transcript" 2>&1 || true
+}
+
+# A real Mach-O that links UserNotifications, so the linkage scan has
+# something to find without building the app.
+notifications_linker="$TEST_ROOT/links-user-notifications"
+printf 'int main(void) { return 0; }\n' |
+    /usr/bin/clang -x c - -framework UserNotifications -o "$notifications_linker" 2>/dev/null
+
+transcript="$TEST_ROOT/no-framework-transcript"
+fixture="$TEST_ROOT/no-framework/Let It Brew.app"
+make_fake_app "$fixture"
+verifier_transcript "$fixture" "$transcript"
+expect_contains "$transcript" '^FAIL: LetItBrewAlerts.framework present as an ordinary directory' \
+    "verifier refuses an app without the notifications framework"
+for component in LetItBrew LetItBrewDaemon letitbrew; do
+    expect_contains "$transcript" "^ok: $component does not link UserNotifications\$" \
+        "verifier keeps the 1.0.x $component UserNotifications check"
+done
+
+fixture="$TEST_ROOT/symlinked-framework/Let It Brew.app"
+make_fake_app "$fixture"
+make_fake_alerts_framework "$TEST_ROOT/foreign/LetItBrewAlerts.framework"
+/bin/mkdir -p "$fixture/Contents/Frameworks"
+/bin/ln -s "$TEST_ROOT/foreign/LetItBrewAlerts.framework" "$fixture/Contents/Frameworks/LetItBrewAlerts.framework"
+transcript="$TEST_ROOT/symlinked-framework-transcript"
+verifier_transcript "$fixture" "$transcript"
+expect_contains "$transcript" '^FAIL: LetItBrewAlerts.framework present as an ordinary directory' \
+    "verifier refuses a symlinked notifications framework"
+
+fixture="$TEST_ROOT/framework/Let It Brew.app"
+make_fake_app "$fixture"
+make_fake_alerts_framework "$fixture/Contents/Frameworks/LetItBrewAlerts.framework"
+transcript="$TEST_ROOT/framework-transcript"
+verifier_transcript "$fixture" "$transcript"
+expect_contains "$transcript" '^ok: LetItBrewAlerts.framework present as an ordinary directory' \
+    "verifier accepts the notifications framework as an ordinary directory"
+expect_contains "$transcript" '^ok: Frameworks contains only LetItBrewAlerts.framework' \
+    "verifier accepts the exact Frameworks inventory"
+expect_contains "$transcript" '^FAIL: LetItBrewAlerts.framework signature valid' \
+    "verifier checks the notifications framework signature"
+expect_contains "$transcript" '^FAIL: LetItBrewAlerts is missing arm64' \
+    "verifier checks the notifications framework architectures"
+expect_contains "$transcript" '^ok: only LetItBrewAlerts.framework links UserNotifications' \
+    "verifier accepts UserNotifications linkage confined to the framework"
+
+fixture="$TEST_ROOT/extra-framework/Let It Brew.app"
+make_fake_app "$fixture"
+make_fake_alerts_framework "$fixture/Contents/Frameworks/LetItBrewAlerts.framework"
+/bin/mkdir -p "$fixture/Contents/Frameworks/Other.framework"
+transcript="$TEST_ROOT/extra-framework-transcript"
+verifier_transcript "$fixture" "$transcript"
+expect_contains "$transcript" '^FAIL: Frameworks contains only LetItBrewAlerts.framework' \
+    "verifier refuses an unexpected embedded framework"
+
+fixture="$TEST_ROOT/stray-linker/Let It Brew.app"
+make_fake_app "$fixture"
+make_fake_alerts_framework "$fixture/Contents/Frameworks/LetItBrewAlerts.framework"
+/usr/bin/install -m 755 "$notifications_linker" "$fixture/Contents/Resources/stray"
+transcript="$TEST_ROOT/stray-linker-transcript"
+verifier_transcript "$fixture" "$transcript"
+expect_contains "$transcript" '^FAIL: Resources/stray links UserNotifications outside LetItBrewAlerts.framework' \
+    "verifier refuses UserNotifications linkage outside the framework"
 
 echo
 echo "-- frozen v0.5.1 update support compatibility --"

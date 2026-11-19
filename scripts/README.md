@@ -61,7 +61,12 @@ Verifies the production product before installation:
 - exact ordinary-file `Legal` payload containing only repository-identical
   `LICENSE`, `NOTICE`, and `TRADEMARKS.md` with mode 0644;
 - entitlement-free daemon/helper, icon and `LSUIElement` metadata, app/helper
-  version consistency, and no UserNotifications linkage.
+  version consistency, and no UserNotifications linkage in the main executable,
+  daemon, or helper (the same check Let It Brew 1.0.x runs on an update);
+- `Contents/Frameworks` holding exactly `LetItBrewAlerts.framework`, an ordinary
+  directory signed with identifier `com.ruban24.letitbrew.alerts`, Team ID,
+  hardened runtime, no entitlements, `arm64` and `x86_64`; and no file other
+  than that framework's binary linking UserNotifications.
 
 `--release` additionally requires Developer ID Application authority and secure
 timestamps. The upgrader requires decimal `CFBundleVersion` values and refuses a

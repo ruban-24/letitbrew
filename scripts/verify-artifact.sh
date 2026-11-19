@@ -10,6 +10,7 @@ EXPECTED_TEAM="MV2UL94MDC"
 EXPECTED_APP_ID="com.ruban24.letitbrew"
 EXPECTED_DAEMON_ID="$EXPECTED_APP_ID.daemon"
 EXPECTED_HELPER_ID="$EXPECTED_APP_ID.cli"
+EXPECTED_ALERTS_ID="$EXPECTED_APP_ID.alerts"
 
 [ "$MODE" = "" ] || [ "$MODE" = "--release" ] || {
     echo "FATAL: unknown verification mode '$MODE'." >&2
@@ -83,6 +84,12 @@ DAEMON="$APP/Contents/Library/LaunchServices/LetItBrewDaemon"
 HELPER="$APP/Contents/Helpers/letitbrew"
 INFO_PLIST="$APP/Contents/Info.plist"
 PLISTS_DIR="$APP/Contents/Library/LaunchDaemons"
+# Desktop notifications live in this framework so the main executable never
+# links UserNotifications: Let It Brew 1.0.x refuses an update whose main
+# executable, daemon or helper does.
+FRAMEWORKS_DIR="$APP/Contents/Frameworks"
+ALERTS="$FRAMEWORKS_DIR/LetItBrewAlerts.framework"
+ALERTS_BIN="$ALERTS/Versions/A/LetItBrewAlerts"
 
 echo "== verifying production artifact $APP =="
 [ "$MODE" = "--release" ] && echo "(release mode: Developer ID + secure timestamp required)"
@@ -93,6 +100,12 @@ for file in "$MAIN" "$DAEMON" "$HELPER" "$INFO_PLIST"; do
     check "$(basename "$file") present" test -f "$file"
     check "$(basename "$file") is not a symlink" test ! -L "$file"
 done
+check "LetItBrewAlerts.framework present as an ordinary directory" \
+    eval '[ -d "$ALERTS" ] && [ ! -L "$ALERTS" ] && [ ! -L "$FRAMEWORKS_DIR" ]'
+check "LetItBrewAlerts present as an ordinary file" \
+    eval '[ -f "$ALERTS_BIN" ] && [ ! -L "$ALERTS_BIN" ]'
+frameworks_entries="$(/usr/bin/find "$FRAMEWORKS_DIR" -mindepth 1 -maxdepth 1 -print 2>/dev/null | /usr/bin/sed 's|.*/||' | /usr/bin/sort | /usr/bin/tr '\n' ',')"
+check "Frameworks contains only LetItBrewAlerts.framework" test "$frameworks_entries" = "LetItBrewAlerts.framework,"
 
 echo
 echo "-- embedded legal resources --"
@@ -155,7 +168,7 @@ fi
 
 echo
 echo "-- universal binaries (arm64 + x86_64) --"
-for file in "$MAIN" "$DAEMON" "$HELPER"; do
+for file in "$MAIN" "$DAEMON" "$HELPER" "$ALERTS_BIN"; do
     archs="$(/usr/bin/lipo -archs "$file" 2>/dev/null)"
     note "$(basename "$file"): $archs"
     case " $archs " in *" arm64 "*) echo "ok: $(basename "$file") has arm64" ;; *) echo "FAIL: $(basename "$file") is missing arm64" >&2; fail=1 ;; esac
@@ -168,10 +181,11 @@ check "bundle passes --deep --strict" /usr/bin/codesign --verify --deep --strict
 check "main signature valid" /usr/bin/codesign --verify --strict "$MAIN"
 check "daemon signature valid" /usr/bin/codesign --verify --strict "$DAEMON"
 check "helper signature valid" /usr/bin/codesign --verify --strict "$HELPER"
+check "LetItBrewAlerts.framework signature valid" /usr/bin/codesign --verify --strict "$ALERTS"
 
-expected_ids=("$EXPECTED_APP_ID" "$EXPECTED_DAEMON_ID" "$EXPECTED_HELPER_ID")
-signed_files=("$APP" "$DAEMON" "$HELPER")
-for index in 0 1 2; do
+expected_ids=("$EXPECTED_APP_ID" "$EXPECTED_DAEMON_ID" "$EXPECTED_HELPER_ID" "$EXPECTED_ALERTS_ID")
+signed_files=("$APP" "$DAEMON" "$HELPER" "$ALERTS")
+for index in 0 1 2 3; do
     file="${signed_files[$index]}"
     expected_id="${expected_ids[$index]}"
     info="$(signing_info "$file")"
@@ -241,6 +255,25 @@ for file in "$MAIN" "$DAEMON" "$HELPER"; do
         echo "ok: $(basename "$file") does not link UserNotifications"
     fi
 done
+if ! alerts_entitlements="$(normalized_entitlements "$ALERTS")"; then
+    echo "FAIL: LetItBrewAlerts.framework entitlements could not be read as a dictionary" >&2
+    fail=1
+elif printf '%s\n' "$alerts_entitlements" | /usr/bin/grep -q '<key>'; then
+    echo "FAIL: LetItBrewAlerts.framework carries entitlements" >&2
+    fail=1
+else
+    echo "ok: LetItBrewAlerts.framework carries no entitlements"
+fi
+stray_linkage=0
+while IFS= read -r -d '' file; do
+    [ "$file" = "$ALERTS_BIN" ] && continue
+    if /usr/bin/otool -L "$file" 2>/dev/null | /usr/bin/grep -qi UserNotifications; then
+        echo "FAIL: ${file#"$APP/Contents/"} links UserNotifications outside LetItBrewAlerts.framework" >&2
+        stray_linkage=1
+        fail=1
+    fi
+done < <(/usr/bin/find "$APP/Contents" -type f -print0 2>/dev/null)
+[ "$stray_linkage" -eq 1 ] || echo "ok: only LetItBrewAlerts.framework links UserNotifications"
 
 echo
 echo "-- launch daemon contract --"
