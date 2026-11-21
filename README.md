@@ -8,10 +8,14 @@
 [![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)](https://www.apple.com/macos/)
 [![CI](https://github.com/ruban-24/letitbrew/actions/workflows/ci.yml/badge.svg)](https://github.com/ruban-24/letitbrew/actions/workflows/ci.yml)
 
-**Your Mac sleeps. Your agent dies. Let It Brew fixes that.**
+**Close your MacBook. Your agents keep working.**
 
-A macOS menu-bar app that keeps your Mac awake while supported local coding
-agents work. It lets your Mac sleep as soon as the work stops.
+It sleeps the moment they're done.
+
+Why not Amphetamine or caffeinate? Both keep your Mac awake until a timer ends or
+you stop them. Let It Brew stops when the agent finishes or asks for approval.
+
+Works with Claude Code, Codex, Cursor and 6 more.
 
 <a href="https://github.com/ruban-24/letitbrew/releases/latest/download/LetItBrew.dmg">
   <img src=".github/assets/macos-download-badge.svg" alt="Download Let It Brew for macOS" width="194">
@@ -46,9 +50,20 @@ An awake hold prevents the Mac from sleeping while that work continues.
 - **Shows when an agent needs you.** Sessions waiting for an answer or approval
   are marked in the menu. Click any session to bring its terminal, editor, or
   agent app forward.
+- **Alerts you when it matters.** Turn on alerts in Settings → Alerts to hear
+  when an agent has waited on you for 30 seconds, when long work finishes, or
+  when keeping awake stops. Alerts can also reach your phone through ntfy. They
+  name the agent and project folder, or the program you held, never your
+  prompts or its arguments. Click one to bring the agent's app forward.
+- **Holds for any command.** `letitbrew hold -- <command>` keeps the Mac awake
+  while that command runs, under the same power rules. If Let It Brew is paused
+  or not running, the command still runs and the CLI prints a warning. Homebrew puts the CLI on
+  your PATH; a DMG install keeps it at
+  `/Applications/Let It Brew.app/Contents/Helpers/letitbrew`.
 - **Follows your power rules.** Choose connected-power-only operation, set a
   battery floor, use Low Power Mode, and decide whether displays can sleep.
-- **Stays out of the way.** It has no Dock icon, main window, or notifications.
+- **Stays out of the way.** It has no Dock icon or main window, and alerts stay
+  off until you turn them on.
 - **Keeps session data local.** There is no account, cloud service, or telemetry.
   Phone alerts, once you set them up, send only their alert text off the Mac.
 
@@ -57,11 +72,11 @@ An awake hold prevents the Mac from sleeping while that work continues.
 | Feature | **Let It Brew** | Caffeine | Amphetamine |
 |---|---|---|---|
 | **Best for** | Work from any of the nine supported local agents | A simple manual keep-awake switch | Timers, schedules, and triggers |
-| **Understands active agent work** | ✅ Yes, for all nine supported agents | ❌ No | ❌ No |
-| **Releases when agent work stops** | ✅ Yes — automatically | ❌ No — manual switch or timer | ❌ No — ends with its session or trigger |
-| **Closed lid — with charger** | ✅ Yes | ❌ No | ✅ Yes |
-| **Closed lid — without charger** | ✅ Yes | ❌ No | ❌ No |
-| **Agent-specific integration** | ✅ Claude Code, Codex, OpenCode, GitHub Copilot CLI, Pi, Cursor, Gemini CLI, Qwen Code, and Kimi Code | ❌ None | ❌ None |
+| **Understands active agent work** | Yes, for all nine supported agents | No | No |
+| **Releases when agent work stops** | Yes, automatically | No, manual switch or timer | No, ends with its session or trigger |
+| **Closed lid — with charger** | Yes | No | Yes |
+| **Closed lid — without charger** | Yes | No | No |
+| **Agent-specific integration** | Claude Code, Codex, OpenCode, GitHub Copilot CLI, Pi, Cursor, Gemini CLI, Qwen Code, and Kimi Code | None | None |
 
 See the [full comparison and guidance](https://letitbrew.app/compare/let-it-brew-vs-caffeine-vs-amphetamine).
 If you want a general-purpose keep-awake utility, Caffeine and Amphetamine are
@@ -184,9 +199,10 @@ Supported questions, approval waits, pause, battery limits, and serious or
 critical heat also release the hold.
 Codex and Cursor approval waits keep the Mac awake.
 Approving a Claude, Copilot, Gemini, or Qwen command sends no
-signal of its own. After the prompt appears, Let It Brew treats input in that session's app as a possible approval.
-It then keeps the Mac awake until the agent reports again.
-Typing in other apps does not count, except for sessions under tmux or screen.
+signal of its own, so Let It Brew keeps the Mac awake only while the approved
+command runs. A prompt that you deny, ignore, or leave on screen lets the Mac
+sleep. An approved MCP tool or web fetch starts no process, so with the lid
+closed the Mac can sleep before it finishes.
 
 Closed-lid support uses a background service with system permissions.
 It changes the sleep setting and energy mode, then restores each original value.
