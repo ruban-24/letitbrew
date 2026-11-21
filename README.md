@@ -157,8 +157,9 @@ Desktop alerts show as notifications on this Mac. Phone alerts go through
 
 An alert names the agent and the project folder, for example "Claude Code
 needs you" and "letitbrew · Waiting for your approval". An alert for a held
-command names the command. Turn on Hide project names to leave out the folder
-and the command. Alerts never include your prompts, questions, or tool details.
+command names only the program, such as "npm finished" for `npm run build`,
+never its arguments. Turn on Hide project names to leave out the folder and the
+program. Alerts never include your prompts, questions, or tool details.
 See [Privacy and local data](docs/PRIVACY.md#alerts) for exactly what a phone
 alert sends.
 
@@ -197,7 +198,7 @@ See the [architecture document](docs/ARCHITECTURE.md) for the service and its sa
 Session content never leaves the Mac. Let It Brew does not record prompts,
 responses, reasoning, tool inputs, tool outputs, or final assistant text.
 Phone alerts, once you set them up, send only the alert text, which can name the
-agent, the project folder, or a held command. See
+agent, the project folder, or the program you held, never its arguments. See
 [Privacy and local data](docs/PRIVACY.md) for the structural metadata and local
 paths it uses.
 

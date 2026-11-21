@@ -90,8 +90,9 @@ The title and message are the alert's text and nothing else. They can contain:
 
 - the agent's name, such as Claude Code or Codex;
 - the project folder's name, the last part of its path, never the full path;
-- for a held command, its command line, shortened to 60 characters, or
-  `Process <pid>` for `letitbrew hold --pid`;
+- for a held command, only the program's name, such as `npm` for
+  `npm run build` or `psql` for `/usr/local/bin/psql`, without its folder or
+  arguments, or `Process <pid>` for `letitbrew hold --pid`;
 - whether the agent waits for an answer or an approval, how many minutes the
   work ran, and whether a held command succeeded or failed; and
 - for a power or Wi-Fi alert, which rule stopped the hold, such as "Battery
@@ -99,8 +100,9 @@ The title and message are the alert's text and nothing else. They can contain:
 
 With Hide project names on, the folder name is left out and a held command is
 called "A held command". Alerts never include prompts, questions, responses,
-reasoning, tool names, tool inputs or outputs, or file contents. The Send Test
-message is "Let It Brew test" and "Phone alerts are working."
+reasoning, tool names, tool inputs or outputs, file contents, or a held
+command's arguments. The Send Test message is "Let It Brew test" and "Phone
+alerts are working."
 
 ## Local storage and agent configuration
 
