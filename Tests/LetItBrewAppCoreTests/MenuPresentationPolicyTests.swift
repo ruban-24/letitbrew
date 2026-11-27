@@ -152,6 +152,20 @@ import LetItBrewCore
     ))?.title == "Finish closed-lid setup")
 }
 
+@Test func closedLidSetupCardShowsALaptopAndOtherCardsShowAnAlert() {
+    func icon(update: Bool, closedLid: Bool, agents: Int) -> String? {
+        MenuSetupAttentionPolicy.presentation(for: MenuSetupAttentionInput(
+            hasUpdateResult: update,
+            closedLidNeedsAttention: closedLid,
+            connectedAgentCount: agents
+        ))?.systemImageName
+    }
+
+    #expect(icon(update: false, closedLid: true, agents: 1) == "laptopcomputer")
+    #expect(icon(update: true, closedLid: true, agents: 1) == "exclamationmark.circle.fill")
+    #expect(icon(update: false, closedLid: false, agents: 0) == "exclamationmark.circle.fill")
+}
+
 @Test func headerCopyMatchesEnabledIdleAndPausedStates() {
     #expect(MenuHeaderCopy.resolve(
         isPaused: false,

@@ -524,6 +524,31 @@ throwaway topic; never paste a real topic into an issue.
    Mac" without scrolling or clipping; "Alert me when" and Privacy are reached
    by scrolling.
 
+### Menu layout polish (2.0.0)
+
+`swift test` covers which setup card shows and its icon. The look needs the
+signed app. Check every step in light and dark appearance (**System Settings
+→ Appearance**):
+
+1. Fresh setup, with closed-lid setup unfinished and the alerts tip not yet
+   dismissed, open the menu. It has one divider, directly above Settings…
+   and Quit Let It Brew. The header, Keep awake, the session list and the
+   cards are separated by space, not lines.
+2. "Keep awake" is a small grey label, the same style as the session list's
+   section titles, with no timer icon. Below it, compact buttons "30m" "1h"
+   "2h" "4h" "Until…" "Indefinitely" sit close together on one line, clearly
+   quieter than the menu title. Click Until…: it fills with the accent
+   colour, and the Until line still appears below. Click it again to close.
+3. The setup cards ("Finish closed-lid setup" and the alerts tip) are
+   neutral: a near-white card with a thin border in light mode, a faint
+   lifted card in dark mode, and no orange or purple wash. Only the icons
+   are coloured: an orange laptop on the closed-lid card and a purple bell
+   on the tip. Turn On is still the filled purple button. Both cards still
+   work: the closed-lid card opens Settings, and Not Now dismisses the tip.
+4. Click 1h. The small "Keep awake" label stays above "Awake · 1:00 left"
+   (no timer icon), with "Until <time>" below and +1h and End on the right.
+   End returns to the buttons.
+
 ## v1.0.1 release scope
 
 This release replaces the input check for Claude, Copilot, Gemini, and Qwen

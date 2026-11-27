@@ -755,10 +755,17 @@ public struct MenuSetupAttentionInput: Equatable, Sendable {
 public struct MenuSetupAttentionPresentation: Equatable, Sendable {
     public let title: String
     public let detail: String
+    /// The SF Symbol shown beside the card's text.
+    public let systemImageName: String
 
-    public init(title: String, detail: String) {
+    public init(
+        title: String,
+        detail: String,
+        systemImageName: String = "exclamationmark.circle.fill"
+    ) {
         self.title = title
         self.detail = detail
+        self.systemImageName = systemImageName
     }
 }
 
@@ -775,7 +782,8 @@ public enum MenuSetupAttentionPolicy {
         if input.closedLidNeedsAttention {
             return MenuSetupAttentionPresentation(
                 title: "Finish closed-lid setup",
-                detail: "Complete the remaining step in Settings"
+                detail: "Complete the remaining step in Settings",
+                systemImageName: "laptopcomputer"
             )
         }
         if input.connectedAgentCount == 0 {
