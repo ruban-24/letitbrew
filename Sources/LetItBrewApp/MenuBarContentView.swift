@@ -133,7 +133,28 @@ private struct PopoverHoverHighlight: ViewModifier {
     }
 }
 
+/// A quiet card for setup prompts and warnings: a near-white panel in light
+/// mode, a faint lift in dark mode. Only the card's icon carries colour. It
+/// sits 4 pt inside the menu's row inset.
+private struct MenuCard: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        let isDark = colorScheme == .dark
+        let shape = RoundedRectangle(cornerRadius: 9)
+        content
+            .background(Color.white.opacity(isDark ? 0.07 : 0.78), in: shape)
+            .overlay(shape.strokeBorder(isDark ? Color.white.opacity(0.09) : Color.primary.opacity(0.1)))
+            .shadow(color: .black.opacity(isDark ? 0 : 0.05), radius: 1, y: 1)
+            .padding(.horizontal, 4)
+    }
+}
+
 private extension View {
+    func menuCard() -> some View {
+        modifier(MenuCard())
+    }
+
     /// The rounded, inset highlight a menu item shows under the pointer.
     func popoverHoverHighlight(_ isEnabled: Bool = true) -> some View {
         modifier(PopoverHoverHighlight(isEnabled: isEnabled))
@@ -179,34 +200,34 @@ struct MenuBarContentView: View {
                 .padding(.top, 14)
                 .padding(.bottom, 12)
 
-            menuDivider
+            // Groups are separated by space; the only divider sits above the
+            // footer.
             KeepAwakeRowView()
                 .padding(.horizontal, 16)
-                .padding(.vertical, 10)
+                .padding(.top, 2)
+                .padding(.bottom, 10)
 
             if !boardItems.isEmpty {
-                menuDivider
                 sessionBoard
-                    .padding(.vertical, 5)
+                    .padding(.bottom, 4)
             }
 
-            if !otherSupplementaryRows.isEmpty || setupAttention != nil {
-                menuDivider
-                VStack(spacing: 4) {
+            if !otherSupplementaryRows.isEmpty || setupAttention != nil || model.showsAlertsTip {
+                VStack(spacing: 6) {
                     ForEach(Array(otherSupplementaryRows.enumerated()), id: \.offset) { _, row in
                         supplementaryRow(row)
                     }
                     if let setupAttention {
                         setupAttentionRow(setupAttention)
                     }
+                    if model.showsAlertsTip {
+                        alertsTip
+                    }
                 }
-                .padding(6)
-            }
-
-            if model.showsAlertsTip {
-                menuDivider
-                alertsTip
-                    .padding(6)
+                // Rows keep the menu's 6 pt inset; cards sit 4 pt further in.
+                .padding(.horizontal, 6)
+                .padding(.top, 4)
+                .padding(.bottom, 8)
             }
 
             menuDivider
@@ -330,7 +351,7 @@ struct MenuBarContentView: View {
                     .help("Try to release every sleep hold again")
             }
             .padding(10)
-            .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+            .menuCard()
 
         case .battery(let presentation):
             batteryLine(presentation)
@@ -366,7 +387,7 @@ struct MenuBarContentView: View {
             showSettings()
         } label: {
             HStack(spacing: 10) {
-                Image(systemName: "exclamationmark.circle.fill")
+                Image(systemName: attention.systemImageName)
                     .font(.system(size: 16))
                     .foregroundStyle(.orange)
                     .accessibilityHidden(true)
@@ -390,7 +411,7 @@ struct MenuBarContentView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+        .menuCard()
     }
 
     /// Offered once after updating; dismissing or turning alerts on ends it.
@@ -421,7 +442,7 @@ struct MenuBarContentView: View {
             Spacer(minLength: 0)
         }
         .padding(10)
-        .background(Color(.brewPurple).opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .menuCard()
     }
 
     private var sessionBoard: some View {

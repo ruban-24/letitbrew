@@ -21,8 +21,14 @@ struct KeepAwakeRowView: View {
     }
 
     private func running(_ row: MenuKeepAwakeRunningPresentation) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            sectionLabel
+            runningLine(row)
+        }
+    }
+
+    private func runningLine(_ row: MenuKeepAwakeRunningPresentation) -> some View {
         HStack(spacing: 10) {
-            timerGlyph
             VStack(alignment: .leading, spacing: 1) {
                 runningTitle(row)
                 Text(row.detail)
@@ -49,23 +55,17 @@ struct KeepAwakeRowView: View {
     }
 
     private var picker: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
-                timerGlyph
-                Text("Keep awake")
-                    .fontWeight(.medium)
-                    .accessibilityAddTraits(.isHeader)
-            }
-            WrappingRow(spacing: 6) {
+        VStack(alignment: .leading, spacing: 6) {
+            sectionLabel
+            WrappingRow(spacing: 5) {
                 ForEach(ManualSessionLength.presets, id: \.label) { preset in
                     Button(preset.label) { model.startManualSession(preset.length) }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(DurationChipStyle())
                 }
                 untilButton
                 Button("Indefinitely") { model.startManualSession(.indefinitely) }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(DurationChipStyle())
             }
-            .controlSize(.small)
             if showsUntil {
                 untilLine
             }
@@ -82,13 +82,13 @@ struct KeepAwakeRowView: View {
     private var untilButton: some View {
         if showsUntil {
             Button("Until…") { showsUntil = false }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(DurationChipStyle(isSelected: true))
         } else {
             Button("Until…") {
                 untilTime = ManualSessionUntil.defaultTime(now: Date())
                 showsUntil = true
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(DurationChipStyle())
         }
     }
 
@@ -114,14 +114,38 @@ struct KeepAwakeRowView: View {
         }
     }
 
-    private var timerGlyph: some View {
-        Image(systemName: "timer")
-            .font(.system(size: 15))
+    /// Styled like the session board's section titles.
+    private var sectionLabel: some View {
+        Text("Keep awake")
+            .font(.subheadline.weight(.semibold))
             .foregroundStyle(.secondary)
-            .frame(width: 20)
-            .accessibilityHidden(true)
+            .accessibilityAddTraits(.isHeader)
     }
+}
 
+/// A compact duration button: 12 pt text on a 20 pt rounded chip. Selected,
+/// it fills with the accent colour.
+private struct DurationChipStyle: ButtonStyle {
+    var isSelected = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 6)
+        return configuration.label
+            .font(.system(size: 12))
+            .lineLimit(1)
+            .foregroundStyle(isSelected ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+            .padding(.horizontal, 8)
+            .frame(height: 20)
+            .background(
+                isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.primary.opacity(0.08)),
+                in: shape
+            )
+            .overlay(
+                shape.strokeBorder(Color.primary.opacity(isSelected ? 0 : 0.05))
+            )
+            .opacity(configuration.isPressed ? 0.7 : 1)
+            .contentShape(shape)
+    }
 }
 
 /// Lays children out left to right, wrapping onto a new line when the row is
