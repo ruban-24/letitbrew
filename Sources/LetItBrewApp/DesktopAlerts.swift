@@ -1,8 +1,8 @@
 import AppKit
 import CoreGraphics
+import LetItBrewAlerts
 import LetItBrewAppCore
 import Network
-@preconcurrency import UserNotifications
 
 /// Hands finished alerts to a channel. `AlertPolicy` has already decided
 /// what to send and written its text; delivery never affects the hold.
@@ -22,50 +22,41 @@ enum DesktopAlertAuthorization: Equatable {
     case denied
 }
 
-/// Desktop alerts through the system notification framework. Clicking an
-/// alert brings the session's app forward.
+/// Desktop alerts through the system notification framework, which only
+/// `LetItBrewAlerts` touches. Clicking an alert brings the session's app
+/// forward.
 @MainActor
-final class DesktopAlerts: NSObject, AlertDelivering, UNUserNotificationCenterDelegate {
+final class DesktopAlerts: AlertDelivering {
     static let shared = DesktopAlerts()
 
-    private nonisolated static let agentPIDKey = "agentPID"
-    private var center: UNUserNotificationCenter { .current() }
+    private var notifications: AlertNotifications { .shared }
 
     /// Must run before launch finishes, so a click that launched the app
     /// still reaches the delegate.
     func install() {
-        center.delegate = self
+        notifications.install { agentPID in
+            _ = SessionHostActivator.activate(agentPID: agentPID)
+        }
     }
 
     func deliver(_ alerts: [Alert]) {
         for alert in alerts where alert.destinations.contains(.desktop) {
-            let content = UNMutableNotificationContent()
-            content.title = alert.title
-            content.body = alert.body
-            if let pid = alert.agentPID {
-                content.userInfo = [Self.agentPIDKey: Int(pid)]
-            }
-            center.add(UNNotificationRequest(
+            notifications.post(
                 identifier: alert.id,
-                content: content,
-                trigger: nil
-            ))
+                title: alert.title,
+                body: alert.body,
+                agentPID: alert.agentPID
+            )
         }
     }
 
-    /// Asks once; later calls report the person's choice. Alerts are
-    /// banners only: alert sounds are out of scope.
+    /// Asks once; later calls report the person's choice.
     func requestAuthorization() async -> DesktopAlertAuthorization {
-        _ = try? await center.requestAuthorization(options: [.alert])
-        return await authorization()
+        DesktopAlertAuthorization(await notifications.requestAuthorization())
     }
 
     func authorization() async -> DesktopAlertAuthorization {
-        switch await center.notificationSettings().authorizationStatus {
-        case .notDetermined: .notDetermined
-        case .denied: .denied
-        default: .allowed
-        }
+        DesktopAlertAuthorization(await notifications.authorization())
     }
 
     static func openNotificationSettings() {
@@ -74,25 +65,14 @@ final class DesktopAlerts: NSObject, AlertDelivering, UNUserNotificationCenterDe
             NSWorkspace.shared.open(url)
         }
     }
+}
 
-    // The menu or Settings may be frontmost; show the banner anyway.
-    nonisolated func userNotificationCenter(
-        _ center: UNUserNotificationCenter,
-        willPresent notification: UNNotification
-    ) async -> UNNotificationPresentationOptions {
-        [.banner, .list]
-    }
-
-    nonisolated func userNotificationCenter(
-        _ center: UNUserNotificationCenter,
-        didReceive response: UNNotificationResponse
-    ) async {
-        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier,
-              let pid = response.notification.request.content.userInfo[Self.agentPIDKey] as? Int
-        else { return }
-        let agentPID = Int32(pid)
-        await MainActor.run {
-            _ = SessionHostActivator.activate(agentPID: agentPID)
+private extension DesktopAlertAuthorization {
+    init(_ authorization: AlertNotificationAuthorization) {
+        switch authorization {
+        case .notDetermined: self = .notDetermined
+        case .allowed: self = .allowed
+        case .denied: self = .denied
         }
     }
 }

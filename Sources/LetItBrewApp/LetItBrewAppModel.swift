@@ -427,6 +427,8 @@ final class LetItBrewAppModel: ObservableObject {
     /// person's own, so "Respect Low Power Mode" still applies to it.
     private var personalLowPowerSources: Set<PowerModeSource> = []
     private var requestedSystemHold = false
+    private var phoneAlertHoldGrace = PhoneAlertHoldGrace()
+    private var phoneAlertGraceSends: (generation: Int, tasks: [Task<Void, Never>]) = (0, [])
     private var lastDaemonAttempt = Date.distantPast
     private var nextDaemonHealthCheck = Date.distantPast
     private var sessionTrackingSuppressions: [SessionTrackingSuppression]
@@ -617,6 +619,7 @@ final class LetItBrewAppModel: ObservableObject {
     func setKeepWorkingWithLidClosed(_ enabled: Bool) {
         keepWorkingWithLidClosed = enabled
         if !enabled {
+            phoneAlertHoldGrace.end()
             requestedLidHold = false
             synchronizeDaemonHold()
             if !daemonAvailable {
@@ -642,6 +645,7 @@ final class LetItBrewAppModel: ObservableObject {
         isPaused = true
         keepAwakeRow = nil
         manualSessionHeaderDetail = nil
+        phoneAlertHoldGrace.end()
         requestedSystemHold = false
         let systemReleased = powerAssertion.setSystemHold(false, reason: "Released by user")
         let displayReleased = powerAssertion.setDisplayHold(false, reason: "Released by user")
@@ -2336,19 +2340,7 @@ final class LetItBrewAppModel: ObservableObject {
             lidClosedHold: decision.holdLidClosed,
             displayHold: decision.holdDisplay
         )
-        requestedSystemHold = intent.system
-        requestedLidHold = intent.lidClosed
 
-        evaluateLidCloseDisplaySleep(snapshot: snapshot)
-
-        let systemSettled = powerAssertion.setSystemHold(
-            intent.system,
-            reason: "Let It Brew: \(decision.reason)"
-        )
-        let displaySettled = powerAssertion.setDisplayHold(
-            intent.display,
-            reason: "Let It Brew: \(decision.reason)"
-        )
         if daemonHoldRequestState.expireRequestIfTimedOut(
             at: snapshot.now,
             timeout: 2
@@ -2357,10 +2349,51 @@ final class LetItBrewAppModel: ObservableObject {
                 "The background helper did not confirm the sleep-hold change in time."
             )
         }
+
+        // Alerts judge the hold this poll wants, before any grace keeps the
+        // old one for their phone sends.
+        let isKeepingAwake = intent.system
+            || (intent.lidClosed && daemonHoldRequestState.confirmedHold == true)
+        let alerts = evaluateAlerts(
+            liveSessions,
+            runningApprovals: runningApprovals,
+            familyEdges: familyEdges,
+            monitoringHoldLimit: settings.monitoringHoldLimit,
+            snapshot: snapshot,
+            machine: AlertMachineState(
+                held: isKeepingAwake,
+                holdWanted: !isPaused && !decision.wantedBy.isEmpty,
+                releasedBy: decision.releasedBy,
+                lidClosed: snapshot.clamshell == .closed,
+                networkReachable: readsLiveState ? networkReachability.isReachable : nil
+            )
+        )
+        if !alerts.isEmpty { alertDelivery.deliver(alerts) }
+        let phoneSends = alerts.isEmpty || !readsLiveState ? nil : phoneAlerts.deliver(alerts)
+        let hold = phoneAlertHoldGrace.hold(
+            wanted: .init(system: intent.system, lidClosed: intent.lidClosed),
+            applied: .init(system: requestedSystemHold, lidClosed: requestedLidHold),
+            sendingToPhone: phoneSends != nil,
+            now: snapshot.now
+        )
+        if let phoneSends { awaitPhoneSends(phoneSends) }
+        requestedSystemHold = hold.system
+        requestedLidHold = hold.lidClosed
+
+        evaluateLidCloseDisplaySleep(snapshot: snapshot)
+
+        let systemSettled = powerAssertion.setSystemHold(
+            hold.system,
+            reason: "Let It Brew: \(decision.reason)"
+        )
+        let displaySettled = powerAssertion.setDisplayHold(
+            intent.display,
+            reason: "Let It Brew: \(decision.reason)"
+        )
         synchronizeDaemonHold()
         updateLowPowerRequest(snapshot: snapshot)
         updateHoldReleaseFailure(
-            systemReleased: intent.system || systemSettled,
+            systemReleased: hold.system || systemSettled,
             displayReleased: intent.display || displaySettled
         )
         updateHoldOwnership()
@@ -2379,22 +2412,6 @@ final class LetItBrewAppModel: ObservableObject {
             connectToDaemon()
         }
 
-        let isKeepingAwake = intent.system
-            || (requestedLidHold && daemonHoldRequestState.confirmedHold == true)
-        evaluateAlerts(
-            liveSessions,
-            runningApprovals: runningApprovals,
-            familyEdges: familyEdges,
-            monitoringHoldLimit: settings.monitoringHoldLimit,
-            snapshot: snapshot,
-            machine: AlertMachineState(
-                held: isKeepingAwake,
-                holdWanted: !isPaused && !decision.wantedBy.isEmpty,
-                releasedBy: decision.releasedBy,
-                lidClosed: snapshot.clamshell == .closed,
-                networkReachable: readsLiveState ? networkReachability.isReachable : nil
-            )
-        )
         // A constraint explains a release only for agents or holds that
         // would hold.
         releaseConstraint = if !decision.wantedBy.isEmpty {
@@ -2731,6 +2748,7 @@ final class LetItBrewAppModel: ObservableObject {
     }
 
     func cleanQuit() {
+        phoneAlertHoldGrace.end()
         requestedSystemHold = false
         requestedLidHold = false
         powerAssertion.setSystemHold(false, reason: "Let It Brew quit")
@@ -2764,7 +2782,7 @@ final class LetItBrewAppModel: ObservableObject {
         monitoringHoldLimit: TimeInterval,
         snapshot: LetItBrewSnapshot,
         machine: AlertMachineState
-    ) {
+    ) -> [Alert] {
         let observations = liveSessions.map { record in
             let state = MenuSessionState.resolve(
                 record,
@@ -2831,8 +2849,52 @@ final class LetItBrewAppModel: ObservableObject {
             settings: settings
         )
         previousAlertSnapshot = current
-        if !alerts.isEmpty { alertDelivery.deliver(alerts) }
-        if !alerts.isEmpty, readsLiveState { phoneAlerts.deliver(alerts) }
+        return alerts
+    }
+
+    /// Waits for the sends a grace keeps the hold for. The last one to
+    /// settle ends the grace; at its cap the grace ends anyway and every send
+    /// still going is dropped, so a late retry never lands after the Mac has
+    /// slept.
+    private func awaitPhoneSends(_ sends: Task<Void, Never>) {
+        guard phoneAlertHoldGrace.isKeeping else { return }
+        let generation = phoneAlertHoldGrace.generation
+        if generation != phoneAlertGraceSends.generation {
+            phoneAlertGraceSends = (generation, [])
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(PhoneAlertHoldGrace.limit))
+                guard let self else { return }
+                if self.phoneAlertGraceSends.generation == generation {
+                    self.phoneAlertGraceSends.tasks.forEach { $0.cancel() }
+                }
+                self.applyGraceRelease(self.phoneAlertHoldGrace.expire(generation: generation))
+            }
+        }
+        phoneAlertGraceSends.tasks.append(sends)
+        Task { [weak self] in
+            await sends.value
+            guard let self else { return }
+            self.applyGraceRelease(self.phoneAlertHoldGrace.sendSettled(generation: generation))
+        }
+    }
+
+    /// Applies the release a grace held back, without waiting for a poll.
+    private func applyGraceRelease(_ hold: PhoneAlertHoldGrace.Hold?) {
+        guard let hold else { return }
+        if requestedSystemHold, !hold.system {
+            requestedSystemHold = false
+            let released = powerAssertion.setSystemHold(
+                false,
+                reason: "Let It Brew: phone alerts sent"
+            )
+            updateHoldReleaseFailure(systemReleased: released, displayReleased: true)
+        }
+        if requestedLidHold, !hold.lidClosed {
+            requestedLidHold = false
+            synchronizeDaemonHold()
+        }
+        updateHoldOwnership()
+        refreshNow()
     }
 
     private static func menuInput(

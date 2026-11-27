@@ -143,3 +143,34 @@ private func json(_ request: URLRequest) -> [String: String] {
 private extension Array {
     var only: Element? { count == 1 ? first : nil }
 }
+
+@Test func changingTheServerDropsTheTokenItWasFor() {
+    var access = NtfyServerAccess(
+        server: URL(string: "https://ntfy.example.com")!,
+        token: "tk_private"
+    )
+    let accepted = access.setServer("https://ntfy.sh")
+    #expect(accepted)
+    #expect(access == NtfyServerAccess(server: URL(string: "https://ntfy.sh")!, token: nil))
+}
+
+@Test func settingTheSameServerKeepsTheToken() {
+    var access = NtfyServerAccess(
+        server: URL(string: "https://ntfy.example.com")!,
+        token: "tk_private"
+    )
+    let accepted = access.setServer(" https://ntfy.example.com/ ")
+    #expect(accepted)
+    #expect(access.token == "tk_private")
+}
+
+@Test func anInvalidServerChangesNothing() {
+    let original = NtfyServerAccess(
+        server: URL(string: "https://ntfy.example.com")!,
+        token: "tk_private"
+    )
+    var access = original
+    let accepted = access.setServer("http://ntfy.sh")
+    #expect(!accepted)
+    #expect(access == original)
+}

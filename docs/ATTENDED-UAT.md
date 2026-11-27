@@ -98,8 +98,8 @@ the `hold` section.
    minutes sends nothing. Approve a prompt mid-turn: going Waiting sends no
    finished banner. With Hide project names on, the body is only "Worked for
    N min". A Claude turn that runs subagents sends one banner, for the parent.
-3. Run `letitbrew hold -- sh -c 'sleep 200'`: after it ends, "sh -c sleep 200
-   finished" / "Succeeded after 3 min". Run
+3. Run `letitbrew hold -- sh -c 'sleep 200'`: after it ends, "sh finished" /
+   "Succeeded after 3 min". Run
    `letitbrew hold -- sh -c 'sleep 200; exit 1'`: "… failed" / "Failed after 3
    min". `letitbrew hold -- sleep 60` sends nothing. With Hide project names on,
    the titles read "A held command finished" and "A held command failed".
@@ -108,7 +108,7 @@ the `hold` section.
    `letitbrew hold --pid <its PID>`, and wait: "Process <PID> finished" /
    "Finished after 4 min". Run bare `letitbrew hold` for 4 minutes and press
    Ctrl-C: no banner. Also `kill -9` the CLI of a `hold -- sleep 600` after 4
-   minutes, then the `sleep`: "sleep 600 finished" / "Finished after N min",
+   minutes, then the `sleep`: "sleep finished" / "Finished after N min",
    with no success or failure claimed.
 5. Battery floor: on battery just above the floor (Settings → Power), keep an
    agent Working or a hold running until the charge reaches the floor. One
@@ -133,8 +133,8 @@ the `hold` section.
    with the lid open, and with nothing held: no banner. Turn Wi-Fi off with the
    lid open, then close it: no banner.
 10. Check that no banner or Notification Center entry from steps 2–9 shows a
-    prompt, question, tool name or command (a held command's own label is
-    shown only while Hide project names is off).
+    prompt, question, tool name or command arguments (a held command's
+    program name is shown only while Hide project names is off).
 
 ### `letitbrew hold -- <command>`
 
@@ -467,8 +467,8 @@ throwaway topic; never paste a real topic into an issue.
 5. The other alert types follow the same away rule, with the desktop's
    words, and are never resent on becoming away. With the screen locked
    and Always send to phone off:
-   - `letitbrew hold -- sh -c 'sleep 200'` ends: the phone gets "sh -c
-     sleep 200 finished" / "Succeeded after 3 min". An agent turn of over 3
+   - `letitbrew hold -- sh -c 'sleep 200'` ends: the phone gets "sh
+     finished" / "Succeeded after 3 min". An agent turn of over 3
      minutes ending sends "<Agent> finished" / "<folder> · Worked for N min".
    - With Connected power only on, hold the Mac with work while plugged in,
      then unplug: the phone gets "Your Mac stopped keeping awake" / "It
@@ -481,7 +481,7 @@ throwaway topic; never paste a real topic into an issue.
 6. Turn on Hide project names: the phone body is only the state ("Waiting
    for your approval", "Worked for N min") and a held command is "A held
    command". Confirm no phone alert ever contains a prompt, question, or
-   command, and has no emoji.
+   command arguments, and has no emoji.
 7. Turn Wi-Fi off, lock the screen, and let an approval wait 30 seconds.
    Confirm the menu shows no error, the hold is unchanged, and nothing arrives
    later when Wi-Fi returns (the send was retried once, then dropped).
@@ -523,6 +523,49 @@ throwaway topic; never paste a real topic into an issue.
    Advanced expanded, the whole "On your phone" group shows below "On this
    Mac" without scrolling or clipping; "Alert me when" and Privacy are reached
    by scrolling.
+14. Lid closed, no external display, Always send to phone off, closed-lid
+   support on:
+   - A Claude turn of over 3 minutes finishes while it is the only thing
+     holding: the phone gets "<Agent> finished" promptly, not when the lid is
+     reopened.
+   - With a battery floor just below the current charge and work held,
+     unplug and wait for the floor: the phone gets "Your Mac stopped keeping
+     awake" before the Mac sleeps. Check the Mac does go to sleep within about
+     15 seconds of the alert (`pmset -g log | grep -i sleep` after waking).
+15. Manual sessions: start a manual keep-awake session from the menu (no
+   agents) and lock the screen.
+   - With Connected power only on, unplug: the phone gets "Your Mac stopped
+     keeping awake" / "It switched to battery power."
+   - Turn Wi-Fi off for over 60 seconds: the desktop shows the Wi-Fi alert.
+16. Heat, if `pmset -g therm` can be pushed to serious: with work held and
+   the screen locked, the phone gets "Your Mac stopped keeping awake" / "It
+   got too warm."
+17. Token follows the server: with a custom server and token Working, change
+   Server to https://ntfy.sh and press Return. The Access token field is
+   empty, status drops back to "Waiting for a test to arrive…", and Send Test
+   is needed again; the self-hosted server's log shows no further request
+   with the token, and ntfy.sh gets no Authorization header.
+
+### Update from 1.0.1 with desktop alerts (notifications framework)
+
+1.0.1 refuses an update whose main executable links UserNotifications, so 2.0
+keeps notifications in `Contents/Frameworks/LetItBrewAlerts.framework`.
+`verify-artifact.sh` and the 1.0.1 verifier prove the linkage; these steps prove
+the update and the alerts still work.
+
+1. Install 1.0.1 with Homebrew (`brew install --cask letitbrew` from the tap)
+   and confirm it runs with closed-lid support on.
+2. Point the in-app update at the 2.0.0 candidate and choose Update. Confirm it
+   installs and relaunches as 2.0.0, with no "links UserNotifications" refusal
+   in the update log, and `otool -L "/Applications/Let It Brew.app/Contents/MacOS/LetItBrew"`
+   lists `LetItBrewAlerts.framework` but not UserNotifications.
+3. Turn on Desktop alerts. Confirm macOS asks for notification permission once
+   and the system Notifications settings list Let It Brew (not a separate
+   framework entry).
+4. Leave a Claude Code approval unanswered for 30 seconds. Confirm one banner,
+   "Claude Code needs you", posts.
+5. Switch to another app and click the banner. Confirm the agent's host app
+   (Terminal, iTerm2, Ghostty, VS Code, Orca) comes forward.
 
 ### Menu layout polish (2.0.0)
 

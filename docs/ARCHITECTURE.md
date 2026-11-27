@@ -15,6 +15,7 @@ the right service.
 | `LetItBrewDaemon` | Xcode-only | The privileged launchd daemon executable. |
 | `LetItBrewDaemonCore` | SwiftPM library | XPC protocol, hold coordination, sleep control. |
 | `letitbrew` | SwiftPM executable | The CLI shim that agent hooks invoke. |
+| `LetItBrewAlerts` | Xcode-only framework | The app's only UserNotifications code. |
 
 `LetItBrewApp` and `LetItBrewDaemon` are deliberately thin. Anything worth
 testing lives in one of the three `*Core` libraries, which is why `swift test`
@@ -186,6 +187,10 @@ or update on the same boot and is discarded after a reboot or once expired;
 A live demand counts like a Working session and passes through the same power
 rules; `Decision.wantedBy` records what wanted the hold and `Decision.releasedBy`
 the power rule that released it, so the menu and alerts can explain a release.
+The one delay to a release: when the poll that releases the system or lid
+hold also sends phone alerts (a finished or stopped alert, say), the app keeps
+the old hold until those sends are sent or dropped, for at most 15 seconds
+(`PhoneAlertHoldGrace`), so a closed-lid Mac does not sleep mid-send.
 
 A Waiting session releases the hold, with no grace period. Every question,
 and every OpenCode and Pi wait, reports its answer with a hook. Approving a
@@ -444,6 +449,13 @@ published SHA-256, safely transitions the background service, renames atomically
 and relaunches. If verification or the service transition cannot be proven safe,
 nothing is replaced. A post-swap failure rolls back where possible and retains
 recovery evidence rather than discarding it.
+
+Desktop notifications live in the embedded `LetItBrewAlerts.framework`, not the
+main executable, because Let It Brew 1.0.x's updater refuses a candidate whose
+main executable, daemon, or helper links UserNotifications. The framework loads
+into the app process, so authorization and notification clicks still belong to
+the app; `verify-artifact.sh` keeps the 1.0.x check and confines the linkage to
+the framework.
 
 ## Uninstall ordering
 
