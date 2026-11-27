@@ -129,7 +129,8 @@ import LetItBrewCore
         connectedAgentCount: 0
     )) == MenuSetupAttentionPresentation(
         title: "Connect an agent",
-        detail: "Open Settings to connect your coding agent."
+        detail: "Open Settings to connect your coding agent.",
+        systemImageName: "exclamationmark.circle.fill"
     ))
 
     #expect(MenuSetupAttentionPolicy.presentation(for: MenuSetupAttentionInput(

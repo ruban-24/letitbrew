@@ -761,7 +761,7 @@ public struct MenuSetupAttentionPresentation: Equatable, Sendable {
     public init(
         title: String,
         detail: String,
-        systemImageName: String = "exclamationmark.circle.fill"
+        systemImageName: String
     ) {
         self.title = title
         self.detail = detail
@@ -776,7 +776,8 @@ public enum MenuSetupAttentionPolicy {
         if input.hasUpdateResult {
             return MenuSetupAttentionPresentation(
                 title: "Review update result",
-                detail: "Open Settings to see what changed"
+                detail: "Open Settings to see what changed",
+                systemImageName: "exclamationmark.circle.fill"
             )
         }
         if input.closedLidNeedsAttention {
@@ -789,7 +790,8 @@ public enum MenuSetupAttentionPolicy {
         if input.connectedAgentCount == 0 {
             return MenuSetupAttentionPresentation(
                 title: "Connect an agent",
-                detail: "Open Settings to connect your coding agent."
+                detail: "Open Settings to connect your coding agent.",
+                systemImageName: "exclamationmark.circle.fill"
             )
         }
         return nil

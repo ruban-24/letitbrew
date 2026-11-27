@@ -134,7 +134,8 @@ private struct PopoverHoverHighlight: ViewModifier {
 }
 
 /// A quiet card for setup prompts and warnings: a near-white panel in light
-/// mode, a faint lift in dark mode. Only the card's icon carries colour.
+/// mode, a faint lift in dark mode. Only the card's icon carries colour. It
+/// sits 4 pt inside the menu's row inset.
 private struct MenuCard: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
 
@@ -145,6 +146,7 @@ private struct MenuCard: ViewModifier {
             .background(Color.white.opacity(isDark ? 0.07 : 0.78), in: shape)
             .overlay(shape.strokeBorder(isDark ? Color.white.opacity(0.09) : Color.primary.opacity(0.1)))
             .shadow(color: .black.opacity(isDark ? 0 : 0.05), radius: 1, y: 1)
+            .padding(.horizontal, 4)
     }
 }
 
@@ -222,7 +224,8 @@ struct MenuBarContentView: View {
                         alertsTip
                     }
                 }
-                .padding(.horizontal, 10)
+                // Rows keep the menu's 6 pt inset; cards sit 4 pt further in.
+                .padding(.horizontal, 6)
                 .padding(.top, 4)
                 .padding(.bottom, 8)
             }

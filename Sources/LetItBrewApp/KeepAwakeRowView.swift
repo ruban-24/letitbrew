@@ -129,7 +129,8 @@ private struct DurationChipStyle: ButtonStyle {
     var isSelected = false
 
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
+        let shape = RoundedRectangle(cornerRadius: 6)
+        return configuration.label
             .font(.system(size: 12))
             .lineLimit(1)
             .foregroundStyle(isSelected ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
@@ -137,14 +138,13 @@ private struct DurationChipStyle: ButtonStyle {
             .frame(height: 20)
             .background(
                 isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.primary.opacity(0.08)),
-                in: RoundedRectangle(cornerRadius: 6)
+                in: shape
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .strokeBorder(Color.primary.opacity(isSelected ? 0 : 0.05))
+                shape.strokeBorder(Color.primary.opacity(isSelected ? 0 : 0.05))
             )
             .opacity(configuration.isPressed ? 0.7 : 1)
-            .contentShape(RoundedRectangle(cornerRadius: 6))
+            .contentShape(shape)
     }
 }
 

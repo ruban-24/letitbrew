@@ -545,6 +545,9 @@ signed app. Check every step in light and dark appearance (**System Settings
    are coloured: an orange laptop on the closed-lid card and a purple bell
    on the tip. Turn On is still the filled purple button. Both cards still
    work: the closed-lid card opens Settings, and Not Now dismisses the tip.
+   If a sleep hold fails to release, its warning card has the same neutral
+   look with an orange warning icon. An "Update … available" row keeps
+   the same left edge as Settings… and Quit.
 4. Click 1h. The small "Keep awake" label stays above "Awake · 1:00 left"
    (no timer icon), with "Until <time>" below and +1h and End on the right.
    End returns to the buttons.
